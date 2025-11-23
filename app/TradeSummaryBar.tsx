@@ -1,4 +1,3 @@
-// TradeSummaryBar.tsx
 import {
   collection,
   onSnapshot,
@@ -20,87 +19,99 @@ import { auth, db } from "../firebaseConfig";
 const { height } = Dimensions.get("window");
 const COLLAPSED_HEIGHT = 50;
 const EXPANDED_HEIGHT = height * 0.5;
+const getAnimatedValue = (val: Animated.Value) => {
+  return (val as any).__getValue();
+};
 
-interface TradeSummaryBarProps {
-  openTrades?: any[];
-  closedTrades?: any[];
-}
 
-export default function TradeSummaryBar({
-  openTrades: parentOpenTrades = [],
-  closedTrades: parentClosedTrades = [],
-}: TradeSummaryBarProps) {
-  const translateY = useRef(new Animated.Value(EXPANDED_HEIGHT - COLLAPSED_HEIGHT)).current;
-  const [openTrades, setOpenTrades] = useState<any[]>(parentOpenTrades);
-  const [closedTrades, setClosedTrades] = useState<any[]>(parentClosedTrades);
+
+export default function TradeSummaryBar() {
+  const translateY = useRef(
+    new Animated.Value(EXPANDED_HEIGHT - COLLAPSED_HEIGHT)
+  ).current;
+
+  const lastY = useRef(EXPANDED_HEIGHT - COLLAPSED_HEIGHT); // prevents jump
+
+  const [openTrades, setOpenTrades] = useState<any[]>([]);
+  const [closedTrades, setClosedTrades] = useState<any[]>([]);
+
   const user = auth.currentUser;
 
-  // 🔥 Realtime Firestore listener
+// ⬇️ FIXED here
+const currentYRef = useRef(getAnimatedValue(translateY));
+
+
+useEffect(() => {
+  const listenerId = translateY.addListener(({ value }) => {
+    currentYRef.current = value;
+  });
+
+  return () => {
+    translateY.removeListener(listenerId);
+  };
+}, []); // safe to run once
+
+
+
+  // 🔥 Real-time Firestore listener
   useEffect(() => {
-    if (parentOpenTrades.length > 0 || parentClosedTrades.length > 0) return;
+    if (!user) return;
 
-    if (!user) {
-      console.log("⚠️ No logged-in user. Using dummy trades.");
-      setOpenTrades([
-        { type: "buy", amount: 100, entryPrice: 2375.5, expireTime: null },
-        { type: "sell", amount: 50, entryPrice: 2381.2, expireTime: null },
-      ]);
-      setClosedTrades([
-        {
-          type: "buy",
-          amount: 100,
-          entryPrice: 2350.0,
-          closePrice: 2380.4,
-          result: "GAIN",
-          payout: 30,
-        },
-      ]);
-      return;
-    }
-
-    const tradesRef = collection(db, "userTrades");
-    const q = query(tradesRef, where("userId", "==", user.uid));
-
-    const unsubscribe = onSnapshot(
-      q,
-      (snapshot) => {
-        const open: any[] = [];
-        const closed: any[] = [];
-
-        snapshot.forEach((doc) => {
-          const data = doc.data();
-          if (data.status === "open") open.push(data);
-          else closed.push(data);
-        });
-
-        setOpenTrades(open);
-        setClosedTrades(closed);
-      },
-      (error) => {
-        console.error("❌ Realtime listener error:", error);
-      }
+    const q = query(
+      collection(db, "userTrades"),
+      where("userId", "==", user.uid)
     );
+    
+
+    const unsubscribe = onSnapshot(q, (snap) => {
+      const open: any[] = [];
+      const closed: any[] = [];
+
+      snap.forEach((doc) => {
+        const data = doc.data();
+        if (data.status === "open") open.push(data);
+        else closed.push(data);
+      });
+
+      setOpenTrades(open);
+      setClosedTrades(closed);
+    });
 
     return () => unsubscribe();
-  }, [user, parentOpenTrades, parentClosedTrades]);
+  }, [user]);
 
-  // 🎯 Swipe logic (same as before)
+  // 🎯 Perfect smooth dragging logic
   const panResponder = useRef(
     PanResponder.create({
-      onMoveShouldSetPanResponder: (_, gestureState) =>
-        Math.abs(gestureState.dy) > 10,
-      onPanResponderMove: (_, gestureState) => {
-        const currentY = (translateY as any)._value ?? 0;
-        const newY = Math.max(
+      onMoveShouldSetPanResponder: (_, g) =>
+        Math.abs(g.dy) > 8,
+
+      onPanResponderMove: (_, g) => {
+        let newY = lastY.current + g.dy;
+
+        newY = Math.max(
           0,
-          Math.min(EXPANDED_HEIGHT - COLLAPSED_HEIGHT, currentY + gestureState.dy)
+          Math.min(EXPANDED_HEIGHT - COLLAPSED_HEIGHT, newY)
         );
+
         translateY.setValue(newY);
       },
-      onPanResponderRelease: (_, gestureState) => {
-        const shouldExpand = gestureState.dy < 0;
+
+      onPanResponderRelease: () => {
+        const midpoint =
+          (EXPANDED_HEIGHT - COLLAPSED_HEIGHT) / 2;
+
+       const shouldExpand = currentYRef.current < midpoint;
+
+
+        const finalY = shouldExpand
+          ? 0
+          : EXPANDED_HEIGHT - COLLAPSED_HEIGHT;
+
+        lastY.current = finalY;
+
         Animated.spring(translateY, {
-          toValue: shouldExpand ? 0 : EXPANDED_HEIGHT - COLLAPSED_HEIGHT,
+          toValue: finalY,
           useNativeDriver: true,
         }).start();
       },
@@ -109,30 +120,50 @@ export default function TradeSummaryBar({
 
   return (
     <Animated.View
-      style={[styles.panel, { height: EXPANDED_HEIGHT, transform: [{ translateY }] }]}
+      style={[
+        styles.panel,
+        {
+          height: EXPANDED_HEIGHT,
+          transform: [{ translateY }],
+        },
+      ]}
       {...panResponder.panHandlers}
     >
+      {/* Drag Handle */}
       <View style={styles.handle}>
         <View style={styles.handleLine} />
-        <Text style={styles.handleText}>Portfolio / Trade Summary</Text>
+        <Text style={styles.handleText}>
+          Portfolio / Trade Summary
+        </Text>
       </View>
 
-      <ScrollView style={styles.content}>
+      {/* Content */}
+      <ScrollView
+        style={styles.content}
+        nestedScrollEnabled
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{ paddingBottom: 70 }}
+      >
         <Text style={styles.sectionTitle}>Open Trades</Text>
+
         {openTrades.length === 0 ? (
           <Text style={{ color: "#777" }}>No open trades</Text>
         ) : (
           openTrades.map((t, i) => (
             <View key={i} style={styles.tradeRow}>
               <Text style={styles.tradeText}>
-                {t.type.toUpperCase()} ${t.amount} → Entry: {t.entryPrice?.toFixed(2)} | Exp:{" "}
-                {t.expireTime ? new Date(t.expireTime).toLocaleTimeString() : "-"}
+                {t.type?.toUpperCase()} ${t.amount} → Entry:{" "}
+                {t.entryPrice?.toFixed(2)} | Exp:{" "}
+                {t.expireTime
+                  ? new Date(t.expireTime).toLocaleTimeString()
+                  : "-"}
               </Text>
             </View>
           ))
         )}
 
         <Text style={styles.sectionTitle}>Closed Trades</Text>
+
         {closedTrades.length === 0 ? (
           <Text style={{ color: "#777" }}>No closed trades</Text>
         ) : (
@@ -141,15 +172,19 @@ export default function TradeSummaryBar({
               key={i}
               style={[
                 styles.tradeRow,
-                { backgroundColor: t.result === "GAIN" ? "#1e4620" : "#5a1d1d" },
+                {
+                  backgroundColor:
+                    t.result === "GAIN" ? "#1e4620" : "#5a1d1d",
+                },
               ]}
             >
               <Text style={styles.tradeText}>
-                {t.type.toUpperCase()} ${t.amount} → {t.result} +$
-                {t.payout?.toFixed(2) || 0}
+                {t.type?.toUpperCase()} ${t.amount} →{" "}
+                {t.result} +${t.payout?.toFixed(2)}
               </Text>
               <Text style={{ color: "#ccc", fontSize: 12 }}>
-                Open: {t.entryPrice?.toFixed(2)} | Close: {t.closePrice?.toFixed(2)}
+                Open: {t.entryPrice?.toFixed(2)} | Close:{" "}
+                {t.closePrice?.toFixed(2)}
               </Text>
             </View>
           ))
@@ -169,38 +204,43 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 12,
     borderTopRightRadius: 12,
     overflow: "hidden",
+    zIndex: 999,
   },
   handle: {
     height: COLLAPSED_HEIGHT,
     backgroundColor: "#333",
     justifyContent: "center",
     alignItems: "center",
+    paddingTop: 6,
   },
   handleLine: {
     width: 40,
-    height: 2,
+    height: 3,
+    backgroundColor: "#aaa",
     borderRadius: 2,
-    backgroundColor: "#888",
-    marginBottom: 3,
+    marginBottom: 4,
   },
   handleText: {
     color: "white",
     fontWeight: "600",
+    fontSize: 13,
   },
   content: {
     flex: 1,
-    padding: 10,
+    padding: 12,
   },
   sectionTitle: {
     color: "#ccc",
-    fontSize: 14,
-    marginVertical: 6,
+    fontSize: 15,
+    marginTop: 10,
+    marginBottom: 6,
+    fontWeight: "600",
   },
   tradeRow: {
     marginVertical: 6,
-    padding: 10,
-    borderRadius: 8,
-    backgroundColor: "#2a2a2a",
+    padding: 12,
+    borderRadius: 10,
+    backgroundColor: "#262626",
   },
   tradeText: {
     color: "white",

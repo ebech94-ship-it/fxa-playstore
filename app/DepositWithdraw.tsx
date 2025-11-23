@@ -1,7 +1,8 @@
 import { Picker } from "@react-native-picker/picker";
 import { LinearGradient } from "expo-linear-gradient";
 import { addDoc, collection, doc, getDoc, updateDoc } from "firebase/firestore";
-import { FlutterwaveInit } from "flutterwave-react-native";
+
+import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -17,8 +18,7 @@ import {
 } from "react-native";
 import { auth, db } from "../firebaseConfig";
 
-// ✅ Flutterwave public key
-const FLW_PUBLIC_KEY = process.env.EXPO_PUBLIC_FLUTTERWAVE_PUBLIC_KEY!;
+
 
 // 🔹 Conversion API (dummy)
 const fakeConversionRateAPI = async (currency: string) => {
@@ -54,6 +54,8 @@ export default function PaymentsPage() {
 
   const [platformFee, setPlatformFee] = useState(0);
   const [netAmount, setNetAmount] = useState(0);
+const router = useRouter();
+
 
   // 🔹 Convert currency automatically
   useEffect(() => {
@@ -80,69 +82,54 @@ export default function PaymentsPage() {
     setActiveMethod(method);
     setModalVisible(true);
   };
+  const currentUser = auth.currentUser;
+  if (!currentUser) {
+  alert("Please login again.");
+  return;
+}
 
-  // ✅ Deposit handler
-  const handleFlutterwavePayment = async () => {
-    if (!amount || isNaN(Number(amount))) {
-      alert("Please enter a valid amount");
+
+
+const handleFlutterwavePayment = async () => {
+  if (!amount) return alert("Enter valid amount");
+
+  setLoading(true);
+
+  try {
+    const res = await fetch("http://10.217.176.22:4000/create-payment", {
+  method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        amount: netAmount,
+        currency: selectedCurrency,
+       email: currentUser.email,
+userId: currentUser.uid,
+            type: "deposit",
+      }),
+    });
+
+    const data = await res.json();
+    const payLink = data.link;
+
+    if (!payLink) {
+      alert("Could not create payment");
       return;
     }
 
-    setLoading(true);
-    const fee = Number(amount) * 0.04;
-    const net = Number(amount) - fee;
+    // Open payment link
+    router.push({
+      pathname: "/WebViewCheckout",
+      params: { url: payLink },
+    });
 
-    alert(
-      `Amount entered: ${Number(amount).toFixed(2)} ${selectedCurrency}\n` +
-        `Platform fee (4%): ${fee.toFixed(2)} ${selectedCurrency}\n` +
-        `Net amount to be deposited: ${net.toFixed(2)} ${selectedCurrency}\n` +
-        `Equivalent in FCFA: ≈ ${(net * 595).toFixed(0)} XAF`
-    );
+  } catch (err) {
+  console.log(err);
+}
 
-    try {
-      const paymentConfig = {
-        tx_ref: `tx-${Date.now()}`,
-        amount: net,
-        currency: selectedCurrency as any,
-        payment_options: "card, mobilemoney, ussd",
-        customer: {
-          email: auth.currentUser?.email || "user@example.com",
-          name: auth.currentUser?.displayName || "User",
-        },
-        customizations: {
-          title: "Forex Tournaments Deposit",
-          description: "Deposit into your trading wallet",
-          logo: "https://your-logo-url.com/logo.png",
-        },
-        redirect_url: "N/A", // 👈 required field but unused
-      };
 
-      const response: any = await FlutterwaveInit({
-        authorization: FLW_PUBLIC_KEY,
-        ...paymentConfig,
-      });
+  setLoading(false);
+};
 
-      if (response?.status === "successful") {
-        alert("Deposit successful!");
-        if (auth.currentUser) {
-          const uid = auth.currentUser.uid;
-          const userRef = doc(db, "users", uid);
-          const userSnap = await getDoc(userRef);
-          const oldBalance = userSnap.exists()
-            ? userSnap.data().walletBalance || 0
-            : 0;
-          await updateDoc(userRef, { walletBalance: oldBalance + net });
-        }
-      } else {
-        alert("Payment cancelled or failed.");
-      }
-    } catch (error) {
-      console.error("Flutterwave error:", error);
-      alert("Payment failed. Try again.");
-    } finally {
-      setLoading(false);
-    }
-  };
 
   // 💸 Withdrawal handler
   const handleWithdrawal = async () => {
@@ -185,6 +172,7 @@ export default function PaymentsPage() {
         currency: selectedCurrency,
         status: "pending",
         createdAt: new Date(),
+         type: "withdrawal",
       });
 
       alert(

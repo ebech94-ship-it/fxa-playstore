@@ -1,11 +1,13 @@
 {
+  
   "expo": {
-    "name": "forex-app2",
-    "slug": "forex-app2",
+    "name": "Forex Tournaments Arena",
+    "owner": "ebeh",
+    "slug": "forex-tournaments-arena",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "forexapp2",
+    "scheme": "forextournamentsarena",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
 
@@ -14,6 +16,7 @@
     },
 
     "android": {
+     "package": "com.ebeh.forextournamentsarena",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
         "foregroundImage": "./assets/images/android-icon-foreground.png",

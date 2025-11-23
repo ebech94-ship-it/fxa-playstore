@@ -1,8 +1,9 @@
 // components/AccountSwitcher.tsx
+import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useState } from "react";
 import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
-import Icon from "react-native-vector-icons/MaterialCommunityIcons";
+
 
 type AccountType = "demo" | "real" | "tournament";
 
@@ -82,11 +83,12 @@ export default function AccountSwitcher({
     <View style={styles.container}>
       {/* Bank icon + current active balance */}
       <TouchableOpacity onPress={toggleExpand} style={styles.iconRow}>
-        <Icon name="bank" size={26} color="#fff" />
-        <Text style={[styles.activeBalance, { color: getColor(activeAccount) }]}>
-          ${balances[activeAccount].toFixed(2)}
-        </Text>
-      </TouchableOpacity>
+  <MaterialCommunityIcons name="bank" size={26} color="#fff" />
+  <Text style={[styles.activeBalance, { color: getColor(activeAccount) }]}>
+    ${balances[activeAccount].toFixed(2)}
+  </Text>
+</TouchableOpacity>
+
 
       {/* Expanded accounts dropdown (scrollable if needed) */}
       {expanded && (

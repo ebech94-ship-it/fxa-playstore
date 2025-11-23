@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "895363795197",
+    "project_id": "forex-tournaments-arena",
+    "storage_bucket": "forex-tournaments-arena.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:895363795197:android:a439f23bc18a2e0e611694",
+        "android_client_info": {
+          "package_name": "com.ebeh.forextournamentsarena"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "895363795197-g1dkogsl8uu0k5en3ks24uitcs5khfnn.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.ebeh.forextournamentsarena",
+            "certificate_hash": "3c96432b7bf1c3f3540c177dbea67f22a47b1583"
+          }
+        },
+        {
+          "client_id": "895363795197-qmuod36rndhkmef0kb0kv3qhjcjn4d2c.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyA3LYEF0jP064nVXcqqkoWYixOjv6rhUrg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "895363795197-qmuod36rndhkmef0kb0kv3qhjcjn4d2c.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

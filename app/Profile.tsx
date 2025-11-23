@@ -1,10 +1,12 @@
 import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
-import { getAuth } from "firebase/auth";
+import { deleteUser, getAuth } from "firebase/auth";
+
 import {
   addDoc,
   collection,
+  deleteDoc,
   doc,
   getDoc,
   serverTimestamp,
@@ -17,7 +19,6 @@ import {
   ActivityIndicator,
   Alert,
   Image,
-  Modal,
   ScrollView,
   StyleSheet,
   Switch,
@@ -27,25 +28,61 @@ import {
   View,
 } from "react-native";
 import { db, storage } from "../firebaseConfig";
-import DepositWithdrawScreen from "./DepositWithdraw";
+
 import { ProfileContext } from "./ProfileContext";
 
 
 
-export default function ProfileMenu() {
+// ⬇️ DEFINE THE TYPE HERE (very important)
+type ProfileErrors = {
+  displayName?: string;
+  username?: string;
+  email?: string;
+  phone?: string;
+  country?: string;
+  dateOfBirth?: string;
+  loginCode?: string;
+  confirmLegal?: string;
+};
+export default function Profile() {
   const auth = getAuth();
   const user = auth.currentUser;
 
   const [activeSection, setActiveSection] = useState<string | null>(null);
   const [darkMode, setDarkMode] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
-  const [showDepositWithdraw, setShowDepositWithdraw] = useState(false);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+
+  
 const { profileImage, setProfileImage } = useContext(ProfileContext);
 
 const [supportName, setSupportName] = useState("");
 const [supportEmail, setSupportEmail] = useState("");
 const [supportMessage, setSupportMessage] = useState("");
 const router = useRouter();
+const [confirmLegal, setConfirmLegal] = useState(false);
+const [errors, setErrors] = useState<ProfileErrors>({});
+
+
+const validateForm = () => {
+  let newErrors: any = {};
+
+  if (!profile.displayName) newErrors.displayName = "Full name is required";
+  if (!profile.username) newErrors.username = "Username is required";
+  if (!profile.email) newErrors.email = "Email is required";
+  if (!profile.phone) newErrors.phone = "Phone number is required";
+  if (!profile.country) newErrors.country = "Country is required";
+  if (!profile.dateOfBirth) newErrors.dateOfBirth = "Date of birth is required";
+  if (!profile.loginCode || profile.loginCode.length < 4)
+    newErrors.loginCode = "Login code must be at least 4 digits";
+
+  if (!confirmLegal)
+    newErrors.confirmLegal = "Please confirm the information is accurate";
+
+  setErrors(newErrors);
+
+  return Object.keys(newErrors).length === 0;
+};
 
 
   // Profile data
@@ -58,15 +95,30 @@ const router = useRouter();
     dateOfBirth: "",
     loginCode: "",
     avatarUrl: "",
+    confirmLegal: "",
   });
-
-const [message, setMessage] = useState<string>("");
-const [sendingMessage, setSendingMessage] = useState<boolean>(false);
-
-const currentUser = getAuth().currentUser;
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const deleteAccount = async () => {
+  try {
+    const auth = getAuth();
+    if (!auth.currentUser) {
+      console.log("No user logged in.");
+      return;
+    }
+
+    await deleteUser(auth.currentUser);
+
+    setShowDeleteModal(false);
+
+    // Navigate the user out of the app
+    router.replace("/welcome"); // adjust according to your routing
+  } catch (error: any) {
+    console.log("Delete error:", error);
+  }
+};
+
 
   // Load user profile from Firestore
   useEffect(() => {
@@ -131,7 +183,12 @@ const currentUser = getAuth().currentUser;
   // Save profile to Firestore
   const saveProfile = async () => {
     if (!user) return;
-    setSaving(true);
+    if (!validateForm()) {
+  Alert.alert("Form Incomplete", "Please correct the highlighted fields.");
+  return;
+}
+
+setSaving(true);
     try {
       let avatarUrl = profile.avatarUrl;
 
@@ -166,6 +223,43 @@ setProfileImage(avatarUrl); // ✅ Sync global avatar context
       setSaving(false);
     }
   };
+
+  
+// Toggle Dark Mode
+const toggleDarkMode = () => {
+  setDarkMode(!darkMode);
+};
+// Delete Account
+const handleDeleteAccount = async () => {
+  Alert.alert(
+    "Delete Account?",
+    "This action is permanent. All your data will be erased.",
+    [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            const user = auth.currentUser;
+
+            if (!user) return;
+
+            // Delete Firestore user data
+            await deleteDoc(doc(db, "users", user.uid));
+
+            // Delete account
+            await deleteUser(user);
+
+            router.replace("/splash");
+          } catch (err) {
+            console.log("Delete account error:", err);
+          }
+        },
+      },
+    ]
+  );
+};
   // Add below your existing hooks, before return()
 const handleLogout = async () => {
   try {
@@ -209,13 +303,7 @@ const handleSupportSend = async () => {
 };
 
 
-  if (loading)
-    return (
-      <View style={{ flex: 1, justifyContent: "center", alignItems: "center" }}>
-        <ActivityIndicator color="#21e6c1" />
-      </View>
-    );
-
+  
   return (
     <View style={styles.modalContainer}>
       <ScrollView>
@@ -223,10 +311,41 @@ const handleSupportSend = async () => {
         <View style={styles.header}>
           <Text style={styles.headerText}>User Menu</Text>
         </View>
-
+ <View style={{ alignItems: "center", marginBottom: 16 }}>
+              {profile.avatarUrl ? (
+                <Image
+                  source={{ uri: profile.avatarUrl }}
+                  style={{
+                    width: 100,
+                    height: 100,
+                    borderRadius: 50,
+                    marginBottom: 8,
+                  }}
+                />
+              ) : (
+                <View
+                  style={{
+                    width: 100,
+                    height: 100,
+                    borderRadius: 50,
+                    backgroundColor: "#0f3460",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    marginBottom: 8,
+                  }}
+                >
+                  <Ionicons name="person" size={40} color="white" />
+                </View>
+              )}
+              <TouchableOpacity onPress={pickAvatar}>
+                <Text style={{ color: "#21e6c1" }}>Change Avatar</Text>
+              </TouchableOpacity>
+            </View>
         {/* Menu Options */}
         {!activeSection && (
           <View style={styles.menuList}>
+
+
             <TouchableOpacity
               style={styles.menuItem}
               onPress={() => setActiveSection("profile")}
@@ -274,38 +393,6 @@ const handleSupportSend = async () => {
         {activeSection === "profile" && (
           <ScrollView style={styles.section}>
             <Text style={styles.sectionTitle}>Profile</Text>
-
-            <View style={{ alignItems: "center", marginBottom: 16 }}>
-              {profile.avatarUrl ? (
-                <Image
-                  source={{ uri: profile.avatarUrl }}
-                  style={{
-                    width: 100,
-                    height: 100,
-                    borderRadius: 50,
-                    marginBottom: 8,
-                  }}
-                />
-              ) : (
-                <View
-                  style={{
-                    width: 100,
-                    height: 100,
-                    borderRadius: 50,
-                    backgroundColor: "#0f3460",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    marginBottom: 8,
-                  }}
-                >
-                  <Ionicons name="person" size={40} color="white" />
-                </View>
-              )}
-              <TouchableOpacity onPress={pickAvatar}>
-                <Text style={{ color: "#21e6c1" }}>Change Avatar</Text>
-              </TouchableOpacity>
-            </View>
-
             <TextInput
               style={styles.input}
               placeholder="Full Name"
@@ -351,7 +438,7 @@ const handleSupportSend = async () => {
             />
             <TextInput
               style={styles.input}
-              placeholder="Date of Birth (YYYY-MM-DD)"
+              placeholder="Date of Birth (DD-MM-YYYY)"
               placeholderTextColor="#ccc"
               value={profile.dateOfBirth}
               onChangeText={(t) =>
@@ -368,6 +455,31 @@ const handleSupportSend = async () => {
                 setProfile((p: any) => ({ ...p, loginCode: t }))
               }
             />
+<View style={{ flexDirection: "row", alignItems: "center", marginTop: 20 }}>
+  <TouchableOpacity
+    onPress={() => setConfirmLegal(!confirmLegal)}
+    style={{
+      width: 22,
+      height: 22,
+      borderWidth: 2,
+      borderColor: "#21e6c1",
+      justifyContent: "center",
+      alignItems: "center",
+      marginRight: 10,
+      backgroundColor: confirmLegal ? "#21e6c1" : "transparent",
+    }}
+  >
+    {confirmLegal && <Text style={{ color: "#16213e", fontWeight: "bold" }}>✓</Text>}
+  </TouchableOpacity>
+
+  <Text style={{ color: "white", flex: 1 }}>
+    I confirm that all information provided is accurate, legal, and true.
+  </Text>
+</View>
+
+{errors.confirmLegal && (
+  <Text style={{ color: "red", marginTop: 4 }}>{errors.confirmLegal}</Text>
+)}
 
             <TouchableOpacity
               onPress={saveProfile}
@@ -446,44 +558,146 @@ const handleSupportSend = async () => {
   </ScrollView>
 )}
 
+{/*  DELETE ACCOUNT MODAL */}
+{showDeleteModal && (
+  <View
+    style={{
+      position: "absolute",
+      top: 0,
+      left: 0,
+      right: 0,
+      bottom: 0,
+      backgroundColor: "rgba(0,0,0,0.7)",
+      justifyContent: "center",
+      alignItems: "center",
+      paddingHorizontal: 20,
+      zIndex: 9999,
+    }}
+    pointerEvents="auto" // This blocks touches behind
+  >
+    <View
+      style={{
+        backgroundColor: "white",
+        borderRadius: 16,
+        width: "100%",
+        overflow: "hidden",
+      }}
+      pointerEvents="box-none"
+    >
+      {/* RED HEADER */}
+      <View
+        style={{
+          backgroundColor: "red",
+          paddingVertical: 15,
+          paddingHorizontal: 20,
+        }}
+      >
+        <Text
+          style={{
+            fontSize: 20,
+            fontWeight: "700",
+            color: "white",
+            textAlign: "center",
+          }}
+        >
+          Delete Account?
+        </Text>
+      </View>
+
+      {/* BODY TEXT */}
+      <Text
+        style={{
+          fontSize: 15,
+          opacity: 0.8,
+          paddingHorizontal: 20,
+          paddingTop: 15,
+          paddingBottom: 5,
+          textAlign: "center",
+        }}
+      >
+        This action is permanent. Your profile, account data, and activity will
+        be permanently removed and cannot be recovered.
+      </Text>
+
+      {/* BUTTONS */}
+      <View
+        style={{
+          flexDirection: "row",
+          justifyContent: "space-between",
+          paddingHorizontal: 20,
+          paddingVertical: 20,
+        }}
+      >
+        {/* CANCEL */}
+        <TouchableOpacity
+          onPress={() => setShowDeleteModal(false)}
+          style={{
+            padding: 12,
+            backgroundColor: "#ccc",
+            borderRadius: 10,
+            width: "45%",
+            alignItems: "center",
+          }}
+        >
+          <Text style={{ fontWeight: "600" }}>Cancel</Text>
+        </TouchableOpacity>
+
+        {/* DELETE */}
+        <TouchableOpacity
+          onPress={handleDeleteAccount}
+
+          style={{
+            padding: 12,
+            backgroundColor: "red",
+            borderRadius: 10,
+            width: "45%",
+            alignItems: "center",
+          }}
+        >
+          <Text style={{ color: "white", fontWeight: "700" }}>Delete</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  </View>
+)}
+
+
         {/* Settings Section */}
         {activeSection === "settings" && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Settings</Text>
-            <View style={styles.settingRow}>
-              <Text style={styles.settingText}>Dark Mode</Text>
-              <Switch value={darkMode} onValueChange={setDarkMode} />
-            </View>
-            <View style={styles.settingRow}>
-              <Text style={styles.settingText}>Sound Effects</Text>
-              <Switch value={soundEnabled} onValueChange={setSoundEnabled} />
-            </View>
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={() => setActiveSection(null)}
-            >
-              <Text style={styles.backText}>Back</Text>
-            </TouchableOpacity>
-          </View>
-        )}
-      </ScrollView>
+  <ScrollView style={styles.section} contentContainerStyle={{ paddingBottom: 80 }}>
+    <Text style={styles.sectionTitle}>Settings</Text>
 
-      {/* Deposit / Withdraw modal */}
-      <Modal
-        visible={showDepositWithdraw}
-        animationType="slide"
-        transparent={false}
-      >
-        <View style={{ flex: 1, backgroundColor: "#16213e" }}>
-          <TouchableOpacity
-            style={{ alignSelf: "flex-end", padding: 15 }}
-            onPress={() => setShowDepositWithdraw(false)}
-          >
-            <Ionicons name="close" size={28} color="white" />
-          </TouchableOpacity>
-          <DepositWithdrawScreen />
-        </View>
-      </Modal>
+    {/* Dark Mode */}
+    <View style={styles.settingRow}>
+      <Text style={styles.settingText}>Dark Mode</Text>
+      <Switch value={darkMode} onValueChange={toggleDarkMode} />
+    </View>
+
+    {/* Sound Effects */}
+    <View style={styles.settingRow}>
+      <Text style={styles.settingText}>Sound Effects</Text>
+      <Switch value={soundEnabled} onValueChange={setSoundEnabled} />
+    </View>
+
+    {/* Delete Account */}
+    <TouchableOpacity
+  style={styles.deleteButton}
+  onPress={() => setShowDeleteModal(true)}
+>
+  <Text style={styles.deleteText}>Delete Account</Text>
+</TouchableOpacity>
+
+
+    <TouchableOpacity
+      style={styles.backButton}
+      onPress={() => setActiveSection(null)}
+    >
+      <Text style={styles.backText}>Back</Text>
+    </TouchableOpacity>
+  </ScrollView>
+)}
+
+      </ScrollView>
     </View>
   );
 }
@@ -561,4 +775,15 @@ const styles = StyleSheet.create({
     marginVertical: 10,
   },
   settingText: { color: "white", fontSize: 16 },
+  deleteButton: {
+  backgroundColor: "#ff3b30",
+  padding: 12,
+  borderRadius: 10,
+  marginTop: 20,
+},
+deleteText: {
+  color: "white",
+  textAlign: "center",
+  fontWeight: "bold",
+},
 });

@@ -1,5 +1,5 @@
 import React, { forwardRef, useImperativeHandle, useRef } from "react";
-import { StyleSheet, View } from "react-native";
+import { View } from "react-native";
 import { WebView } from "react-native-webview";
 
 // ✅ Define prop types for the component
@@ -11,7 +11,7 @@ type ChartViewProps = {
 const ChartView = forwardRef<any, ChartViewProps>(
   ({ symbol = "BECH/USD", orientation = "portrait" }, ref) => {
 
-    const webRef = useRef(null);
+      const webRef = useRef<WebView>(null);
     const latestPriceRef = useRef<number | null>(null);
 
     
@@ -205,14 +205,17 @@ const ChartView = forwardRef<any, ChartViewProps>(
       </html>
     `;
 
-    const onMessage = (event: any) => {
-      try {
-        const data = JSON.parse(event.nativeEvent.data);
-        if (data.type === "TICK") {
-          latestPriceRef.current = data.close;
-        }
-      } catch (e) {}
-    };
+   const onMessage = (event: any) => {
+  try {
+    const data = JSON.parse(event.nativeEvent.data);
+    if (data.type === "TICK") {
+      latestPriceRef.current = data.close;
+    }
+  } catch (e) {
+    console.log("WebView message parsing error:", e);
+  }
+};
+
 
     return (
       <View style={{ flex: 1, width: "100%", height: "100%" }}>
@@ -234,4 +237,4 @@ ChartView.displayName = "ChartView";
 
 export default ChartView;
 
-const styles = StyleSheet.create({});
+

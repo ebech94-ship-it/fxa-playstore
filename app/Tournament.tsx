@@ -1,10 +1,13 @@
+// TournamentScreen.tsx
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
+import type { User } from "firebase/auth";
 import {
   arrayUnion,
   collection,
   doc,
+  getDoc,
   limit,
   onSnapshot,
   orderBy,
@@ -14,6 +17,7 @@ import {
 } from "firebase/firestore";
 import React, { useEffect, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   FlatList,
   LayoutAnimation,
@@ -30,14 +34,13 @@ import {
 } from "react-native";
 import { db } from "../firebaseConfig";
 
-
 // enable LayoutAnimation on Android
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
 // Helper to format remaining time
-const formatTime = (ms) => {
+const formatTime = (ms: number) => {
   if (ms <= 0) return "00:00:00:00";
   let seconds = Math.floor(ms / 1000);
   let days = Math.floor(seconds / (3600 * 24));
@@ -51,16 +54,42 @@ const formatTime = (ms) => {
   ).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
 };
 
-export default function TournamentScreen({ currentUser }) {
-  const [selectedTournament, setSelectedTournament] = useState(null);
-  const [now, setNow] = useState(new Date().getTime());
-  const [tournaments, setTournaments] = useState([]);
-  const [leaderboard, setLeaderboard] = useState([]);
-  const [viewTab, setViewTab] = useState("info"); // "info" | "leaderboard"
-const [adminModal, setAdminModal] = useState(false);
-const [adminCode, setAdminCode] = useState("");
-   const router = useRouter();
+type TournamentScreenProps = {
+  currentUser: User | null;
+};
 
+type Tournament = {
+  id: string;
+  name?: string;
+  title?: string;
+  startTime: number;
+  endTime: number;
+  fee?: number;
+  prizePool?: number;
+  prize?: number;
+  participantsList?: any[];
+  status?: string;
+  [key: string]: any;
+};
+
+interface LeaderboardUser {
+  id: string;
+  username?: string;
+  balance?: number;
+  email?: string;
+  [key: string]: any;
+}
+
+export default function TournamentScreen({ currentUser }: TournamentScreenProps) {
+  const [selectedTournament, setSelectedTournament] = useState<Tournament | null>(null);
+  const [leaderboard, setLeaderboard] = useState<LeaderboardUser[]>([]);
+  const [now, setNow] = useState(new Date().getTime());
+  const [tournaments, setTournaments] = useState<Tournament[]>([]);
+  const [viewTab, setViewTab] = useState("info"); // "info" | "leaderboard"
+  const [adminModal, setAdminModal] = useState(false);
+  const [adminCode, setAdminCode] = useState("");
+  const [loadingAction, setLoadingAction] = useState(false); // new: show action spinner
+  const router = useRouter();
 
   // username fallback
   const username = currentUser?.displayName || currentUser?.email || "Guest";
@@ -72,104 +101,226 @@ const [adminCode, setAdminCode] = useState("");
   }, []);
 
   // ✅ TOURNAMENTS LISTENER (for all tournaments list)
-useEffect(() => {
-  const q = query(collection(db, "tournaments"), orderBy("startTime", "desc"));
-  const unsub = onSnapshot(q, (snapshot) => {
-    const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setTournaments(list);
-  });
-  return () => unsub();
-}, []);
+  useEffect(() => {
+    const q = query(collection(db, "tournaments"), orderBy("startTime", "desc"));
+    const unsub = onSnapshot(q, (snapshot) => {
+      const list = snapshot.docs.map((d) => ({
+        id: d.id,
+        ...(d.data() as Omit<Tournament, "id">),
+      })) as Tournament[];
 
-// ✅ GLOBAL LEADERBOARD (only when no tournament is open)
-useEffect(() => {
-  if (selectedTournament) return; // stop if modal is open
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setTournaments(list);
+    });
 
-  const q = query(collection(db, "users"), orderBy("balance", "desc"), limit(30));
-  const unsub = onSnapshot(q, (snapshot) => {
-    const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setLeaderboard(list);
-  });
-  return () => unsub();
-}, [selectedTournament]);
+    return () => unsub();
+  }, []);
 
-// ✅ TOURNAMENT LEADERBOARD (active tournament only)
-useEffect(() => {
-  if (!selectedTournament?.id) return;
+  // ✅ GLOBAL LEADERBOARD (only when no tournament is open)
+  useEffect(() => {
+    if (selectedTournament) return; // stop if modal is open
 
-  const playersRef = collection(db, "tournaments", selectedTournament.id, "players");
-  const q = query(playersRef, orderBy("balance", "desc"), limit(30));
+    const q = query(collection(db, "users"), orderBy("balance", "desc"), limit(30));
+    const unsub = onSnapshot(q, (snapshot) => {
+      const list = snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setLeaderboard(list);
+    });
+    return () => unsub();
+  }, [selectedTournament]);
 
-  const unsub = onSnapshot(q, (snapshot) => {
-    const playerList = snapshot.docs.map((doc) => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setLeaderboard(playerList);
-  });
+  // ✅ TOURNAMENT LEADERBOARD (active tournament only)
+  useEffect(() => {
+    if (!selectedTournament?.id) return;
 
-  return () => unsub();
-}, [selectedTournament]);
+    const playersRef = collection(db, "tournaments", selectedTournament.id, "players");
+    const q = query(playersRef, orderBy("balance", "desc"), limit(30));
 
+    const unsub = onSnapshot(q, (snapshot) => {
+      const playerList = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...(doc.data() as any),
+      }));
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setLeaderboard(playerList);
+    });
 
-// ✅ REGISTER USER TO TOURNAMENT
-const handleRegister = async (tournamentId: string) => {
-  try {
+    return () => unsub();
+  }, [selectedTournament]);
+
+  // ---------- Helper: read user's wallet balance ----------
+  const getUserWalletBalance = async (uid: string) => {
+    try {
+      const userRef = doc(db, "users", uid);
+      const snap = await getDoc(userRef);
+      if (!snap.exists()) return 0;
+      const data = snap.data() as any;
+      return typeof data.walletBalance === "number" ? data.walletBalance : Number(data.walletBalance || 0);
+    } catch (err) {
+      console.error("getUserWalletBalance error:", err);
+      return 0;
+    }
+  };
+
+  // ---------- REGISTER USER TO TOURNAMENT (calls backend to perform money ops + treasury) ----------
+  const handleRegister = async (tournamentId: string) => {
     if (!currentUser?.uid || !username) {
       Alert.alert("Error", "You must be logged in to register.");
       return;
     }
 
-    const playerRef = doc(db, `tournaments/${tournamentId}/players`, currentUser.uid);
+    if (!tournaments || tournaments.length === 0) {
+      Alert.alert("Error", "No tournaments available.");
+      return;
+    }
 
-    await setDoc(
-      playerRef,
-      {
-        uid: currentUser.uid,
-        username: username,
-        balance: 10000, // initial tournament balance
-        joinedAt: Date.now(),
-        rebuys: [],
-      },
-      { merge: true } // ✅ ensures existing data isn’t overwritten accidentally
-    );
+    const tour = tournaments.find((t) => t.id === tournamentId);
+    const fee = Number(tour?.fee || 0);
 
-    Alert.alert("✅ Success", "You are registered for this tournament!");
-  } catch (err) {
-    console.error("Registration error:", err);
-    Alert.alert("❌ Error", "Registration failed. Please try again.");
-  }
-};
+    setLoadingAction(true);
+    try {
+      // 1) check if already registered
+      const playerRef = doc(db, `tournaments/${tournamentId}/players`, currentUser.uid);
+      const playerSnap = await getDoc(playerRef);
+      if (playerSnap.exists()) {
+        Alert.alert("Already registered", "You are already registered for this tournament.");
+        setLoadingAction(false);
+        return;
+      }
 
+      // 2) check user's wallet locally (quick UX check)
+      const wallet = await getUserWalletBalance(currentUser.uid);
+      if (wallet < fee) {
+        Alert.alert("Insufficient Funds", `Your wallet has ${wallet} — you need ${fee} to register.`);
+        setLoadingAction(false);
+        return;
+      }
 
-// ✅ REBUY ACTION
-const handleRebuy = async (tournamentId: string) => {
-  try {
+      // 3) call backend endpoint that will:
+      //    - deduct tournament fee from user (server-side)
+      //    - record fee into treasury
+      //    - return success/failure
+      // Replace base URL with your backend host if different
+      const res = await fetch("http://10.217.176.22:4000/tournament-register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: currentUser.uid,
+          tournamentId,
+          feeAmount: fee,
+        }),
+      });
+
+      if (!res.ok) {
+        const text = await res.text().catch(() => "Server error");
+        console.error("tournament-register error:", text);
+        Alert.alert("Registration failed", "Could not register. Try again later.");
+        setLoadingAction(false);
+        return;
+      }
+
+      const resp = await res.json().catch(() => ({ success: true }));
+      if (resp.success === false) {
+        Alert.alert("Registration failed", resp.message || "Server refused to register.");
+        setLoadingAction(false);
+        return;
+      }
+
+      // 4) create tournament player doc (ensure merge so server-side changes won't be lost)
+      await setDoc(
+        playerRef,
+        {
+          uid: currentUser.uid,
+          username,
+          balance: 10000, // initial tournament balance
+          joinedAt: Date.now(),
+          rebuys: [],
+        },
+        { merge: true }
+      );
+
+      Alert.alert("✅ Success", "You are registered for this tournament!");
+    } catch (err) {
+      console.error("Registration error:", err);
+      Alert.alert("❌ Error", "Registration failed. Please try again.");
+    } finally {
+      setLoadingAction(false);
+    }
+  };
+
+  // ---------- REBUY ACTION (calls backend to deduct and record) ----------
+  const handleRebuy = async (tournamentId: string) => {
     if (!currentUser?.uid) {
       Alert.alert("Error", "You must be logged in.");
       return;
     }
-// Create a document for the player inside the tournament's "players" subcollection
 
-    const playerRef = doc(db, `tournaments/${tournamentId}/players`, currentUser.uid);
+    const tour = tournaments.find((t) => t.id === tournamentId);
+    const rebuyCost = Number(tour?.fee || 0); // using tournament fee as rebuy cost (same as earlier)
 
-    await updateDoc(playerRef, {
-      rebuys: arrayUnion({
-        at: Date.now(),
-        amount: selectedTournament?.fee ?? 0,
-      }),
-    });
+    setLoadingAction(true);
+    try {
+      // 1) ensure user is registered in the tournament
+      const playerRef = doc(db, `tournaments/${tournamentId}/players`, currentUser.uid);
+      const playerSnap = await getDoc(playerRef);
+      if (!playerSnap.exists()) {
+        Alert.alert("Not registered", "You must register before performing a rebuy.");
+        setLoadingAction(false);
+        return;
+      }
 
-    Alert.alert("✅ Success", "Rebuy successful!");
-  } catch (err) {
-    console.error("Rebuy error:", err);
-    Alert.alert("❌ Error", "Rebuy failed. Please try again.");
-  }
-};
-const handleAccess = () => {
+      // 2) check wallet client-side
+      const wallet = await getUserWalletBalance(currentUser.uid);
+      if (wallet < rebuyCost) {
+        Alert.alert("Insufficient Funds", `Your wallet has ${wallet} — you need ${rebuyCost} to rebuy.`);
+        setLoadingAction(false);
+        return;
+      }
+
+      // 3) call backend to perform the deduction + treasury recording
+      const res = await fetch("http://10.217.176.22:4000/tournament-rebuy", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: currentUser.uid,
+          tournamentId,
+          amount: rebuyCost,
+        }),
+      });
+
+      if (!res.ok) {
+        const text = await res.text().catch(() => "Server error");
+        console.error("tournament-rebuy error:", text);
+        Alert.alert("Rebuy failed", "Could not process rebuy. Try again later.");
+        setLoadingAction(false);
+        return;
+      }
+
+      const resp = await res.json().catch(() => ({ success: true }));
+      if (resp.success === false) {
+        Alert.alert("Rebuy failed", resp.message || "Server refused the rebuy.");
+        setLoadingAction(false);
+        return;
+      }
+
+      // 4) update player's rebuys array in tournament players subcollection
+      await updateDoc(playerRef, {
+        rebuys: arrayUnion({
+          at: Date.now(),
+          amount: rebuyCost,
+        }),
+      });
+
+      Alert.alert("✅ Success", "Rebuy successful!");
+    } catch (err) {
+      console.error("Rebuy error:", err);
+      Alert.alert("❌ Error", "Rebuy failed. Please try again.");
+    } finally {
+      setLoadingAction(false);
+    }
+  };
+
+  const handleAccess = () => {
     const correctCode = "FOREXADMIN2025"; // change this anytime
     if (adminCode.trim() === correctCode) {
       setAdminModal(false);
@@ -180,8 +331,8 @@ const handleAccess = () => {
     }
   };
 
-  // Tournament card (beautiful)
-  const TournamentCard = ({ item }) => {
+  // Tournament card
+  const TournamentCard = ({ item }: { item: Tournament }) => {
     const status =
       now < item.startTime ? "Upcoming" : now <= item.endTime ? "Ongoing" : "Past";
     const timeLeft = status === "Past" ? 0 : item.endTime - now;
@@ -221,9 +372,7 @@ const handleAccess = () => {
 
         <View style={styles.cardRow}>
           <Text style={styles.cardDetail}>⏰ {formatTime(timeLeft)}</Text>
-          <Text style={styles.cardDetail}>
-            👥 {item.participantsList?.length ?? 0}
-          </Text>
+          <Text style={styles.cardDetail}>👥 {item.participantsList?.length ?? 0}</Text>
         </View>
 
         <View style={styles.cardFooter}>
@@ -250,7 +399,7 @@ const handleAccess = () => {
   };
 
   // find current user row and create pinned row to top of leaderboard modal
-  const renderPinnedUserRow = (list) => {
+  const renderPinnedUserRow = (list: LeaderboardUser[]) => {
     if (!currentUser) return null;
     const idx = list.findIndex((p) => p.id === currentUser.uid);
     if (idx === -1) return null;
@@ -265,7 +414,6 @@ const handleAccess = () => {
           {me.balance ?? 0}T
         </Text>
         <Text style={[styles.tableCol, styles.pinnedCol, styles.priceGreen]}>
-          {/* simple share calc: proportional share */}
           {typeof me.balance === "number" && typeof selectedTournament?.prizePool !== "undefined"
             ? `$${Math.max(0, Math.round((me.balance / Math.max(1, list.reduce((s, x) => s + (x.balance ?? 0), 0))) * (selectedTournament.prizePool ?? 0)))}`
             : ""}
@@ -275,7 +423,7 @@ const handleAccess = () => {
   };
 
   // table header for leaderboard
-  const LeaderboardTable = ({ list }) => {
+  const LeaderboardTable = ({ list }: { list: LeaderboardUser[] }) => {
     return (
       <View>
         {renderPinnedUserRow(list)}
@@ -297,11 +445,8 @@ const handleAccess = () => {
             <Text style={[styles.tableCol]} numberOfLines={1}>
               {row.username || row.email || "Player"}
             </Text>
-            <Text style={[styles.tableCol, styles.balanceLightBlue]}>
-              {row.balance ?? 0}T
-            </Text>
+            <Text style={[styles.tableCol, styles.balanceLightBlue]}>{row.balance ?? 0}T</Text>
             <Text style={[styles.tableCol, styles.priceGreen]}>
-              {/* same simple share calc */}
               {typeof row.balance === "number" && typeof selectedTournament?.prizePool !== "undefined"
                 ? `$${Math.max(0, Math.round((row.balance / Math.max(1, list.reduce((s, x) => s + (x.balance ?? 0), 0))) * (selectedTournament.prizePool ?? 0)))}`
                 : ""}
@@ -323,54 +468,47 @@ const handleAccess = () => {
         contentContainerStyle={{ paddingBottom: 20 }}
         showsVerticalScrollIndicator={false}
       />
- {/* 🔹 Admin Access Section */}
-<View style={styles.adminSection}>
-  <TouchableOpacity onPress={() => setAdminModal(true)} activeOpacity={0.8}>
-  <LinearGradient
-    colors={["#7c3aed", "#0ea5e9"]}
-    start={{ x: 0, y: 0 }}
-    end={{ x: 1, y: 0 }}
-    style={styles.adminButton}
-  >
-    <Text style={styles.adminButtonText}>👑 Administrator Access</Text>
-  </LinearGradient>
-</TouchableOpacity>
 
-</View>
-
-{/* 🔹 Admin Code Modal */}
-<Modal visible={adminModal} transparent animationType="fade">
-  <View style={styles.modalOverlay}>
-    <View style={styles.adminModalBox}>
-      <Text style={styles.modalTitle}>Enter Admin Code</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Enter admin code"
-        placeholderTextColor="#aaa"
-        secureTextEntry
-        value={adminCode}
-        onChangeText={setAdminCode}
-      />
-      <View style={styles.modalBtnRow}>
-        <TouchableOpacity
-          style={styles.cancelBtn}
-          onPress={() => setAdminModal(false)}
-        >
-          <Text style={styles.btnTextAlt}>Cancel</Text>
+      {/* admin button */}
+      <View style={styles.adminSection}>
+        <TouchableOpacity onPress={() => setAdminModal(true)} activeOpacity={0.8}>
+          <LinearGradient
+            colors={["#7c3aed", "#0ea5e9"]}
+            start={{ x: 0, y: 0 }}
+            end={{ x: 1, y: 0 }}
+            style={styles.adminButton}
+          >
+            <Text style={styles.adminButtonText}>👑 Administrator Access</Text>
+          </LinearGradient>
         </TouchableOpacity>
-        <TouchableOpacity
-  style={styles.confirmBtn}
-  onPress={handleAccess}
->
-  <Text style={styles.btnText}>Confirm</Text>
-</TouchableOpacity>
-
       </View>
-    </View>
-  </View>
-</Modal>
 
-       {/* 🔹 Tournament Modal (existing) */}
+      {/* admin modal */}
+      <Modal visible={adminModal} transparent animationType="fade">
+        <View style={styles.modalOverlay}>
+          <View style={styles.adminModalBox}>
+            <Text style={styles.modalTitle}>Enter Admin Code</Text>
+            <TextInput
+              style={styles.input}
+              placeholder="Enter admin code"
+              placeholderTextColor="#aaa"
+              secureTextEntry
+              value={adminCode}
+              onChangeText={setAdminCode}
+            />
+            <View style={styles.modalBtnRow}>
+              <TouchableOpacity style={styles.cancelBtn} onPress={() => setAdminModal(false)}>
+                <Text style={styles.btnTextAlt}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.confirmBtn} onPress={handleAccess}>
+                <Text style={styles.btnText}>Confirm</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* tournament modal */}
       <Modal visible={!!selectedTournament} animationType="slide" transparent>
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -384,7 +522,7 @@ const handleAccess = () => {
                 <View style={styles.modalMetaRow}>
                   <Text style={styles.modalPrize}>💰 {selectedTournament.prizePool}</Text>
                   <Text style={styles.modalInfo}>⏰ {formatTime(selectedTournament.endTime - now)}</Text>
-                   </View>
+                </View>
 
                 {/* Tab switch */}
                 <View style={styles.tabRow}>
@@ -429,6 +567,7 @@ const handleAccess = () => {
                         >
                           <Text style={styles.btnText}>Register • {selectedTournament.fee ?? "$0"}</Text>
                         </TouchableOpacity>
+
                         <TouchableOpacity
                           style={styles.rebuyBtn}
                           onPress={() => handleRebuy(selectedTournament.id)}
@@ -436,6 +575,12 @@ const handleAccess = () => {
                           <Text style={styles.btnTextAlt}>Rebuy</Text>
                         </TouchableOpacity>
                       </View>
+
+                      {loadingAction && (
+                        <View style={{ marginTop: 12, alignItems: "center" }}>
+                          <ActivityIndicator size="small" color="#00ffff" />
+                        </View>
+                      )}
                     </>
                   ) : (
                     <>
@@ -550,74 +695,73 @@ const styles = StyleSheet.create({
 
   headerText: { color: "#cbd5e1", fontWeight: "900" },
   adminSection: {
-  marginTop: 10,
-  alignItems: "center",
-  justifyContent: "center",
-},
+    marginTop: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
 
-adminButton: {
-  paddingVertical: 14,
-  paddingHorizontal: 30,
-  borderRadius: 12,
-  shadowColor: "#7c3aed",
-  shadowOpacity: 0.8,
-  shadowRadius: 15,
-  elevation: 10,
-  alignItems: "center",
-  justifyContent: "center",
-},
+  adminButton: {
+    paddingVertical: 14,
+    paddingHorizontal: 30,
+    borderRadius: 12,
+    shadowColor: "#7c3aed",
+    shadowOpacity: 0.8,
+    shadowRadius: 15,
+    elevation: 10,
+    alignItems: "center",
+    justifyContent: "center",
+  },
 
-adminButtonText: {
-  color: "#fff",
-  fontWeight: "900",
-  fontSize: 16,
-  textShadowColor: "#0ea5e9",
-  textShadowRadius: 8,
-},
+  adminButtonText: {
+    color: "#fff",
+    fontWeight: "900",
+    fontSize: 16,
+    textShadowColor: "#0ea5e9",
+    textShadowRadius: 8,
+  },
 
-adminModalBox: {
-  backgroundColor: "#10122b",
-  padding: 20,
-  borderRadius: 16,
-  width: "85%",
-  alignSelf: "center",
-  shadowColor: "#000",
-  shadowOpacity: 0.6,
-  shadowRadius: 10,
-},
+  adminModalBox: {
+    backgroundColor: "#10122b",
+    padding: 20,
+    borderRadius: 16,
+    width: "85%",
+    alignSelf: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.6,
+    shadowRadius: 10,
+  },
 
-input: {
-  backgroundColor: "#1c1f3a",
-  color: "#fff",
-  padding: 10,
-  borderRadius: 8,
-  marginVertical: 10,
-},
+  input: {
+    backgroundColor: "#1c1f3a",
+    color: "#fff",
+    padding: 10,
+    borderRadius: 8,
+    marginVertical: 10,
+  },
 
-modalBtnRow: {
-  flexDirection: "row",
-  justifyContent: "space-between",
-  marginTop: 10,
-},
+  modalBtnRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 10,
+  },
 
-cancelBtn: {
-  flex: 1,
-  backgroundColor: "#6b7280",
-  padding: 12,
-  borderRadius: 10,
-  alignItems: "center",
-  marginRight: 8,
-},
+  cancelBtn: {
+    flex: 1,
+    backgroundColor: "#6b7280",
+    padding: 12,
+    borderRadius: 10,
+    alignItems: "center",
+    marginRight: 8,
+  },
 
-confirmBtn: {
-  flex: 1,
-  backgroundColor: "#22c55e",
-  padding: 12,
-  borderRadius: 10,
-  alignItems: "center",
-  marginLeft: 8,
-},
-
+  confirmBtn: {
+    flex: 1,
+    backgroundColor: "#22c55e",
+    padding: 12,
+    borderRadius: 10,
+    alignItems: "center",
+    marginLeft: 8,
+  },
 
   // small utilities
   pinnedText: { color: "#fff", fontWeight: "900" },

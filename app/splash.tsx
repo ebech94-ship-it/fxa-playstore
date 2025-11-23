@@ -1,5 +1,4 @@
 // SplashScreen.js
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { router } from "expo-router";
 import React, { useEffect, useState } from 'react';
 import { Animated, Image, StyleSheet, Text, View } from 'react-native';
@@ -8,24 +7,14 @@ export default function SplashScreen() {
   const [progress] = useState(new Animated.Value(0));
 
   useEffect(() => {
-    Animated.timing(progress, {
-      toValue: 1,
-      duration: 10000,
-      useNativeDriver: false,
-    }).start(async () => {
-      try {
-        const returningUser = await AsyncStorage.getItem('isLoggedIn');
-        if (returningUser === "true") {
-          router.replace("./tradinglayout");
-        } else {
-          router.replace("./welcome");
-        }
-      } catch (e) {
-        console.log("Splash error:", e);
-        router.replace("./welcome");
-      }
-    });
-  }, [progress]);
+  Animated.timing(progress, {
+    toValue: 1,
+    duration: 10000,
+    useNativeDriver: false,
+  }).start(() => {
+    router.replace("/welcome");
+  });
+}, [progress]);
 
   const progressWidth = progress.interpolate({
     inputRange: [0, 1],
@@ -52,7 +41,7 @@ export default function SplashScreen() {
       </View>
 
       <View style={styles.bottomContent}>
-        <Text style={styles.powered}>Powered by vscode</Text>
+        <Text style={styles.powered}>Powered by BECHEM</Text>
       </View>
     </View>
   );

@@ -1,5 +1,7 @@
-import { AntDesign } from "@expo/vector-icons";
+import { AntDesign, Ionicons } from "@expo/vector-icons";
+
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import * as AuthSession from "expo-auth-session";
 import * as Google from "expo-auth-session/providers/google";
 import { useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
@@ -12,6 +14,7 @@ import {
 } from "firebase/auth";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import React, { useEffect, useState } from "react";
+
 import {
   ActivityIndicator,
   Animated,
@@ -25,8 +28,6 @@ import {
   View,
 } from "react-native";
 
-import Constants from "expo-constants";
-import CountryPhoneInput from "../components/CountryPhoneInput"; // ⬅️ simple working picker
 import { auth, db } from "../firebaseConfig";
 
 WebBrowser.maybeCompleteAuthSession();
@@ -36,6 +37,8 @@ export default function Welcome() {
 
   const slideAnim = useState(new Animated.Value(400))[0];
   const fadeAnim = useState(new Animated.Value(0))[0];
+const [accepted, setAccepted] = useState(false);
+
 
   // 👤 form states
   const [name, setName] = useState("");
@@ -48,11 +51,20 @@ export default function Welcome() {
 
   // 🔐 Google login
   // 🔐 Google login (clean, correct, single setup)
-const webClientId = Constants.expoConfig?.extra?.webClientId;
+// Your client IDs
+// 🔐 GOOGLE LOGIN SETUP
+const redirectUri = AuthSession.makeRedirectUri();
 
 const [request, response, promptAsync] = Google.useAuthRequest({
-  clientId: webClientId,    // main one
-  webClientId: webClientId, // required for web
+  androidClientId: "895363795197-g1dkogsl8uu0k5en3ks24uitcs5khfnn.apps.googleusercontent.com",
+  webClientId: "895363795197-qmuod36rndhkmef0kb0kv3qhjcjn4d2c.apps.googleusercontent.com",
+  clientId: "895363795197-qmuod36rndhkmef0kb0kv3qhjcjn4d2c.apps.googleusercontent.com",
+
+  redirectUri,
+
+  // ‼️ REQUIRED for Firebase
+  responseType: "id_token",
+  scopes: ["profile", "email"],
 });
 
   const [showSignupEmail, setShowSignupEmail] = useState(false);
@@ -79,41 +91,49 @@ const [request, response, promptAsync] = Google.useAuthRequest({
     }
   };
 
+
   // 🔁 Auto login if already authenticated
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, async (user) => {
       if (user) {
         await AsyncStorage.setItem("isLoggedIn", "true");
-        router.replace("./Tradinglayout");
+       router.replace("/tradinglayout");
+
       }
     });
     return unsub;
-  }, []);
+  }, [router]);
 
   // 🎯 Google login handler
-  useEffect(() => {
-    const run = async () => {
-      if (response?.type === "success") {
-        try {
-          setLoading(true);
-          const credential = GoogleAuthProvider.credential(response.params.id_token);
-          const userCred = await signInWithCredential(auth, credential);
-          await createUserAccounts(
-            userCred.user.uid,
-            userCred.user.displayName || "Google User",
-            userCred.user.email || ""
-          );
-          await AsyncStorage.setItem("isLoggedIn", "true");
-          router.replace("./Tradinglayout");
-        } catch (e) {
-          alert((e as Error).message);
-        } finally {
-          setLoading(false);
-        }
+useEffect(() => {
+  const run = async () => {
+    if (response?.type === "success" && response.authentication?.idToken) {
+      try {
+        setLoading(true);
+const credential = GoogleAuthProvider.credential(
+  response.authentication.idToken);
+const userCred = await signInWithCredential(auth, credential);
+
+        await createUserAccounts(
+          userCred.user.uid,
+          userCred.user.displayName || "Google User",
+          userCred.user.email || ""
+        );
+
+        await AsyncStorage.setItem("isLoggedIn", "true");
+
+        router.replace("/tradinglayout");
+
+      } catch (e) {
+        alert((e as Error).message);
+      } finally {
+        setLoading(false);
       }
-    };
-    run();
-  }, [response]);
+    }
+  };
+
+  run();
+}, [response, router]);
 
   // Animations
   const openForm = (setter: any) => {
@@ -147,7 +167,8 @@ const [request, response, promptAsync] = Google.useAuthRequest({
       const userCred = await createUserWithEmailAndPassword(auth, email, password);
       await createUserAccounts(userCred.user.uid, name, email);
       await AsyncStorage.setItem("isLoggedIn", "true");
-      router.replace("./Tradinglayout");
+      router.replace("/tradinglayout");
+
     } catch (e) {
       alert((e as Error).message);
     } finally {
@@ -156,18 +177,45 @@ const [request, response, promptAsync] = Google.useAuthRequest({
   };
 
   // 🔑 Email Login
-  const handleLogin = async () => {
-    try {
-      setLoading(true);
-      await signInWithEmailAndPassword(auth, email, password);
-      await AsyncStorage.setItem("isLoggedIn", "true");
-      router.replace("./Tradinglayout");
-    } catch (e) {
-      alert((e as Error).message);
-    } finally {
-      setLoading(false);
+  // 🔑 Email Login (RETURNING USERS ONLY)
+const handleLogin = async () => {
+  try {
+    setLoading(true);
+
+    // 1. Sign in
+    const res = await signInWithEmailAndPassword(auth, email, password);
+    const uid = res.user.uid;
+
+    // 2. Save login state
+    await AsyncStorage.setItem("isLoggedIn", "true");
+
+    // 3. Get user profile document
+    const userRef = doc(db, "users", uid);
+    const snap = await getDoc(userRef);
+
+    // 4. If no profile exists → force Profile Setup
+    if (!snap.exists()) {
+      router.replace("/tradinglayout");
+      return;
     }
-  };
+
+    const data = snap.data();
+
+    // 5. If profile not completed → go to ProfileSetup
+    if (!data.profileCompleted) {
+      router.replace("/tradinglayout");
+      return;
+    }
+
+    // 6. Otherwise user is verified → go to main trading page
+    router.replace("/tradinglayout");
+
+  } catch (e) {
+    alert((e as Error).message);
+  } finally {
+    setLoading(false);
+  }
+};
 
   // 📱 Phone Signup
   const handleSignupPhone = async () => {
@@ -180,7 +228,8 @@ const [request, response, promptAsync] = Google.useAuthRequest({
       const uid = fullNumber;
       await createUserAccounts(uid, name, `${uid}@phoneuser.fx`);
       await AsyncStorage.setItem("isLoggedIn", "true");
-      router.replace("./Tradinglayout");
+      router.replace("/tradinglayout");
+
     } finally {
       setLoading(false);
     }
@@ -196,50 +245,132 @@ const [request, response, promptAsync] = Google.useAuthRequest({
         <View style={styles.overlay}>
           <Text style={styles.title}>Welcome to Forex Tournaments Arena</Text>
           <Text style={styles.desc}>
-            Join live Forex competitions and win real prizes!
+            Join live Forex Tournaments, compete for real cash rewards by growing your account balance!
           </Text>
 
+{/* AGREEMENT CHECKBOX */}
+<View
+  style={{
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 10,
+    width: "90%",
+  }}
+>
+  <TouchableOpacity
+    onPress={() => setAccepted(!accepted)}
+    style={{
+      width: 24,
+      height: 24,
+      borderWidth: 2,
+      borderColor: "#5A4BE7",
+      borderRadius: 6,
+      justifyContent: "center",
+      alignItems: "center",
+      marginRight: 10,
+      backgroundColor: accepted ? "#5A4BE7" : "transparent",
+    }}
+  >
+    {accepted && (
+      <Ionicons name="checkmark" size={16} color="white" />
+    )}
+  </TouchableOpacity>
+
+  <Text style={{ color: "white", flex: 1 }}>
+    I agree to the{" "}
+    <Text
+      onPress={() => router.push("./terms")}
+      style={{ color: "#5A4BE7", textDecorationLine: "underline" }}
+    >
+      Terms & Conditions
+    </Text>{" "}
+    and{" "}
+    <Text
+      onPress={() => router.push("./privacy")}
+      style={{ color: "#5A4BE7", textDecorationLine: "underline" }}
+    >
+      Privacy Policy
+    </Text>.
+  </Text>
+</View>
+
+
+
           {/* MAIN BUTTONS */}
-          {!showSignupEmail && !showSignupPhone && !showLogin && (
-            <>
-              <TouchableOpacity
-                style={styles.button}
-                onPress={() => openForm(setShowSignupEmail)}
-              >
-                <Text style={styles.buttonText}>📧 Sign Up with Email</Text>
-              </TouchableOpacity>
+{!showSignupEmail && !showSignupPhone && !showLogin && (
+  <>
+    {/* SIGN UP WITH EMAIL */}
+    <TouchableOpacity
+      style={[
+        styles.button,
+        { opacity: accepted ? 1 : 0.4 }, // fade when disabled
+      ]}
+      onPress={() => accepted && openForm(setShowSignupEmail)}
+      disabled={!accepted}
+    >
+      <Text style={styles.buttonText}>📧 Sign Up with Email</Text>
+    </TouchableOpacity>
 
-              <TouchableOpacity
-                style={styles.button}
-                onPress={() => openForm(setShowSignupPhone)}
-              >
-                <Text style={styles.buttonText}>📱 Sign Up with Phone</Text>
-              </TouchableOpacity>
+    {/* SIGN UP WITH PHONE */}
+    <TouchableOpacity
+      style={[
+        styles.button,
+        { opacity: accepted ? 1 : 0.4 },
+      ]}
+      onPress={() => accepted && openForm(setShowSignupPhone)}
+      disabled={!accepted}
+    >
+      <Text style={styles.buttonText}>📱 Sign Up with Phone</Text>
+    </TouchableOpacity>
 
-              <TouchableOpacity
-                style={[styles.button, { backgroundColor: "#DB4437" }]}
-                onPress={() => promptAsync()}
-              >
-                <AntDesign name="google" size={16} color="white" />
-                <Text style={[styles.buttonText, { marginLeft: 8 }]}>
-                  Continue with Google
-                </Text>
-              </TouchableOpacity>
+    {/* GOOGLE SIGN IN */}
+    <TouchableOpacity
+      style={[
+        styles.button,
+        { backgroundColor: "#DB4437", opacity: accepted ? 1 : 0.4 },
+      ]}
+      onPress={() => accepted && request && promptAsync()}
+      disabled={!accepted || !request}
+    >
+      {!request ? (
+        <ActivityIndicator color="#fff" />
+      ) : (
+        <>
+          <AntDesign name="google" size={16} color="white" />
+          <Text style={[styles.buttonText, { marginLeft: 8 }]}>
+            Continue with Google
+          </Text>
+        </>
+      )}
+    </TouchableOpacity>
 
-              <TouchableOpacity
-                style={styles.button}
-                onPress={() => openForm(setShowLogin)}
-              >
-                <Text style={styles.buttonText}>Log In</Text>
-              </TouchableOpacity>
-            </>
-          )}
-
+    {/* LOGIN */}
+    <TouchableOpacity
+      style={[
+        styles.button,
+        { opacity: accepted ? 1 : 0.4 },
+      ]}
+      onPress={() => accepted && openForm(setShowLogin)}
+      disabled={!accepted}
+    >
+      <Text style={styles.buttonText}>Log In</Text>
+    </TouchableOpacity>
+  </>
+)}
           {/* POPUP FORMS */}
           {(showSignupEmail || showSignupPhone || showLogin) && (
-            <Animated.View
-              style={[styles.popup, { transform: [{ translateX: slideAnim }], opacity: fadeAnim }]}
-            >
+  <View style={styles.blockerOverlay} pointerEvents="box-none">
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+      <View style={styles.dimBackground} />
+    </TouchableWithoutFeedback>
+
+    <Animated.View
+      style={[
+        styles.popup,
+        { transform: [{ translateX: slideAnim }], opacity: fadeAnim }
+      ]}
+    >
+
               {/* EMAIL SIGNUP */}
               {showSignupEmail && (
                 <>
@@ -259,14 +390,23 @@ const [request, response, promptAsync] = Google.useAuthRequest({
                     value={email}
                     onChangeText={setEmail}
                   />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Password"
-                    placeholderTextColor="#aaa"
-                    secureTextEntry={!showPassword}
-                    value={password}
-                    onChangeText={setPassword}
-                  />
+                   <TextInput
+    style={[styles.input, { flex: 1 }]}
+    placeholder="Password"
+    placeholderTextColor="#aaa"
+    secureTextEntry={!showPassword}
+    value={password}
+    onChangeText={setPassword}
+  />
+
+  <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+    <Ionicons
+      name={showPassword ? "eye-off" : "eye"}
+      size={22}
+      color="#fff"
+      style={{ paddingHorizontal: 6 }}
+    />
+  </TouchableOpacity>
                   <TextInput
                     style={styles.input}
                     placeholder="Confirm Password"
@@ -275,6 +415,14 @@ const [request, response, promptAsync] = Google.useAuthRequest({
                     value={confirmPassword}
                     onChangeText={setConfirmPassword}
                   />
+
+            <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+                   <Ionicons
+            name={showPassword ? "eye-off" : "eye"}
+                  size={22} color="#fff"
+              style={{ paddingHorizontal: 6 }}
+                   />
+                 </TouchableOpacity>
 
                   <TouchableOpacity style={styles.button} onPress={handleSignupEmail}>
                     <Text style={styles.buttonText}>Submit</Text>
@@ -299,11 +447,14 @@ const [request, response, promptAsync] = Google.useAuthRequest({
                     onChangeText={setName}
                   />
 
-                  <CountryPhoneInput
-                    countryCode="+237"
-                    phone={phone}
-                    onChangePhone={setPhone}
-                  />
+                  <TextInput
+                    style={styles.input}
+                    placeholder="country code + Phone number"
+                    placeholderTextColor="#ddd"
+                    keyboardType="phone-pad"
+                    value={phone}
+                    onChangeText={setPhone}
+                    />
 
                   <TextInput
                     style={styles.input}
@@ -313,7 +464,13 @@ const [request, response, promptAsync] = Google.useAuthRequest({
                     value={phonePassword}
                     onChangeText={setPhonePassword}
                   />
-
+              <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+                       <Ionicons
+              name={showPassword ? "eye-off" : "eye"}
+                  size={22}  color="#fff"
+                    style={{ paddingHorizontal: 6 }}
+                         />
+                  </TouchableOpacity>
                   <TouchableOpacity style={styles.button} onPress={handleSignupPhone}>
                     <Text style={styles.buttonText}>Submit</Text>
                   </TouchableOpacity>
@@ -338,13 +495,19 @@ const [request, response, promptAsync] = Google.useAuthRequest({
                   />
                   <TextInput
                     style={styles.input}
-                    placeholder="Password"
+                    placeholder="Password, 5 digits only"
                     placeholderTextColor="#aaa"
                     secureTextEntry={!showPassword}
                     value={password}
                     onChangeText={setPassword}
                   />
-
+              <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
+                  <Ionicons
+                  name={showPassword ? "eye-off" : "eye"}
+                      size={22} color="#fff"
+                    style={{ paddingHorizontal: 6 }}
+                      />
+              </TouchableOpacity>
                   <TouchableOpacity style={styles.button} onPress={handleLogin}>
                     <Text style={styles.buttonText}>Submit</Text>
                   </TouchableOpacity>
@@ -355,6 +518,7 @@ const [request, response, promptAsync] = Google.useAuthRequest({
                 </>
               )}
             </Animated.View>
+             </View> 
           )}
 
           {/* 🔄 loading overlay */}
@@ -363,7 +527,57 @@ const [request, response, promptAsync] = Google.useAuthRequest({
               <ActivityIndicator size="large" color="#fff" />
             </View>
           )}
+{/* FINAL LEGAL FOOTER */}
+<View style={{ width: "90%", marginTop: 30, alignItems: "center" }}>
+  <Text
+    style={{
+      color: "#888",
+      fontSize: 11,
+      textAlign: "center",
+      lineHeight: 16,
+      marginBottom: 8,
+    }}
+  >
+    This app offers trading simulations, and educational tournaments. It does NOT provide real trading,
+     investment, brokerage, or financial advisory services. All results shown inside the app are virtual
+      and participation is for training purposes and entertainment only.
+  </Text>
+
+  <Text
+    style={{
+      color: "#777",
+      fontSize: 11,
+      textAlign: "center",
+      lineHeight: 16,
+      marginBottom: 12,
+    }}
+  >
+    Trading carries risk. Performance in the app does not represent real
+    market profitability.
+  </Text>
+
+  {/* Links Row */}
+  <View style={{ flexDirection: "row", gap: 10 }}>
+    <TouchableOpacity onPress={() => router.push("./terms")}>
+      <Text style={{ color: "#bbb", textDecorationLine: "underline" }}>
+        Terms & Conditions
+      </Text>
+    </TouchableOpacity>
+
+    <Text style={{ color: "#bbb" }}>|</Text>
+
+    <TouchableOpacity onPress={() => router.push("./privacy")}>
+      <Text style={{ color: "#bbb", textDecorationLine: "underline" }}>
+        Privacy Policy
+      </Text>
+    </TouchableOpacity>
+  </View>
+</View>
+
+
+
         </View>
+
       </ImageBackground>
     </TouchableWithoutFeedback>
   );
@@ -436,4 +650,24 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
+  blockerOverlay: {
+  position: "absolute",
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
+  justifyContent: "center",
+  alignItems: "center",
+  zIndex: 999,
+},
+
+dimBackground: {
+  position: "absolute",
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
+  backgroundColor: "rgba(0,0,0,0.6)",
+},
+
 });

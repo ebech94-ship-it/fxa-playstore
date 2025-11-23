@@ -1,8 +1,7 @@
-// TradingLayout.js
+// TradingLayout.tsx
 import { Ionicons } from "@expo/vector-icons";
-import { useNavigation } from "@react-navigation/native";
 import * as ImagePicker from "expo-image-picker";
-import { useRouter } from "expo-router";
+
 import React, { useContext, useEffect, useRef, useState } from "react";
 import {
   Animated,
@@ -11,10 +10,10 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-  TextInput, TouchableOpacity,
+  TextInput,
+  TouchableOpacity,
   View,
 } from "react-native";
-
 
 import { ProfileContext } from "./ProfileContext";
 
@@ -23,18 +22,57 @@ import AlertScreen from "./Alert";
 import ChartView from "./ChartView";
 import DepositWithdrawScreen from "./DepositWithdraw";
 import LeaderboardBar from "./LeaderboardBar";
-import ProfileScreen from "./ProfileMenu";
+import ProfileScreen from "./Profile";
 import TournamentScreen from "./Tournament";
 import TradeHistoryScreen from "./Tradehistory";
 import TradeSummaryBar from "./TradeSummaryBar";
 
 import { getAuth } from "firebase/auth";
-import { collection, doc, limit, onSnapshot, orderBy, query, updateDoc } from "firebase/firestore";
+import {
+  collection,
+  doc,
+  limit,
+  onSnapshot,
+  orderBy,
+  query,
+  updateDoc,
+} from "firebase/firestore";
 import { db } from "../firebaseConfig";
+
+// ------------------------ TYPES ------------------------
+
+type AccountType = "real" | "demo" | "tournament";
+type TradeType = "buy" | "sell";
+
+interface Trade {
+  id: string;
+  type: TradeType;
+  amount: number;
+  entryPrice: number;
+  expireTime: number;
+  account: AccountType;
+  
+}
+
+interface ChartRef {
+  getCurrentPrice: () => number;
+  removeMarker: (id: string) => void;
+  onTrade?: (
+    type: "buy" | "sell",
+    stake: number,
+    entryPrice: number,
+    id: string,
+    potentialProfit: number,
+    durationMs: number
+  ) => void;
+}
+
+// ------------------------ FIREBASE HELPERS ------------------------
 
 const auth = getAuth();
 const currentUser = auth.currentUser;
-const updateBalance = async (userId, newBalance) => {
+
+const updateBalance = async (userId: string, newBalance: number) => {
   try {
     const userRef = doc(db, "users", userId);
     await updateDoc(userRef, { balance: newBalance });
@@ -43,57 +81,60 @@ const updateBalance = async (userId, newBalance) => {
     console.error("Error updating balance:", error);
   }
 };
+
+// ------------------------ MAIN COMPONENT ------------------------
+
 export default function TradingLayout() {
-  const PAYOUT = 90; // NEW: fixed payout %
-  const [activePage, setActivePage] = useState(null);
-  const [amount, setAmount] = useState(10);
-  const [expiration, setExpiration] = useState("15s");
-  const [profitPercent] = useState(PAYOUT); // NEW: locked to 90
+  const PAYOUT = 90; // Fixed payout %
+  const [activePage, setActivePage] = useState<string | null>(null);
+  const [amount, setAmount] = useState<number>(10);
+  const [expiration, setExpiration] = useState<string>("15s");
+  const [profitPercent] = useState<number>(PAYOUT);
+
   const [balances, setBalances] = useState({
     real: 0,
     demo: 1000,
     tournament: 0,
   });
-const navigation = useNavigation();
-const router = useRouter();
 
-// 🔥 Sync balances with Firestore in real time
-useEffect(() => {
-  const uid = auth.currentUser?.uid;
-  if (!uid) return;
 
-  const userRef = doc(db, "users", uid);
+  // 🔥 Sync balances with Firestore in real time
+  useEffect(() => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) return;
 
-  const unsubscribe = onSnapshot(userRef, (docSnap) => {
-    if (docSnap.exists()) {
-      const userData = docSnap.data();
-      if (userData?.accounts) {
-        setBalances({
-          real: userData.accounts.real?.balance ?? 0,
-          demo: userData.accounts.demo?.balance ?? 0,
-          tournament: userData.accounts.tournament?.balance ?? 0,
-        });
+    const userRef = doc(db, "users", uid);
+
+    const unsubscribe = onSnapshot(userRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const userData = docSnap.data();
+        if (userData?.accounts) {
+          setBalances({
+            real: userData.accounts.real?.balance ?? 0,
+            demo: userData.accounts.demo?.balance ?? 0,
+            tournament: userData.accounts.tournament?.balance ?? 0,
+          });
+        }
       }
-    }
-  });
+    });
 
-  return () => unsubscribe();
-}, []);
+    return () => unsubscribe();
+  }, []);
 
-
-const [activeAccount, setActiveAccount] = useState<"real" | "demo" | "tournament">("demo");
+  const [activeAccount, setActiveAccount] = useState<
+    "real" | "demo" | "tournament"
+  >("demo");
   const [orientation, setOrientation] = useState("portrait");
-  const [image, setImage] = useState(null);
 
-  const chartRef = useRef(null);
-  const [openTrades, setOpenTrades] = useState([]);
-const [closedTrades, setClosedTrades] = useState([]);
+  const chartRef = useRef<ChartRef | null>(null);
 
+  const [openTrades, setOpenTrades] = useState<Trade[]>([]);
+  const [closedTrades, setClosedTrades] = useState<Trade[]>([]);
 
-const [players, setPlayers] = useState([
-]);
+  const [players, setPlayers] = useState<any[]>([]);
+
   // Parse expiration like "30s", "1m", "5m"
-  function parseExpirationMs(exp) {
+  function parseExpirationMs(exp: string) {
     if (exp.endsWith("s")) return parseInt(exp) * 1000;
     if (exp.endsWith("m")) return parseInt(exp) * 60 * 1000;
     if (exp.endsWith("h")) return parseInt(exp) * 60 * 60 * 1000;
@@ -102,15 +143,14 @@ const [players, setPlayers] = useState([
   }
 
   // Open a trade (deduct stake now, add marker now)
-  const handleTrade = (type /* 'buy' | 'sell' */) => {
+  const handleTrade = (type: "buy" | "sell") => {
     const stake = Number(amount) || 0;
     if (stake <= 0) return;
 
     if (balances[activeAccount] - stake < 0) {
-  console.log("Not enough balance");
-  return;
-}
-
+      console.log("Not enough balance");
+      return;
+    }
 
     const entryPrice = chartRef.current?.getCurrentPrice?.();
     if (entryPrice == null) {
@@ -137,33 +177,42 @@ const [players, setPlayers] = useState([
       account: activeAccount,
     };
     setOpenTrades((prev) => [...prev, t]);
-// Calculate potential profit
-  const potentialProfit = stake * (1 + profitPercent / 100);
+
+    // Calculate potential profit
+    const potentialProfit = stake * (1 + profitPercent / 100);
     // Drop a marker on the chart (ChartView will place at the last candle)
     if (chartRef.current?.onTrade) {
-      chartRef.current.onTrade(type, stake, entryPrice, id, potentialProfit, parseExpirationMs(expiration));
+      chartRef.current.onTrade(
+        type,
+        stake,
+        entryPrice,
+        id,
+        potentialProfit,
+        parseExpirationMs(expiration)
+      );
     }
 
-    console.log(`Opened ${type} ${stake} @ ${entryPrice} on ${activeAccount}| Potential: $${potentialProfit.toFixed(2)}`);
+    console.log(
+      `Opened ${type} ${stake} @ ${entryPrice} on ${activeAccount}| Potential: $${potentialProfit.toFixed(
+        2
+      )}`
+    );
   };
 
-useEffect(() => {
-  const q = query(
-    collection(db, "users"),
-    orderBy("balance", "desc"),
-    limit(30)
-  );
+  useEffect(() => {
+    const q = query(collection(db, "users"), orderBy("balance", "desc"), limit(30));
 
-  const unsubscribe = onSnapshot(q, (snapshot) => {
-    const data = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
-    setPlayers(data);
-  });
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+      }));
+      setPlayers(data);
+    });
 
-  return () => unsubscribe(); // clean up listener
-}, []);
+    return () => unsubscribe(); // clean up listener
+  }, []);
+
   // Resolve expired trades every second: win/loss → update balance, remove marker
   useEffect(() => {
     const timer = setInterval(() => {
@@ -172,7 +221,7 @@ useEffect(() => {
       if (finalPrice == null) return;
 
       setOpenTrades((prev) => {
-        const stillOpen = [];
+        let stillOpen: Trade[] = [];
         prev.forEach((t) => {
           if (t.expireTime <= now) {
             // settle this trade
@@ -181,53 +230,52 @@ useEffect(() => {
             const isWin =
               (t.type === "buy" && wentUp) || (t.type === "sell" && wentDown);
 
-  // Calculate payout
-      const tradePayout = isWin ? t.amount * (1 + profitPercent / 100) : 0;
+            // Calculate payout
+            const tradePayout = isWin ? t.amount * (1 + profitPercent / 100) : 0;
 
-          if (isWin) {
-  const payout = t.amount * (1 + profitPercent / 100); // stake + profit
-  setBalances((b) => {
-    const newBalance = b[t.account] + payout;
+            if (isWin) {
+              const payout = t.amount * (1 + profitPercent / 100); // stake + profit
+              setBalances((b) => {
+                const newBalance = b[t.account] + payout;
 
-    // Update Firestore
-    if (currentUser) updateBalance(currentUser.uid, newBalance);
+                // Update Firestore
+                if (currentUser) updateBalance(currentUser.uid, newBalance);
 
-    // ✅ Log after computing new balance
-    console.log(
-      `WIN ${t.type} | entry=${t.entryPrice} close=${finalPrice} | payout=${payout} | new balance=${newBalance}`
-    );
+                // ✅ Log after computing new balance
+                console.log(
+                  `WIN ${t.type} | entry=${t.entryPrice} close=${finalPrice} | payout=${payout} | new balance=${newBalance}`
+                );
 
-    return {
-      ...b,
-      [t.account]: newBalance,
-    };
-  });
-} else {
-  setBalances((b) => {
-    const newBalance = b[t.account];
+                return {
+                  ...b,
+                  [t.account]: newBalance,
+                };
+              });
+            } else {
+              setBalances((b) => {
+                const newBalance = b[t.account];
 
-    // Update Firestore
-    if (currentUser) updateBalance(currentUser.uid, newBalance);
+                // Update Firestore
+                if (currentUser) updateBalance(currentUser.uid, newBalance);
 
-    console.log(
-      `LOSS ${t.type} | entry=${t.entryPrice} close=${finalPrice} | balance remains=${newBalance}`
-    );
+                console.log(
+                  `LOSS ${t.type} | entry=${t.entryPrice} close=${finalPrice} | balance remains=${newBalance}`
+                );
 
-    return b;
-  });
-}
+                return b;
+              });
+            }
 
-
-// Add to closedTrades
-      setClosedTrades((prevClosed) => [
-        ...prevClosed,
-        {
-          ...t,
-          result: isWin ? "GAIN" : "LOSS",
-          payout: tradePayout,
-          closePrice: finalPrice,
-        },
-      ]);
+            // Add to closedTrades
+            setClosedTrades((prevClosed) => [
+              ...prevClosed,
+              {
+                ...t,
+                result: isWin ? "GAIN" : "LOSS",
+                payout: tradePayout,
+                closePrice: finalPrice,
+              },
+            ]);
             // Remove marker on chart
             if (chartRef.current?.removeMarker) {
               chartRef.current.removeMarker(t.id);
@@ -242,38 +290,40 @@ useEffect(() => {
 
     return () => clearInterval(timer);
   }, [profitPercent]);
-  
+
   // Pick profile image
   const pickImage = async () => {
-   let result = await ImagePicker.launchImageLibraryAsync({
-  mediaTypes: ImagePicker.MediaTypeOptions.Images,
-  allowsEditing: true,
-  aspect: [1, 1],
-  quality: 1,
-});
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 1,
+    });
 
     if (!result.canceled) {
       setProfileImage(result.assets[0].uri);
-
     }
   };
 
   const { profileImage, setProfileImage } = useContext(ProfileContext);
-  const [activeSection, setActiveSection] = useState(null);
 
   // Handle orientation changes
   useEffect(() => {
-  const handleOrientation = ({ window: { width, height } }: { window: { width: number; height: number } }) => {
-    setOrientation(width > height ? "landscape" : "portrait");
-  };
+    const handleOrientation = ({
+      window: { width, height },
+    }: {
+      window: { width: number; height: number };
+    }) => {
+      setOrientation(width > height ? "landscape" : "portrait");
+    };
 
-  // addEventListener returns a subscription object with a .remove() method (modern RN)
-  const subscription = Dimensions.addEventListener("change", handleOrientation);
+    // addEventListener returns a subscription object with a .remove() method (modern RN)
+    const subscription = Dimensions.addEventListener("change", handleOrientation);
 
-  // cleanup: call remove() on the subscription
-  return () => {
-    subscription?.remove();
-  };
+    // cleanup: call remove() on the subscription
+    return () => {
+      subscription?.remove();
+    };
   }, []);
 
   // Marquee
@@ -312,7 +362,6 @@ useEffect(() => {
   ];
 
   // Menu
-    // ✅ Place menuItems here
   const menuItems: { icon: string; label: string; color: string }[] = [
     { icon: "person-outline", label: "Profile", color: "#00FF00" },
     { icon: "cash-outline", label: "DepositWithdraw", color: "green" },
@@ -324,7 +373,7 @@ useEffect(() => {
   const renderPage = () => {
     if (!activePage) return null;
 
-    let Component = null;
+    let Component: any = null;
     switch (activePage) {
       case "Profile":
         Component = ProfileScreen;
@@ -355,7 +404,7 @@ useEffect(() => {
         </TouchableOpacity>
 
         <View style={styles.pageContent}>
-          <Component />
+          <Component currentUser={currentUser} />
         </View>
       </View>
     );
@@ -364,14 +413,17 @@ useEffect(() => {
   return (
     <View style={{ flex: 1, flexDirection: "row", backgroundColor: "#0a0a0a" }}>
       {/* Left vertical menu */}
-      <ScrollView style={styles.leftMenu}>
+      <ScrollView
+        style={styles.leftMenu}
+        contentContainerStyle={{ paddingTop: 10, alignItems: "center" }}
+      >
         {menuItems.map((item) => (
           <TouchableOpacity
             key={item.label}
             style={styles.menuItem}
             onPress={() => setActivePage(item.label)}
           >
-         <Ionicons name={item.icon as any} size={28} color={item.color} />
+            <Ionicons name={item.icon as any} size={28} color={item.color} />
 
             <Text style={styles.menuText}>{item.label}</Text>
           </TouchableOpacity>
@@ -389,7 +441,10 @@ useEffect(() => {
           alignItems: "center",
         }}
       >
-        <Text style={{ color: "yellow", fontWeight: "bold", fontSize: 15 }} numberOfLines={1}>
+        <Text
+          style={{ color: "yellow", fontWeight: "bold", fontSize: 15 }}
+          numberOfLines={1}
+        >
           Motto: Discipline, Patience, Swiftness and Excellence.
         </Text>
       </Animated.View>
@@ -397,105 +452,103 @@ useEffect(() => {
       {/* Chart Area */}
       {renderPage()}
       <View style={styles.chartContainer}>
-      <LeaderboardBar players={players} />
-              <ChartView
-  ref={chartRef}
-  symbol="BECH/USD"
-  orientation={orientation as "portrait" | "landscape"}
-/>
+        <LeaderboardBar players={players} />
+        <ChartView
+          ref={chartRef}
+          symbol="BECH/USD"
+          orientation={orientation as "portrait" | "landscape"}
+        />
 
-
-         {/* Bottom Summary Bar */}
-       {/* Pass trades to summary bar */}
-      <TradeSummaryBar openTrades={openTrades} closedTrades={closedTrades} />
+        {/* Bottom Summary Bar */}
+        {/* Pass trades to summary bar */}
+        <TradeSummaryBar openTrades={openTrades} closedTrades={closedTrades} />
       </View>
 
-     {/* Right Panel */}
-<View style={styles.rightPanel}>
+      {/* Right Panel */}
+      <View style={styles.rightPanel}>
+        {/* Top Row: Profile + Account Switcher */}
+        <View style={styles.topRow}>
+          {/* Profile */}
+          <TouchableOpacity
+            onPress={pickImage}
+            style={{ flexDirection: "row", top: 5, right: 20, zIndex: 40 }}
+          >
+            {profileImage ? (
+              <Image
+                source={{ uri: profileImage }}
+                style={{ width: 50, height: 50, borderRadius: 25 }}
+              />
+            ) : (
+              <Ionicons name="person-circle-outline" size={50} color="gray" />
+            )}
+          </TouchableOpacity>
 
-  {/* Top Row: Profile + Account Switcher */}
-  <View style={styles.topRow}>
-    {/* Profile */}
-    <TouchableOpacity 
-    onPress={pickImage} 
-    style={{ flexDirection: "row", top: 5, right: 20, zIndex: 40 }}
-  >   {image ? (
-        <Image 
-          source={{ uri: image }} 
-          style={{ width: 50, height: 50, borderRadius: 25 }} 
-        />
-      ) : (
-        <Ionicons name="person-circle-outline" size={50} color="gray" />
-      )}
-    </TouchableOpacity>
+          {/* Account Switcher */}
+          <AccountSwitcher
+            balances={balances}
+            activeAccount={activeAccount}
+            onSwitch={(id) => setActiveAccount(id)}
+            onTopUp={() => console.log("Top up demo")}
+onDeposit={() => setActivePage("DepositWithdraw")}
+onWithdraw={() => setActivePage("DepositWithdraw")}
 
-    {/* Account Switcher */}
-     <AccountSwitcher
-  balances={balances}
-  activeAccount={activeAccount}
-  onSwitch={(id) => setActiveAccount(id)}
-  onTopUp={() => console.log("Top up demo")}
-onDeposit={() => router.push("/DepositWithdraw")}
-onWithdraw={() => router.push("/DepositWithdraw")}
+          />
+        </View>
 
-/>
+        {/* Trade Size */}
+        <View style={styles.inputRow}>
+          <Text style={styles.label}>Trade Size</Text>
+          <TextInput
+            style={styles.input}
+            keyboardType="numeric"
+            value={String(amount)}
+            onChangeText={(v) => setAmount(parseInt(v) || 0)}
+            placeholder="1-25000"
+            placeholderTextColor="blue"
+          />
+        </View>
 
-  </View>
+        {/* Expiration */}
+        <View style={styles.inputRow}>
+          <Text style={styles.label}>Expiration</Text>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={{ alignItems: "center", paddingHorizontal: 6 }}
+          >
+            {expirations.map((exp) => (
+              <TouchableOpacity
+                key={exp}
+                style={[styles.expButton, expiration === exp && styles.expButtonActive]}
+                onPress={() => setExpiration(exp)}
+              >
+                <Text style={styles.expButtonText}>{exp}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
 
-  {/* Trade Size */}
-  <View style={styles.inputRow}>
-    <Text style={styles.label}>Trade Size</Text>
-    <TextInput
-      style={styles.input}
-      keyboardType="numeric"
-      value={String(amount)}
-      onChangeText={(v) => setAmount(parseInt(v) || 0)}
-      placeholder="1-25000"
-      placeholderTextColor="blue"
-    />
-  </View>
+        {/* Profit % */}
+        <View style={styles.profitBox}>
+          <Text style={styles.profitText}>Profit: {profitPercent}%</Text>
+        </View>
 
-  {/* Expiration */}
-  <View style={styles.inputRow}>
-    <Text style={styles.label}>Expiration</Text>
-    <ScrollView horizontal showsHorizontalScrollIndicator={false}>
-      {expirations.map((exp) => (
-        <TouchableOpacity
-          key={exp}
-          style={[
-            styles.expButton,
-            expiration === exp && styles.expButtonActive,
-          ]}
-          onPress={() => setExpiration(exp)}
-        >
-          <Text style={styles.expButtonText}>{exp}</Text>
-        </TouchableOpacity>
-      ))}
-    </ScrollView>
-  </View>
-
-  {/* Profit % */}
-  <View style={styles.profitBox}>
-    <Text style={styles.profitText}>Profit: {profitPercent}%</Text>
-  </View>
-
-  {/* Buy / Sell */}
-  <View style={styles.panelSection}>
-    <TouchableOpacity
-      style={[styles.actionButton, { backgroundColor: "green" }]}
-      onPress={() => handleTrade("buy")}
-    >
-      <Text style={styles.actionText}>▲ Buy</Text>
-    </TouchableOpacity>
-    <TouchableOpacity
-      style={[styles.actionButton, { backgroundColor: "red" }]}
-      onPress={() => handleTrade("sell")}
-    >
-      <Text style={styles.actionText}>▼ Sell</Text>
-    </TouchableOpacity>
-  </View>
-</View>
-
+        {/* Buy / Sell */}
+        <View style={styles.panelSection}>
+          <TouchableOpacity
+            style={[styles.actionButton, { backgroundColor: "green" }]}
+            onPress={() => handleTrade("buy")}
+          >
+            <Text style={styles.actionText}>▲ Buy</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.actionButton, { backgroundColor: "red" }]}
+            onPress={() => handleTrade("sell")}
+          >
+            <Text style={styles.actionText}>▼ Sell</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
 
       {/* Bottom Marquee */}
       <Animated.View
@@ -522,13 +575,13 @@ const styles = StyleSheet.create({
     width: "10%",
     backgroundColor: "#2c2c2c",
     paddingTop: 10,
-    alignItems: "center",
+    // alignItems moved to ScrollView contentContainerStyle for web-safe behavior
   },
   menuItem: { marginVertical: 20, alignItems: "center" },
   menuText: { color: "white", fontSize: 12, marginTop: 4 },
 
   chartContainer: { width: "70%", justifyContent: "center", paddingBottom: 40, alignItems: "center" },
-  
+
   rightPanel: {
     width: "20%",
     backgroundColor: "#2c2c2c",
@@ -575,14 +628,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   actionText: { color: "white", fontWeight: "bold" },
-  
 
-topRow: {
-  flexDirection: "row",
-  alignItems: "center",
-  justifyContent: "space-between",
-  marginBottom: 15,
-},
+  topRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    marginBottom: 15,
+  },
   overlay: {
     position: "absolute",
     top: 50,

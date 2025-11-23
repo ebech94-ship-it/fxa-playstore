@@ -63,14 +63,17 @@ const LeaderboardBar = ({ players: parentPlayers }: LeaderboardBarProps) => {
               exiting={FadeOut}
             >
               <Image
-                source={{
-                  uri: item.avatar || "https://via.placeholder.com/32",
-                }}
-                style={[
-                  styles.avatar,
-                  isCurrentUser && styles.currentUserAvatar,
-                ]}
-              />
+  source={{
+    uri:
+      isCurrentUser
+        ? profileImage || item.avatar || "https://via.placeholder.com/32"
+        : item.avatar || "https://via.placeholder.com/32",
+  }}
+  style={[
+    styles.avatar,
+    isCurrentUser && styles.currentUserAvatar,
+  ]}
+/>
               <View style={styles.info}>
                 <Text style={styles.name} numberOfLines={1}>
                   {item.username || "Player"}

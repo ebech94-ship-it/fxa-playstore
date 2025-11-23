@@ -3,6 +3,20 @@ import { Ionicons } from "@expo/vector-icons";
 import React, { useEffect, useState } from "react";
 import { ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 
+type TradePanelProps = {
+  balance: number;
+  amount: number;
+  setAmount: (n: number) => void;
+  expiration: string;
+  setExpiration: (e: string) => void;
+  onBuy: () => void;
+  onSell: () => void;
+  tradesCount: number;
+  openBankModal: () => void;
+};
+
+
+
 export default function TradePanel({
   balance,
   amount,
@@ -13,7 +27,7 @@ export default function TradePanel({
   onSell,
   tradesCount,
   openBankModal, // function to open bank/balances
-}) {
+}: TradePanelProps) {
   const [profitPercent, setProfitPercent] = useState(0);
 
   // Simulated profit % (replace with real calculation)
@@ -24,7 +38,7 @@ export default function TradePanel({
     return () => clearInterval(interval);
   }, []);
 
-  const handleAmountChange = (value) => {
+  const handleAmountChange = (value: string) => {
     const num = parseInt(value) || 0;
     if (num >= 0 && num <= 5000) setAmount(num);
   };
