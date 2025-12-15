@@ -3,18 +3,23 @@ import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import { deleteUser, getAuth } from "firebase/auth";
 
+
+
+
 import {
   addDoc,
   collection,
   deleteDoc,
   doc,
-  getDoc,
+  onSnapshot,
   serverTimestamp,
-  setDoc,
   updateDoc,
 } from "firebase/firestore";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
-import React, { useContext, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
+
+
+import DateTimePicker from '@react-native-community/datetimepicker';
 import {
   ActivityIndicator,
   Alert,
@@ -29,7 +34,7 @@ import {
 } from "react-native";
 import { db, storage } from "../firebaseConfig";
 
-import { ProfileContext } from "./ProfileContext";
+
 
 
 
@@ -52,177 +57,171 @@ export default function Profile() {
   const [darkMode, setDarkMode] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+// State
 
-  
-const { profileImage, setProfileImage } = useContext(ProfileContext);
+const [showDatePicker, setShowDatePicker] = useState(false);
+const [avatarUploading, setAvatarUploading] = useState(false);
+const [submitted, setSubmitted] = useState(false);
 
 const [supportName, setSupportName] = useState("");
 const [supportEmail, setSupportEmail] = useState("");
 const [supportMessage, setSupportMessage] = useState("");
 const router = useRouter();
 const [confirmLegal, setConfirmLegal] = useState(false);
+
 const [errors, setErrors] = useState<ProfileErrors>({});
 
+type UserProfile = {
+  avatarUrl: string;
+email: string;
+  displayName?: string;
+  username?: string;
+  phone?: string;
+  country?: string;
+  dateOfBirth?: string;
+  loginCode?: string;
+  profileVerified?: boolean;
+  // Add any extra fields you use
+  [key: string]: any;
+};
 
-const validateForm = () => {
-  let newErrors: any = {};
 
-  if (!profile.displayName) newErrors.displayName = "Full name is required";
+  // Profile data
+ const [profile, setProfile] = useState<UserProfile>({
+  displayName: "",
+  username: "",
+  email: "",
+  phone: "",
+  country: "",
+  dateOfBirth: "",
+  loginCode: "",
+  avatarUrl: "",
+  });
+
+  const [saving, setSaving] = useState(false);
+  
+  // Load user profile from Firestore
+useEffect(() => {
+  if (!user) return;
+
+  const userRef = doc(db, "users", user.uid);
+
+  const unsubscribe = onSnapshot(userRef, (snap) => {
+    if (snap.exists()) {
+      const data = snap.data();
+
+      // Update entire profile (including avatar)
+      setProfile((prev) => ({ ...prev, ...data }));
+    }
+  });
+
+  return () => unsubscribe();
+}, [user]); // ✅ ESLint happy, no unused vars
+
+
+
+// ---------- Date Picker Handler ----------
+const handleDateChange = (event: any, selectedDate?: Date) => {
+  setShowDatePicker(false);
+  if (selectedDate) {
+    const formatted = `${selectedDate.getDate().toString().padStart(2,'0')}-${(selectedDate.getMonth()+1).toString().padStart(2,'0')}-${selectedDate.getFullYear()}`;
+    setProfile((p) => ({ ...p, dateOfBirth: formatted }));
+  }
+};
+
+// ---------- Updated Avatar Picker ----------
+const pickAvatar = async () => {
+  try {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      aspect: [1, 1],
+      quality: 0.8,
+    });
+    if (result.canceled) return;
+
+    const uri = result.assets[0].uri;
+
+    // Preview locally
+    setProfile((p) => ({ ...p, avatarUrl: uri }));
+
+    // Upload with loader
+    setAvatarUploading(true);
+    const uploadedUrl = await uploadAvatarAsync(uri, user!.uid);
+    setProfile((p) => ({ ...p, avatarUrl: uploadedUrl }));
+  } catch (err) {
+    console.error(err);
+    Alert.alert("Error", "Could not upload avatar.");
+  } finally {
+    setAvatarUploading(false);
+  }
+};
+
+const validateProfile = () => {
+  const newErrors: ProfileErrors = {};
+
+  if (!profile.displayName) newErrors.displayName = "Full Name is required";
   if (!profile.username) newErrors.username = "Username is required";
-  if (!profile.email) newErrors.email = "Email is required";
   if (!profile.phone) newErrors.phone = "Phone number is required";
   if (!profile.country) newErrors.country = "Country is required";
-  if (!profile.dateOfBirth) newErrors.dateOfBirth = "Date of birth is required";
-  if (!profile.loginCode || profile.loginCode.length < 4)
-    newErrors.loginCode = "Login code must be at least 4 digits";
-
-  if (!confirmLegal)
-    newErrors.confirmLegal = "Please confirm the information is accurate";
+  if (!profile.dateOfBirth) newErrors.dateOfBirth = "Date of Birth is required";
+  if (!confirmLegal) newErrors.confirmLegal = "You must confirm the legal statement";
 
   setErrors(newErrors);
 
   return Object.keys(newErrors).length === 0;
 };
 
+const uploadAvatarAsync = async (localUri: string, userId: string) => {
+  const response = await fetch(localUri);
+  const blob = await response.blob();
+  const fileRef = ref(storage, `avatars/${userId}_${Date.now()}.jpg`);
+  await uploadBytes(fileRef, blob);
+  return await getDownloadURL(fileRef);
+};
 
-  // Profile data
-  const [profile, setProfile] = useState<any>({
-    displayName: "",
-    username: "",
-    email: "",
-    phone: "",
-    country: "",
-    dateOfBirth: "",
-    loginCode: "",
-    avatarUrl: "",
-    confirmLegal: "",
-  });
+// Save profile
+const saveProfile = async () => {
+  if (!user) return;
 
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const deleteAccount = async () => {
+  setSubmitted(true);
+  setErrors({});
+  if (!validateProfile()) {
+    Alert.alert("Form Incomplete", "Please correct the highlighted fields.");
+    return;
+  }
+
+  setSaving(true);
   try {
-    const auth = getAuth();
-    if (!auth.currentUser) {
-      console.log("No user logged in.");
-      return;
+    let avatarUrl = profile.avatarUrl;
+
+    // Only upload if it's a local file
+    if (avatarUrl && avatarUrl.startsWith("file://")) {
+      avatarUrl = await uploadAvatarAsync(avatarUrl, user.uid);
     }
 
-    await deleteUser(auth.currentUser);
+    const userRef = doc(db, "users", user.uid);
 
-    setShowDeleteModal(false);
+    await updateDoc(userRef, {
+      ...profile,
+      avatarUrl, // save remote URL in Firestore
+      updatedAt: serverTimestamp(),
+      profileVerified: true,
+    });
 
-    // Navigate the user out of the app
-    router.replace("/welcome"); // adjust according to your routing
-  } catch (error: any) {
-    console.log("Delete error:", error);
+    // Update local state with remote URL
+    setProfile((p) => ({ ...p, avatarUrl }));
+
+    Alert.alert("Success", "Profile updated successfully!");
+    setActiveSection(null);
+  } catch (err) {
+    console.error("Save error:", err);
+    Alert.alert("Error", "Could not save profile.");
+  } finally {
+    setSaving(false);
   }
 };
 
-
-  // Load user profile from Firestore
-  useEffect(() => {
-    const loadProfile = async () => {
-      if (!user) return;
-      try {
-        const docRef = doc(db, "users", user.uid);
-        const snap = await getDoc(docRef);
-        if (snap.exists()) {
-          const data = snap.data();
-          setProfile((prev: any) => ({ ...prev, ...snap.data() }));
-           if (data.avatarUrl) setProfileImage(data.avatarUrl); // ✅ Add this line
-        } else {
-          await setDoc(docRef, {
-            userId: user.uid,
-            email: user.email || "",
-            createdAt: serverTimestamp(),
-          });
-          setProfile((prev: any) => ({
-            ...prev,
-            email: user.email || "",
-          }));
-        }
-      } catch (err) {
-        console.error("Error loading profile:", err);
-        Alert.alert("Error", "Unable to load profile.");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    loadProfile();
-  }, [user, setProfileImage]);
-
-  // Pick image and upload to Firebase Storage
-  const pickAvatar = async () => {
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 0.8,
-      });
-      if (result.canceled) return;
-      const uri = result.assets[0].uri;
-      setProfile((p: any) => ({ ...p, avatarUrl: uri }));
-    } catch (error) {
-      console.error(error);
-      Alert.alert("Error", "Could not open gallery.");
-    }
-  };
-
-  // Upload image to Firebase Storage
-  const uploadAvatarAsync = async (localUri: string, userId: string) => {
-    const response = await fetch(localUri);
-    const blob = await response.blob();
-    const fileRef = ref(storage, `avatars/${userId}_${Date.now()}.jpg`);
-    await uploadBytes(fileRef, blob);
-    return await getDownloadURL(fileRef);
-  };
-
-  // Save profile to Firestore
-  const saveProfile = async () => {
-    if (!user) return;
-    if (!validateForm()) {
-  Alert.alert("Form Incomplete", "Please correct the highlighted fields.");
-  return;
-}
-
-setSaving(true);
-    try {
-      let avatarUrl = profile.avatarUrl;
-
-      // Upload new avatar if local
-      if (avatarUrl && avatarUrl.startsWith("file://")) {
-        avatarUrl = await uploadAvatarAsync(avatarUrl, user.uid);
-      }
-setProfileImage(avatarUrl); // <--- Add this line
-
-      const userRef = doc(db, "users", user.uid);
-      await updateDoc(userRef, {
-        displayName: profile.displayName || "",
-        username: profile.username || "",
-        email: profile.email || user.email || "",
-        phone: profile.phone || "",
-        country: profile.country || "",
-        dateOfBirth: profile.dateOfBirth || "",
-        loginCode: profile.loginCode || "",
-        avatarUrl: avatarUrl || "",
-        updatedAt: serverTimestamp(),
-      });
-      
-setProfileImage(avatarUrl); // ✅ Sync global avatar context
-
-
-      setProfile((p: any) => ({ ...p, avatarUrl }));
-      Alert.alert("Success", "Profile updated successfully!");
-    } catch (err) {
-      console.error("Save error:", err);
-      Alert.alert("Error", "Could not save profile.");
-    } finally {
-      setSaving(false);
-    }
-  };
 
   
 // Toggle Dark Mode
@@ -302,8 +301,6 @@ const handleSupportSend = async () => {
   }
 };
 
-
-  
   return (
     <View style={styles.modalContainer}>
       <ScrollView>
@@ -311,41 +308,59 @@ const handleSupportSend = async () => {
         <View style={styles.header}>
           <Text style={styles.headerText}>User Menu</Text>
         </View>
- <View style={{ alignItems: "center", marginBottom: 16 }}>
-              {profile.avatarUrl ? (
-                <Image
-                  source={{ uri: profile.avatarUrl }}
-                  style={{
-                    width: 100,
-                    height: 100,
-                    borderRadius: 50,
-                    marginBottom: 8,
-                  }}
-                />
-              ) : (
-                <View
-                  style={{
-                    width: 100,
-                    height: 100,
-                    borderRadius: 50,
-                    backgroundColor: "#0f3460",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    marginBottom: 8,
-                  }}
-                >
-                  <Ionicons name="person" size={40} color="white" />
-                </View>
-              )}
-              <TouchableOpacity onPress={pickAvatar}>
-                <Text style={{ color: "#21e6c1" }}>Change Avatar</Text>
-              </TouchableOpacity>
-            </View>
+ {/* ---------- Avatar & Date Picker Section ---------- */}
+<View style={{ alignItems: 'center', marginBottom: 16 }}>
+  {avatarUploading ? (
+    <View
+      style={{
+        width: 100,
+        height: 100,
+        borderRadius: 50,
+        backgroundColor: '#0f3460',
+        justifyContent: 'center',
+        alignItems: 'center',
+      }}
+    >
+      <ActivityIndicator size="large" color="#21e6c1" />
+    </View>
+  ) : profile.avatarUrl ? (
+    <Image
+      source={{ uri: profile.avatarUrl }}
+      style={{ width: 100, height: 100, borderRadius: 50, marginBottom: 8 }}
+      accessible
+      accessibilityLabel="User avatar"
+    />
+  ) : (
+    <View
+      style={{
+        width: 100,
+        height: 100,
+        borderRadius: 50,
+        backgroundColor: "#0f3460",
+        alignItems: "center",
+        justifyContent: "center",
+        marginBottom: 8,
+      }}
+      accessible
+      accessibilityLabel="Default avatar placeholder"
+    >
+      <Ionicons name="person" size={40} color="white" />
+    </View>
+  )}
+
+  <TouchableOpacity
+    onPress={pickAvatar}
+    accessible
+    accessibilityLabel="Change Avatar"
+    accessibilityHint="Opens gallery to select a new profile picture"
+  >
+    <Text style={{ color: "#21e6c1" }}>Change Avatar</Text>
+  </TouchableOpacity>
+</View>
+
         {/* Menu Options */}
         {!activeSection && (
           <View style={styles.menuList}>
-
-
             <TouchableOpacity
               style={styles.menuItem}
               onPress={() => setActiveSection("profile")}
@@ -393,68 +408,112 @@ const handleSupportSend = async () => {
         {activeSection === "profile" && (
           <ScrollView style={styles.section}>
             <Text style={styles.sectionTitle}>Profile</Text>
+           <TextInput
+  style={styles.input}
+  placeholder="Full Name"
+  placeholderTextColor="#ccc"
+  value={profile.displayName}
+  onChangeText={(t) =>
+    setProfile((p: any) => ({ ...p, displayName: t }))
+  }
+/>
+{submitted && errors.displayName && (
+  <Text style={styles.errorText}>{errors.displayName}</Text>
+)}
             <TextInput
-              style={styles.input}
-              placeholder="Full Name"
-              placeholderTextColor="#ccc"
-              value={profile.displayName}
-              onChangeText={(t) =>
-                setProfile((p: any) => ({ ...p, displayName: t }))
-              }
-            />
-            <TextInput
-              style={styles.input}
-              placeholder="Username"
-              placeholderTextColor="#ccc"
-              value={profile.username}
-              onChangeText={(t) =>
-                setProfile((p: any) => ({ ...p, username: t }))
-              }
-            />
+  style={styles.input}
+  placeholder="Username"
+  placeholderTextColor="#ccc"
+  value={profile.username}
+  onChangeText={(t) =>
+    setProfile((p: any) => ({ ...p, username: t }))
+  }
+/>
+{submitted && errors.username && (
+  <Text style={styles.errorText}>{errors.username}</Text>
+)}
             <TextInput
               style={styles.input}
               placeholder="Email"
-              placeholderTextColor="#ccc"
-              editable={false}
+              placeholderTextColor="#ccc"  
+                onChangeText={(text) => setProfile((p) => ({ ...p, email: text }))}
               value={profile.email}
             />
+          <TextInput
+  style={styles.input}
+  placeholder="Phone"
+  placeholderTextColor="#ccc"
+  value={profile.phone}
+  onChangeText={(t) =>
+    setProfile((p: any) => ({ ...p, phone: t }))
+  }
+/>
+
+{submitted && errors.phone && (
+  <Text style={styles.errorText}>{errors.phone}</Text>
+)}
+
+
             <TextInput
-              style={styles.input}
-              placeholder="Phone"
-              placeholderTextColor="#ccc"
-              value={profile.phone}
-              onChangeText={(t) =>
-                setProfile((p: any) => ({ ...p, phone: t }))
-              }
-            />
-            <TextInput
-              style={styles.input}
-              placeholder="Country"
-              placeholderTextColor="#ccc"
-              value={profile.country}
-              onChangeText={(t) =>
-                setProfile((p: any) => ({ ...p, country: t }))
-              }
-            />
-            <TextInput
-              style={styles.input}
-              placeholder="Date of Birth (DD-MM-YYYY)"
-              placeholderTextColor="#ccc"
-              value={profile.dateOfBirth}
-              onChangeText={(t) =>
-                setProfile((p: any) => ({ ...p, dateOfBirth: t }))
-              }
-            />
-            <TextInput
-              style={styles.input}
-              placeholder="Login Code"
-              placeholderTextColor="#ccc"
-              secureTextEntry
-              value={profile.loginCode}
-              onChangeText={(t) =>
-                setProfile((p: any) => ({ ...p, loginCode: t }))
-              }
-            />
+  style={styles.input}
+  placeholder="Country"
+  placeholderTextColor="#ccc"
+  value={profile.country}
+  onChangeText={(t) =>
+    setProfile((p: any) => ({ ...p, country: t }))
+  }
+/>
+
+{submitted && errors.country && (
+  <Text style={styles.errorText}>{errors.country}</Text>
+)}
+
+
+    <TouchableOpacity
+  onPress={() => setShowDatePicker(true)}
+  style={styles.input}
+  accessible
+  accessibilityLabel="Select Date of Birth"
+  accessibilityHint="Opens date picker to select your birth date"
+>
+  <Text style={{ color: profile.dateOfBirth ? 'white' : '#ccc' }}>
+    {profile.dateOfBirth || "Date of Birth (DD-MM-YYYY)"}
+  </Text>
+</TouchableOpacity>
+
+{submitted && errors.dateOfBirth && (
+  <Text style={styles.errorText}>{errors.dateOfBirth}</Text>
+)}
+
+{showDatePicker && (
+  <DateTimePicker
+    value={
+      profile.dateOfBirth
+        ? new Date(profile.dateOfBirth.split('-').reverse().join('-'))
+        : new Date()
+    }
+    mode="date"
+    display="default"
+    onChange={handleDateChange}
+    maximumDate={new Date()}
+  />
+)}
+
+<TextInput
+  style={styles.input}
+  placeholder="Login Code"
+  placeholderTextColor="#ccc"
+  secureTextEntry
+  value={profile.loginCode}
+  onChangeText={(t) =>
+    setProfile((p: any) => ({ ...p, loginCode: t }))
+  }
+/>
+
+{submitted && errors.loginCode && (
+  <Text style={styles.errorText}>{errors.loginCode}</Text>
+)}
+
 <View style={{ flexDirection: "row", alignItems: "center", marginTop: 20 }}>
   <TouchableOpacity
     onPress={() => setConfirmLegal(!confirmLegal)}
@@ -481,16 +540,26 @@ const handleSupportSend = async () => {
   <Text style={{ color: "red", marginTop: 4 }}>{errors.confirmLegal}</Text>
 )}
 
-            <TouchableOpacity
-              onPress={saveProfile}
-              style={[styles.sendButton, { backgroundColor: "#21e6c1" }]}
-            >
-              {saving ? (
-                <ActivityIndicator color="#16213e" />
-              ) : (
-                <Text style={styles.sendText}>Save Profile</Text>
-              )}
-            </TouchableOpacity>
+           <TouchableOpacity
+  onPress={saveProfile}
+  disabled={!confirmLegal || saving} 
+  style={[
+    styles.sendButton,
+    {
+      backgroundColor: !confirmLegal
+        ? "#084b92ff" // disabled color
+        : "#21e6c1", // active color
+      opacity: !confirmLegal ? 0.5 : 1, // fade when disabled
+    },
+  ]}
+>
+  {saving ? (
+    <ActivityIndicator color="#16213e" />
+  ) : (
+    <Text style={styles.sendText}>Save Profile</Text>
+  )}
+</TouchableOpacity>
+
 
             <TouchableOpacity
               style={styles.backButton}
@@ -786,4 +855,11 @@ deleteText: {
   textAlign: "center",
   fontWeight: "bold",
 },
+errorText: {
+  color: "red",
+  fontSize: 12,
+  marginBottom: 8,
+  marginLeft: 4,
+},
+
 });

@@ -1,84 +1,177 @@
-import React, { useState } from "react";
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
+import { router } from "expo-router";
+import { useState } from "react";
+import {
+  Alert,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
+  useWindowDimensions,
+} from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 
-import TournamentsSection from "./sections/TournamentsSection";
-import UsersSection from "./sections/UsersSection";
+// Sections
+import NotificationsSection from "./sections/NotificationsSection";
 import PaymentsSection from "./sections/PaymentsSection";
 import PayoutsSection from "./sections/PayoutsSection";
-import NotificationsSection from "./sections/NotificationsSection";
 import SettingsSection from "./sections/SettingsSection";
+import TournamentsSection from "./sections/TournamentsSection";
+import UsersSection from "./sections/UsersSection";
 
 const AdminDashboard = () => {
   const [active, setActive] = useState("Tournaments");
+  const { width: screenWidth } = useWindowDimensions();
+
+  // 🔥 Responsive sidebar width
+  const SIDEBAR_WIDTH =
+    screenWidth < 600 ? 120 :
+    screenWidth < 900 ? 220 :
+    280;
+
+  // 🔐 Secure admin exit
+  const handleExitAdmin = () => {
+    Alert.alert(
+      "Exit Admin Panel",
+      "Are you sure you want to exit admin mode?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Exit",
+          style: "destructive",
+          onPress: async () => {
+            await AsyncStorage.removeItem("isAdmin");
+            router.replace("/tradinglayout");
+          },
+        },
+      ]
+    );
+  };
+
+  const styles = StyleSheet.create({
+    container: {
+      flex: 1,
+      flexDirection: "row",
+      backgroundColor: "#000",
+    },
+    sidebar: {
+      width: SIDEBAR_WIDTH,
+      minWidth: SIDEBAR_WIDTH,
+      maxWidth: SIDEBAR_WIDTH,
+      backgroundColor: "#111",
+      paddingVertical: 20,
+      borderRightColor: "#222",
+      borderRightWidth: 1,
+    },
+    sidebarItem: {
+      paddingVertical: 16,
+      paddingHorizontal: 16,
+      marginBottom: 6,
+    },
+    sidebarActive: {
+      backgroundColor: "#333",
+      borderLeftColor: "#4A90E2",
+      borderLeftWidth: 3,
+    },
+    sidebarText: {
+      color: "white",
+      fontSize: 15,
+    },
+    sidebarExit: {
+      marginTop: 20,
+      flexDirection: "row",
+      alignItems: "center",
+      backgroundColor: "#ff4d67",
+      paddingVertical: 12,
+      paddingHorizontal: 10,
+      borderRadius: 8,
+      marginHorizontal: 10,
+    },
+    sidebarExitText: {
+      color: "#fff",
+      marginLeft: 6,
+      fontWeight: "600",
+      fontSize: 14,
+    },
+    sidebarScroll: {
+      paddingVertical: 20,
+    },
+    rightSide: {
+      flex: 1,
+      position: "relative",
+    },
+    content: {
+      flex: 1,
+      padding: 15,
+    },
+  });
 
   const renderSection = () => {
     switch (active) {
-      case "Tournaments": return <TournamentsSection />;
-      case "Users": return <UsersSection />;
-      case "Payments": return <PaymentsSection />;
-      case "Payouts": return <PayoutsSection />;
-      case "Notifications": return <NotificationsSection />;
-      case "Settings": return <SettingsSection />;
-      default: return <TournamentsSection />;
+      case "Tournaments":
+        return <TournamentsSection />;
+      case "Users":
+        return <UsersSection />;
+      case "Payments":
+        return <PaymentsSection />;
+      case "Payouts":
+        return <PayoutsSection />;
+      case "Notifications":
+        return <NotificationsSection />;
+      case "Settings":
+        return <SettingsSection />;
+      default:
+        return <TournamentsSection />;
     }
   };
 
   return (
     <View style={styles.container}>
-      
       {/* Sidebar */}
       <View style={styles.sidebar}>
-        {["Tournaments", "Users", "Payments", "Payouts", "Notifications", "Settings"].map((sec) => (
+        <ScrollView contentContainerStyle={styles.sidebarScroll}>
+          {[
+            "Tournaments",
+            "Users",
+            "Payments",
+            "Payouts",
+            "Notifications",
+            "Settings",
+          ].map((sec) => (
+            <TouchableOpacity
+              key={sec}
+              style={[
+                styles.sidebarItem,
+                active === sec && styles.sidebarActive,
+              ]}
+              onPress={() => setActive(sec)}
+            >
+              <Text style={styles.sidebarText} numberOfLines={1}>
+                {sec}
+              </Text>
+            </TouchableOpacity>
+          ))}
+
+          {/* 🔥 Exit Admin */}
           <TouchableOpacity
-            key={sec}
-            style={[styles.sidebarItem, active === sec && styles.sidebarActive]}
-            onPress={() => setActive(sec)}
+            style={styles.sidebarExit}
+            onPress={handleExitAdmin}
           >
-            <Text style={styles.sidebarText}>{sec}</Text>
+            <Ionicons name="exit-outline" size={22} color="#fff" />
+            <Text style={styles.sidebarExitText}>Exit Admin</Text>
           </TouchableOpacity>
-        ))}
+        </ScrollView>
       </View>
 
       {/* Main Content */}
-      <ScrollView style={styles.content}>
-        {renderSection()}
-      </ScrollView>
-
+      <View style={styles.rightSide}>
+        <ScrollView style={styles.content}>
+          {renderSection()}
+        </ScrollView>
+      </View>
     </View>
   );
 };
 
 export default AdminDashboard;
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    flexDirection: "row",
-    backgroundColor: "#000",
-  },
-  sidebar: {
-    width: 120,
-    backgroundColor: "#111",
-    paddingVertical: 20,
-    borderRightColor: "#222",
-    borderRightWidth: 1,
-  },
-  sidebarItem: {
-    paddingVertical: 15,
-    paddingHorizontal: 10,
-    marginBottom: 5,
-  },
-  sidebarActive: {
-    backgroundColor: "#333",
-    borderLeftColor: "#4A90E2",
-    borderLeftWidth: 3,
-  },
-  sidebarText: {
-    color: "white",
-    fontSize: 14,
-  },
-  content: {
-    flex: 1,
-    padding: 15,
-  },
-});

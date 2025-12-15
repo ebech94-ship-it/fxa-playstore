@@ -1,43 +1,37 @@
 {
-  
   "expo": {
     "name": "Forex Tournaments Arena",
     "owner": "ebeh",
     "slug": "forex-tournaments-arena",
     "version": "1.0.0",
-    "orientation": "portrait",
+    "orientation": "default",
     "icon": "./assets/images/icon.png",
     "scheme": "forextournamentsarena",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
-
     "ios": {
       "supportsTablet": true
     },
-
     "android": {
-     "package": "com.ebeh.forextournamentsarena",
+      "package": "com.ebeh.forextournamentsarena",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/android-icon-foreground.png",
-        "backgroundImage": "./assets/images/android-icon-background.png",
+        "foregroundImage": "./assets/images/icon.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false
     },
-
     "web": {
       "output": "static",
       "favicon": "./assets/images/favicon.png"
     },
-
     "plugins": [
       "expo-router",
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash-icon.png",
+          "image": "./assets/images/me.png",
           "imageWidth": 200,
           "resizeMode": "contain",
           "backgroundColor": "#ffffff",
@@ -47,13 +41,16 @@
         }
       ],
       "expo-secure-store",
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-localization"
     ],
-
     "extra": {
-      "webClientId": "895363795197-qmuod36rndhkmef0kb0kv3qhjcjn4d2c.apps.googleusercontent.com"
+      "webClientId": "895363795197-qmuod36rndhkmef0kb0kv3qhjcjn4d2c.apps.googleusercontent.com",
+      "router": {},
+      "eas": {
+        "projectId": "9aeadda0-8d0b-4833-9971-158baac2d2ad"
+      }
     },
-
     "experiments": {
       "typedRoutes": true,
       "reactCompiler": true

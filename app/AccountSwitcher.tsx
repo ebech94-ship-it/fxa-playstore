@@ -37,7 +37,7 @@ export default function AccountSwitcher({
     setExpanded(false);
     if (id === "real") {
       setShowWarning(true);
-      setTimeout(() => setShowWarning(false), 2000);
+      setTimeout(() => setShowWarning(false), 4000);
     }
   };
 
@@ -127,7 +127,7 @@ export default function AccountSwitcher({
       {/* Real account warning */}
       {showWarning && (
         <View style={styles.warning}>
-          <Text style={styles.warningText}>⚠ Real money at risk</Text>
+          <Text style={styles.warningText}>⚠ Real money at risk, no real trading here</Text>
         </View>
       )}
     </View>
@@ -158,7 +158,7 @@ const styles = StyleSheet.create({
   dropdown: {
     marginTop: 8,
     width: 220,
-    maxHeight: 250,
+    maxHeight: 300,
     backgroundColor: "#111827",
     borderRadius: 12,
     padding: 10,

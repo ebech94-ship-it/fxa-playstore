@@ -93,7 +93,7 @@ export default function TradePanel({
       {/* Buy / Sell Buttons */}
       <View style={styles.buttonRow}>
         <TouchableOpacity
-          style={[styles.tradeButton, { backgroundColor: "#28a745" }]} // green
+          style={[styles.tradeButton, { backgroundColor: "#28a745", bottom :10, }]} // green
           onPress={onBuy}
           disabled={tradesCount >= 20}
         >

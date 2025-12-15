@@ -13,7 +13,7 @@ import {
   signInWithEmailAndPassword,
 } from "firebase/auth";
 import { doc, getDoc, setDoc } from "firebase/firestore";
-import React, { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 
 import {
   ActivityIndicator,
@@ -245,7 +245,7 @@ const handleLogin = async () => {
         <View style={styles.overlay}>
           <Text style={styles.title}>Welcome to Forex Tournaments Arena</Text>
           <Text style={styles.desc}>
-            Join live Forex Tournaments, compete for real cash rewards by growing your account balance!
+            Join live Forex Tournaments, compete for real cash rewards by growing your virtual account balance!
           </Text>
 
 {/* AGREEMENT CHECKBOX */}
@@ -495,7 +495,7 @@ const handleLogin = async () => {
                   />
                   <TextInput
                     style={styles.input}
-                    placeholder="Password, 5 digits only"
+                    placeholder="enter you password"
                     placeholderTextColor="#aaa"
                     secureTextEntry={!showPassword}
                     value={password}
