@@ -31,6 +31,9 @@ export type ChartViewHandle = {
   ) => void;
   removeMarker: (id: string) => void;
   resize?: () => void;
+   // 👇 ADD THESE TWO
+  setHeikinAshi: (enabled: boolean) => void;
+  setWickCompression: (value: number) => void;
 };
 
 /* ---------------- COMPONENT ---------------- */
@@ -41,42 +44,80 @@ const ChartView = forwardRef<ChartViewHandle, ChartViewProps>(
     const webRef = useRef<WebView>(null);
     const latestPriceRef = useRef<number>(0);
     const lastLayoutRef = useRef<{ w: number; h: number }>({ w: 0, h: 0 });
+const webReadyRef = useRef(false);
 
     /* ---------- RN → WEB API ---------- */
-    useImperativeHandle(ref, () => ({
-      getCurrentPrice: () => latestPriceRef.current,
+useImperativeHandle(ref, () => ({
+  // 🔹 Current price getter (used for trades)
+  getCurrentPrice: () => latestPriceRef.current,
 
-      onTrade: (type, amount, price, id, profit = 0, expire = 0) => {
-        webRef.current?.injectJavaScript(`
-          window.handleRNMessage && window.handleRNMessage({
-            type: "${type.toUpperCase()}",
-            amount: ${amount},
-            price: ${price},
-            id: "${id}",
-            profit: ${profit},
-            expire: ${expire}
-          });
-          true;
-        `);
-      },
+  // 🔹 Open trade + drop marker
+  onTrade: (
+    type: string,
+    amount: number,
+    price: number,
+    id: string,
+    profit = 0,
+    expire = 0
+  ) => {
+    webRef.current?.injectJavaScript(`
+      window.handleRNMessage && window.handleRNMessage({
+        type: "${type.toUpperCase()}",
+        amount: ${amount},
+        price: ${price},
+        id: "${id}",
+        profit: ${profit},
+        expire: ${expire}
+      });
+      true;
+    `);
+  },
 
-      removeMarker: (id: string) => {
-        webRef.current?.injectJavaScript(`
-          window.removeMarkerById && window.removeMarkerById("${id}");
-          true;
-        `);
-      },
+  // 🔹 Remove marker by trade ID
+  removeMarker: (id: string) => {
+    webRef.current?.injectJavaScript(`
+      window.removeMarkerById && window.removeMarkerById("${id}");
+      true;
+    `);
+  },
 
-      resize: () => {
-        const { w, h } = lastLayoutRef.current;
-        webRef.current?.injectJavaScript(`
-          if (window.chart) {
-            chart.applyOptions({ width:${w}, height:${h} });
-          }
-          true;
-        `);
-      },
-    }));
+  // 🔹 Resize chart safely
+  resize: () => {
+    if (!webReadyRef.current) return;
+
+    const { w, h } = lastLayoutRef.current;
+    webRef.current?.injectJavaScript(`
+      if (window.chart && chart.applyOptions) {
+        chart.applyOptions({ width: ${w}, height: ${h} });
+      }
+      true;
+    `);
+  },
+
+  // 🔹 Toggle Heikin-Ashi mode
+  setHeikinAshi: (enabled: boolean) => {
+    if (!webReadyRef.current) return;
+
+    webRef.current?.injectJavaScript(`
+      if (window.setHeikinAshi) {
+        window.setHeikinAshi(${enabled});
+      }
+      true;
+    `);
+  },
+
+  // 🔹 Control wick compression (1 = normal, 0.3 = compressed)
+  setWickCompression: (value: number) => {
+    if (!webReadyRef.current) return;
+
+    webRef.current?.injectJavaScript(`
+      if (window.setWickCompression) {
+        window.setWickCompression(${value});
+      }
+      true;
+    `);
+  },
+}));
 
     /* ---------------- HTML ---------------- */
 
@@ -112,10 +153,7 @@ html,body{margin:0;height:100%;background:#0b1220;overflow:hidden}
   },
   timeScale: { timeVisible:true },
   crosshair:{ mode:1 }
-    // 👇 ADD THIS
-  rightPriceScale: {
-    scaleMargins: { top: 0.2, bottom: 0.2 }
-  }
+  
 });
 
   const series = chart.addCandlestickSeries({
@@ -131,6 +169,39 @@ html,body{margin:0;height:100%;background:#0b1220;overflow:hidden}
   let markers=[];
   let priceLines={};
 
+// -------- DISPLAY MODES --------
+let wickCompression = 1; // 1 = normal, <1 = compressed
+let useHeikinAshi = false;
+
+let rawBars = [];
+let haBars = [];
+
+function applyWickCompression(bar) {
+  if (wickCompression === 1) return bar;
+
+  const mid = (bar.high + bar.low) / 2;
+  return {
+    ...bar,
+    high: mid + (bar.high - mid) * wickCompression,
+    low:  mid - (bar.low  - mid) * wickCompression,
+  };
+}
+
+function toHeikinAshi(bar, prev) {
+  const haClose = (bar.open + bar.high + bar.low + bar.close) / 4;
+  const haOpen  = prev ? (prev.open + prev.close) / 2 : bar.open;
+  const haHigh  = Math.max(bar.high, haOpen, haClose);
+  const haLow   = Math.min(bar.low, haOpen, haClose);
+
+  return {
+    time: bar.time,
+    open: haOpen,
+    high: haHigh,
+    low: haLow,
+    close: haClose,
+  };
+}
+
   function seed(){
     const now=Math.floor(Date.now()/1000);
     let open=1945;
@@ -145,7 +216,16 @@ html,body{margin:0;height:100%;background:#0b1220;overflow:hidden}
       });
       open=close;
     }
-    series.setData(bars.slice(0,50));
+    rawBars = bars.slice(0,50);
+
+haBars = rawBars.map((b, idx) =>
+  toHeikinAshi(b, haBars[idx - 1])
+);
+
+series.setData(
+  (useHeikinAshi ? haBars : rawBars).map(applyWickCompression)
+);
+
      chart.timeScale().fitContent(); 
     i=50;
   }
@@ -163,15 +243,43 @@ html,body{margin:0;height:100%;background:#0b1220;overflow:hidden}
       });
     }
 
-    const bar=bars[i++];
-    series.update(bar);
-    lastBar=bar;
+    const bar = bars[i++];
+rawBars.push(bar);
+
+const haBar = toHeikinAshi(bar, haBars[haBars.length - 1]);
+haBars.push(haBar);
+
+const displayBar = applyWickCompression(
+  useHeikinAshi ? haBar : bar
+);
+
+series.update(displayBar);
+lastBar = bar;
 
     window.ReactNativeWebView?.postMessage(JSON.stringify({
       type:"TICK",
       close:bar.close
     }));
   }
+
+window.setWickCompression = v => {
+  wickCompression = v;
+  if (!rawBars.length) return;
+
+  series.setData(
+    (useHeikinAshi ? haBars : rawBars).map(applyWickCompression)
+  );
+};
+
+window.setHeikinAshi = enabled => {
+  useHeikinAshi = enabled;
+  if (!rawBars.length) return;
+
+  series.setData(
+    (useHeikinAshi ? haBars : rawBars).map(applyWickCompression)
+  );
+};
+
 
   window.handleRNMessage = (msg) => {
   if (!msg || !window.chart || !series || !lastBar) return;
@@ -189,7 +297,7 @@ if (priceLines[msg.id]) {
     markers.push({
       time:lastBar.time,
       position:"price",
-      price:msg.price,
+      price: typeof msg.price === "number" ? msg.price : lastBar.close,
       color:t==="BUY"?"#22c55e":"#ef4444",
       shape:t==="BUY"?"arrowUp":"arrowDown",
       text:\`\${t} $\${msg.amount}\`,
@@ -234,6 +342,9 @@ if (priceLines[msg.id]) {
   };
 
   seed();
+  window.ReactNativeWebView?.postMessage(
+  JSON.stringify({ type: "READY" })
+);
   setInterval(tick,1000);
 })();
 </script>
@@ -245,6 +356,12 @@ if (priceLines[msg.id]) {
     const onMessage = (e: any) => {
       try {
         const data = JSON.parse(e.nativeEvent.data);
+
+        
+    if (data.type === "READY") {
+      webReadyRef.current = true;
+      return;
+    }
         if (data.type === "TICK") {
           latestPriceRef.current = data.close;
         }
@@ -254,6 +371,9 @@ if (priceLines[msg.id]) {
     const onLayout = (e: LayoutChangeEvent) => {
   const { width, height } = e.nativeEvent.layout;
   lastLayoutRef.current = { w: width, h: height };
+
+  // ⛔ block resize until chart is ready
+  if (!webReadyRef.current) return;
 
   webRef.current?.injectJavaScript(`
   if (window.chart && chart.applyOptions) {

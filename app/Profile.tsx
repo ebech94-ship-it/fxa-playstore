@@ -2,10 +2,6 @@ import { Ionicons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import { deleteUser, getAuth } from "firebase/auth";
-
-
-
-
 import {
   addDoc,
   collection,
@@ -17,9 +13,7 @@ import {
 } from "firebase/firestore";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { useEffect, useState } from "react";
-
-
-import DateTimePicker from '@react-native-community/datetimepicker';
+import DateTimePicker from "@react-native-community/datetimepicker";
 import {
   ActivityIndicator,
   Alert,
@@ -34,11 +28,7 @@ import {
 } from "react-native";
 import { db, storage } from "../firebaseConfig";
 
-
-
-
-
-// ⬇️ DEFINE THE TYPE HERE (very important)
+/* ---------------- TYPES ---------------- */
 type ProfileErrors = {
   displayName?: string;
   username?: string;
@@ -49,31 +39,10 @@ type ProfileErrors = {
   loginCode?: string;
   confirmLegal?: string;
 };
-export default function Profile() {
-  const auth = getAuth();
-  const user = auth.currentUser;
-
-  const [activeSection, setActiveSection] = useState<string | null>(null);
-  const [darkMode, setDarkMode] = useState(false);
-  const [soundEnabled, setSoundEnabled] = useState(true);
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
-// State
-
-const [showDatePicker, setShowDatePicker] = useState(false);
-const [avatarUploading, setAvatarUploading] = useState(false);
-const [submitted, setSubmitted] = useState(false);
-
-const [supportName, setSupportName] = useState("");
-const [supportEmail, setSupportEmail] = useState("");
-const [supportMessage, setSupportMessage] = useState("");
-const router = useRouter();
-const [confirmLegal, setConfirmLegal] = useState(false);
-
-const [errors, setErrors] = useState<ProfileErrors>({});
 
 type UserProfile = {
   avatarUrl: string;
-email: string;
+  email: string;
   displayName?: string;
   username?: string;
   phone?: string;
@@ -81,25 +50,57 @@ email: string;
   dateOfBirth?: string;
   loginCode?: string;
   profileVerified?: boolean;
-  // Add any extra fields you use
+  useHeikinAshi: boolean;
+  compressWicks: boolean;
   [key: string]: any;
 };
 
+type ProfileProps = {
+  useHeikinAshi: boolean;
+  setUseHeikinAshi: (v: boolean) => void;
+  compressWicks: boolean;
+  setCompressWicks: (v: boolean) => void;
+};
 
-  // Profile data
- const [profile, setProfile] = useState<UserProfile>({
-  displayName: "",
-  username: "",
-  email: "",
-  phone: "",
-  country: "",
-  dateOfBirth: "",
-  loginCode: "",
-  avatarUrl: "",
+/* ---------------- COMPONENT ---------------- */
+export default function ProfileScreen({
+  useHeikinAshi,
+  setUseHeikinAshi,
+  compressWicks,
+  setCompressWicks,
+}: ProfileProps) {
+  const auth = getAuth();
+  const user = auth.currentUser;
+  const router = useRouter();
+
+  const [activeSection, setActiveSection] = useState<string | null>(null);
+  const [darkMode, setDarkMode] = useState(false);
+  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+  const [confirmLegal, setConfirmLegal] = useState(false);
+  const [errors, setErrors] = useState<ProfileErrors>({});
+
+  const [supportName, setSupportName] = useState("");
+  const [supportEmail, setSupportEmail] = useState("");
+  const [supportMessage, setSupportMessage] = useState("");
+
+  const [profile, setProfile] = useState<UserProfile>({
+    displayName: "",
+    username: "",
+    email: "",
+    phone: "",
+    country: "",
+    dateOfBirth: "",
+    loginCode: "",
+    avatarUrl: "",
+    useHeikinAshi,
+    compressWicks,
   });
 
   const [saving, setSaving] = useState(false);
-  
   // Load user profile from Firestore
 useEffect(() => {
   if (!user) return;
@@ -731,9 +732,12 @@ const handleSupportSend = async () => {
 )}
 
 
-        {/* Settings Section */}
-        {activeSection === "settings" && (
-  <ScrollView style={styles.section} contentContainerStyle={{ paddingBottom: 80 }}>
+       {/* Settings Section */}
+{activeSection === "settings" && (
+  <ScrollView
+    style={styles.section}
+    contentContainerStyle={{ paddingBottom: 80 }}
+  >
     <Text style={styles.sectionTitle}>Settings</Text>
 
     {/* Dark Mode */}
@@ -748,15 +752,38 @@ const handleSupportSend = async () => {
       <Switch value={soundEnabled} onValueChange={setSoundEnabled} />
     </View>
 
+    {/* 🔥 CHART SETTINGS (NEW) */}
+    <Text style={[styles.sectionTitle, { marginTop: 20 }]}>
+      Chart Settings
+    </Text>
+
+    {/* Heikin-Ashi Toggle */}
+    <View style={styles.settingRow}>
+      <Text style={styles.settingText}>Heikin-Ashi Candles</Text>
+      <Switch
+        value={useHeikinAshi}
+        onValueChange={setUseHeikinAshi}
+      />
+    </View>
+
+    {/* Wick Compression Toggle */}
+    <View style={styles.settingRow}>
+      <Text style={styles.settingText}>Compact Wicks</Text>
+      <Switch
+        value={compressWicks}
+        onValueChange={setCompressWicks}
+      />
+    </View>
+
     {/* Delete Account */}
     <TouchableOpacity
-  style={styles.deleteButton}
-  onPress={() => setShowDeleteModal(true)}
->
-  <Text style={styles.deleteText}>Delete Account</Text>
-</TouchableOpacity>
+      style={styles.deleteButton}
+      onPress={() => setShowDeleteModal(true)}
+    >
+      <Text style={styles.deleteText}>Delete Account</Text>
+    </TouchableOpacity>
 
-
+    {/* Back */}
     <TouchableOpacity
       style={styles.backButton}
       onPress={() => setActiveSection(null)}

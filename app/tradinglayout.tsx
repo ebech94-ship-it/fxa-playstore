@@ -93,8 +93,21 @@ export default function TradingLayout() {
 
 const [profile, setProfile] = useState<any>(null);
 const [profileVerified, setProfileVerified] = useState<boolean>(false);
-const resizeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+// -------- Chart Settings --------
+const [useHeikinAshi, setUseHeikinAshi] = useState(false);
+const [compressWicks, setCompressWicks] = useState(false);
+
+
+
+useEffect(() => {
+  // ChartView handles readiness internally
+  chartRef.current?.setHeikinAshi(useHeikinAshi);
+}, [useHeikinAshi]);
+
+useEffect(() => {
+  chartRef.current?.setWickCompression(compressWicks ? 0.3 : 1);
+}, [compressWicks]);
 
   // 🔥 Sync balances with Firestore in real time
  useEffect(() => {
@@ -129,9 +142,6 @@ const resizeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [activeAccount, setActiveAccount] = useState<
     "real" | "demo" | "tournament"
   >("demo");
-
-  
-  const [orientation, setOrientation] = useState("portrait");
 
 const chartRef = useRef<ChartViewHandle | null>(null);
 
@@ -374,26 +384,6 @@ useEffect(() => {
   return () => unsub();
 }, [currentUser]);
 
-
-  // Handle orientation changes
-  useEffect(() => {
-    const handleOrientation = ({
-      window: { width, height },
-    }: {
-      window: { width: number; height: number };
-    }) => {
-      setOrientation(width > height ? "landscape" : "portrait");
-    };
-
-    // addEventListener returns a subscription object with a .remove() method (modern RN)
-    const subscription = Dimensions.addEventListener("change", handleOrientation);
-
-    // cleanup: call remove() on the subscription
-    return () => {
-      subscription?.remove();
-    };
-  }, []);
-
   // Marquee
   const screenWidth = Dimensions.get("window").width;
   const scrollAnim = useRef(new Animated.Value(screenWidth)).current;
@@ -479,19 +469,29 @@ useEffect(() => {
     }
 
     return (
-      <View style={styles.overlay}>
-        <TouchableOpacity
-          style={styles.closeButton}
-          onPress={() => setActivePage(null)}
-        >
-          <Text style={{ color: "red", fontSize: 24 }}>✕</Text>
-        </TouchableOpacity>
+  <View style={styles.overlay}>
+    <TouchableOpacity
+      style={styles.closeButton}
+      onPress={() => setActivePage(null)}
+    >
+      <Text style={{ color: "red", fontSize: 24 }}>✕</Text>
+    </TouchableOpacity>
 
-        <View style={styles.pageContent}>
-          <Component/>
-        </View>
-      </View>
-    );
+    <View style={styles.pageContent}>
+      {activePage === "Profile" ? (
+        <ProfileScreen
+          useHeikinAshi={useHeikinAshi}
+          setUseHeikinAshi={setUseHeikinAshi}
+          compressWicks={compressWicks}
+          setCompressWicks={setCompressWicks}
+        />
+      ) : (
+        <Component />
+      )}
+    </View>
+  </View>
+);
+
   };
   
   return (
@@ -608,28 +608,16 @@ useEffect(() => {
       <LeaderboardBar />
 
    
- <ChartView
-    ref={chartRef}
-    symbol="BECH/USD"
-    orientation={orientation as "portrait" | "landscape"}
-    onLayout={() => {
-      // Clear previous timer safely
-      if (resizeTimeoutRef.current) {
-        clearTimeout(resizeTimeoutRef.current);
-      }
+<ChartView
+  ref={chartRef}
+  symbol="BECH/USD"
+/>
 
-      // Start new debounce timer
-      resizeTimeoutRef.current = setTimeout(() => {
-        chartRef.current?.resize?.();
-      }, 80);
-    }}
-  />
 
       <TradeSummaryBar
   openTrades={openTrades}
   closedTrades={closedTrades}
   activeAccount={activeAccount}
-  balances={balances}
    onResizeChart={() => chartRef.current?.resize?.()}
 />
 

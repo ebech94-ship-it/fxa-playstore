@@ -123,12 +123,31 @@ const modalRebuyFee = selectedTournament?.rebuyFee ?? modalFee;
 
 
   const [adminCode, setAdminCode] = useState("");
-  const [loadingActions, setLoadingActions] = useState<Record<string, boolean>>({});
+ type LoadingState = {
+  register?: boolean;
+  rebuy?: boolean;
+};
+
+const [loadingActions, setLoadingActions] = useState<
+  Record<string, LoadingState>
+>({});
+
   const router = useRouter();
 
-  const setLoadingFor = (tournamentId: string, val: boolean) => {
-  setLoadingActions((prev) => ({ ...prev, [tournamentId]: val }));
+  const setLoadingFor = (
+  tournamentId: string,
+  action: "register" | "rebuy",
+  value: boolean
+) => {
+  setLoadingActions((prev) => ({
+    ...prev,
+    [tournamentId]: {
+      ...prev[tournamentId],
+      [action]: value,
+    },
+  }));
 };
+
 
   // tick every second for countdowns
   useEffect(() => {
@@ -281,7 +300,7 @@ useEffect(() => {
   // ---------- REGISTER USER TO TOURNAMENT (calls backend to perform money ops + treasury) ----------
 const handleRegister = async (tournamentId: string) => {
   // 🚫 DOUBLE TAP GUARD
-  if (loadingActions[tournamentId]) return;
+if (loadingActions[tournamentId]?.register) return;
 
   const auth = getAuth();
   const user = auth.currentUser;
@@ -303,7 +322,7 @@ const handleRegister = async (tournamentId: string) => {
     return;
   }
 
-  setLoadingFor(tournamentId, true);
+ setLoadingFor(tournamentId, "register", true);
 
   try {
     const userDocRef = doc(db, "users", user.uid);
@@ -371,13 +390,15 @@ const handleRegister = async (tournamentId: string) => {
       Alert.alert("Error", "Registration failed. Try again.");
     }
   } finally {
-    setLoadingFor(tournamentId, false);
+    setLoadingFor(tournamentId, "register", false);
   }
 };
 
-
 // ----------- REBUY ACTION (CLEAN + CORRECT + SAFE) -----------
 const handleRebuy = async (tournamentId: string) => {
+  // 🚫 DOUBLE TAP GUARD
+  if (loadingActions[tournamentId]?.rebuy) return;
+
   if (!currentUser?.uid) {
     Alert.alert("Error", "You must be logged in.");
     return;
@@ -395,19 +416,22 @@ const handleRebuy = async (tournamentId: string) => {
     return;
   }
 
-const rebuyCost = Number(tour.rebuyFee ?? tour.entryFee ?? 0);
+  const rebuyCost = Number(tour.rebuyFee ?? tour.entryFee ?? 0);
 
-
-  // 🔥 Correct loading
-  setLoadingFor(tournamentId, true);
+  // 🔥 TURN LOADING ON (ONLY ONCE)
+  setLoadingFor(tournamentId, "rebuy", true);
 
   try {
-    const playerRef = doc(db, `tournaments/${tournamentId}/players`, currentUser.uid);
+    const playerRef = doc(
+      db,
+      `tournaments/${tournamentId}/players`,
+      currentUser.uid
+    );
+
     const playerSnap = await getDoc(playerRef);
 
     if (!playerSnap.exists()) {
       Alert.alert("Not Registered", "Register before performing a rebuy.");
-      setLoadingFor(tournamentId, false);
       return;
     }
 
@@ -418,31 +442,36 @@ const rebuyCost = Number(tour.rebuyFee ?? tour.entryFee ?? 0);
         "Insufficient Funds",
         `Wallet: ${wallet} — Required: ${rebuyCost}`
       );
-      setLoadingFor(tournamentId, false);
       return;
     }
 
-    const response = await fetch("https://forexapp2-backend.onrender.com/tournament-rebuy", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        userId: currentUser.uid,
-        tournamentId,
-        amount: rebuyCost,
-      }),
-    });
+    // 🌐 CALL BACKEND (TREASURY LOGIC)
+    const response = await fetch(
+      "https://forexapp2-backend.onrender.com/tournament-rebuy",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          userId: currentUser.uid,
+          tournamentId,
+          amount: rebuyCost,
+        }),
+      }
+    );
 
     const result = await response.json().catch(() => null);
 
     if (!response.ok || result?.success === false) {
-      Alert.alert("Rebuy Failed", result?.message || "Server rejected the rebuy.");
-      setLoadingFor(tournamentId, false);
+      Alert.alert(
+        "Rebuy Failed",
+        result?.message || "Server rejected the rebuy."
+      );
       return;
     }
 
+    // 🔁 RESET PLAYER BALANCE + TRACK REBUY
     await updateDoc(playerRef, {
-      // STARTING BALANCE
-       balance: Number(tour.startingBalance ?? 0),
+      balance: Number(tour.startingBalance ?? 0),
       rebuys: arrayUnion({
         at: Date.now(),
         amount: rebuyCost,
@@ -451,12 +480,12 @@ const rebuyCost = Number(tour.rebuyFee ?? tour.entryFee ?? 0);
     });
 
     Alert.alert("Rebuy Successful", "You have re-entered the tournament!");
-
   } catch (error) {
     console.error("REBUY ERROR:", error);
     Alert.alert("Error", "Could not complete rebuy. Try again.");
   } finally {
-    setLoadingFor(tournamentId, false);
+    // ✅ SINGLE SOURCE OF TRUTH
+    setLoadingFor(tournamentId, "rebuy", false);
   }
 };
 
@@ -798,65 +827,68 @@ const rebuyCost = Number(tour.rebuyFee ?? tour.entryFee ?? 0);
 
 
 {/* REGISTER BUTTON */}
+{/* REGISTER BUTTON */}
 <View style={styles.buttonRow}>
   <TouchableOpacity
-  style={[
-    styles.registerBtn,
-    (loadingActions[selectedTournament.id] ||
-      joinedMap[selectedTournament.id]) && styles.disabledBtn,
-  ]}
-  onPress={() => handleRegister(selectedTournament.id)}
-  disabled={
-    loadingActions[selectedTournament.id] ||
-    joinedMap[selectedTournament.id]
-  }
->
-  <Text style={styles.btnText}>
-    {joinedMap[selectedTournament.id]
-      ? "You're In"
-      : loadingActions[selectedTournament.id]
-      ? "Processing..."
-      : modalFee === 0
-      ? "Register (Free)"
-      : `Register • ${modalFee} $`}
-  </Text>
-</TouchableOpacity>
+    style={[
+      styles.registerBtn,
+      (loadingActions[selectedTournament.id]?.register ||
+        joinedMap[selectedTournament.id]) &&
+        styles.disabledBtn,
+    ]}
+    onPress={() => handleRegister(selectedTournament.id)}
+    disabled={
+      loadingActions[selectedTournament.id]?.register ||
+      joinedMap[selectedTournament.id]
+    }
+  >
+    <Text style={styles.btnText}>
+      {joinedMap[selectedTournament.id]
+        ? "You're In"
+        : loadingActions[selectedTournament.id]?.register
+        ? "Processing..."
+        : modalFee === 0
+        ? "Register (Free)"
+        : `Register • ${modalFee} $`}
+    </Text>
+  </TouchableOpacity>
+
 
 
   {/* REBUY BUTTON */}
-<TouchableOpacity
-  style={[
-    styles.rebuyBtn,
-    (modalStatus !== "Ongoing" ||
+  {/* REBUY BUTTON */}
+  <TouchableOpacity
+    style={[
+      styles.rebuyBtn,
+      (modalStatus !== "Ongoing" ||
+        !joinedMap[selectedTournament.id] ||
+        loadingActions[selectedTournament.id]?.rebuy) &&
+        styles.disabledBtn,
+    ]}
+    disabled={
+      modalStatus !== "Ongoing" ||
       !joinedMap[selectedTournament.id] ||
-      loadingActions[selectedTournament.id]) &&
-      styles.disabledBtn,
-  ]}
-  disabled={
-    modalStatus !== "Ongoing" ||
-    !joinedMap[selectedTournament.id] ||
-    loadingActions[selectedTournament.id]
-  }
-  onPress={() => handleRebuy(selectedTournament.id)}
->
-  <Text style={styles.btnTextAlt}>
-    {loadingActions[selectedTournament.id]
-      ? "Processing..."
-      : modalRebuyFee === 0
-      ? "Rebuy (Free)"
-      : `Rebuy • ${modalRebuyFee} $`}
-  </Text>
-</TouchableOpacity>
-
-
-
+      loadingActions[selectedTournament.id]?.rebuy
+    }
+    onPress={() => handleRebuy(selectedTournament.id)}
+  >
+    <Text style={styles.btnTextAlt}>
+      {loadingActions[selectedTournament.id]?.rebuy
+        ? "Processing..."
+        : modalRebuyFee === 0
+        ? "Rebuy (Free)"
+        : `Rebuy • ${modalRebuyFee} $`}
+    </Text>
+  </TouchableOpacity>
 </View>
 
-{loadingActions[selectedTournament.id] && (
+{(loadingActions[selectedTournament.id]?.register ||
+  loadingActions[selectedTournament.id]?.rebuy) && (
   <View style={{ marginTop: 12, alignItems: "center" }}>
     <ActivityIndicator size="small" color="#00ffff" />
   </View>
 )}
+
 
                     </>
                   ) : (
