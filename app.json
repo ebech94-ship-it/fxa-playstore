@@ -16,7 +16,7 @@
       "package": "com.ebeh.forextournamentsarena",
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/images/iconn.png",
+        "foregroundImage": "./assets/images/icon.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "edgeToEdgeEnabled": true,

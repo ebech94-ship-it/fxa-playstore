@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { router } from "expo-router";
 import { useState } from "react";
 import {
@@ -10,7 +11,6 @@ import {
   View,
   useWindowDimensions,
 } from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 
 // Sections
 import NotificationsSection from "./sections/NotificationsSection";
@@ -29,25 +29,6 @@ const AdminDashboard = () => {
     screenWidth < 600 ? 120 :
     screenWidth < 900 ? 220 :
     280;
-
-  // 🔐 Secure admin exit
-  const handleExitAdmin = () => {
-    Alert.alert(
-      "Exit Admin Panel",
-      "Are you sure you want to exit admin mode?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Exit",
-          style: "destructive",
-          onPress: async () => {
-            await AsyncStorage.removeItem("isAdmin");
-            router.replace("/tradinglayout");
-          },
-        },
-      ]
-    );
-  };
 
   const styles = StyleSheet.create({
     container: {
@@ -155,9 +136,19 @@ const AdminDashboard = () => {
 
           {/* 🔥 Exit Admin */}
           <TouchableOpacity
-            style={styles.sidebarExit}
-            onPress={handleExitAdmin}
-          >
+  style={styles.sidebarExit}
+  onPress={async () => {
+    try {
+      await AsyncStorage.removeItem("isAdmin");
+
+      router.dismissAll();   // 🔥 clear navigation stack
+      router.replace("/tradinglayout");  // 🔥 go to app root
+    } catch  {
+      Alert.alert("Exit failed", "Please restart app");
+    }
+  }}
+>
+
             <Ionicons name="exit-outline" size={22} color="#fff" />
             <Text style={styles.sidebarExitText}>Exit Admin</Text>
           </TouchableOpacity>

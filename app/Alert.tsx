@@ -1,3 +1,4 @@
+import { useRouter } from "expo-router";
 import {
   collection,
   doc,
@@ -6,8 +7,7 @@ import {
   query,
   updateDoc,
 } from "firebase/firestore";
-import React, { useEffect, useRef, useState } from "react";
-import { useRouter } from "expo-router";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
@@ -105,19 +105,21 @@ const AlertCard = ({ item, router, expanded, onToggle, onRead }: any) => {
     inputRange: [0, 1],
     outputRange: ["#333", "#7cf"],
   });
+const handlePress = () => {
+  onRead(item.id);
 
-  const handlePress = () => {
-    onRead(item.id);
+  if (item.type === "tournament" && item.tournamentId) {
+    router.push({
+      pathname: "/Tournament",
+      params: { tournamentId: item.tournamentId },
+    });
+    return; // 🛑 STOP here
+  }
 
-    // 🎯 ONLY tournament navigates
-    if (item.type === "tournament" && item.tournamentId) {
-      router.push(`/tournament/${item.tournamentId}`);
-      return;
-    }
+  // 📩 Only non-tournament alerts expand
+  onToggle();
+};
 
-    // 📩 Everything else expands inline
-    onToggle();
-  };
 
   const typeColor: any = {
     admin: "#7cf",

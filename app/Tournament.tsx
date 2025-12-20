@@ -1,8 +1,9 @@
 // TournamentScreen.tsx
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
-import { useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 import type { User } from "firebase/auth";
+
 import { getAuth } from "firebase/auth";
 
 import {
@@ -101,13 +102,17 @@ export default function TournamentScreen({ currentUser }: TournamentScreenProps)
   const [leaderboard, setLeaderboard] = useState<LeaderboardUser[]>([]);
   const [now, setNow] = useState(new Date().getTime());
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
+    const { tournamentId } = useLocalSearchParams<{ tournamentId: string }>();
   // live players list for the currently selected tournament (used for counts / participant preview)
 const [players, setPlayers] = useState<any[]>([]);
 // 🔥 Live participant counts for each tournament
+const myPlayer = selectedTournament
+  ? players.find((p) => p.id === currentUser?.uid)
+  : null;
+
 
 const [tournamentCounts, setTournamentCounts] = useState<Record<string, number>>({});
 const [tournamentRebuys, setTournamentRebuys] = useState<Record<string, number>>({});
-
 
   const [viewTab, setViewTab] = useState("info"); // "info" | "leaderboard"
   const [adminModal, setAdminModal] = useState(false);
@@ -119,7 +124,22 @@ const modalStatus = (() => {
   if (now <= selectedTournament.endTime) return "Ongoing";
   return "Past";
 })();
+
+
 const modalRebuyFee = selectedTournament?.rebuyFee ?? modalFee;
+const startingBalance = Number(selectedTournament?.startingBalance ?? 0);
+
+const currentBalance =
+  typeof myPlayer?.balance === "number"
+    ? myPlayer.balance
+    : startingBalance;
+
+const canRebuy =
+  modalStatus === "Ongoing" &&
+  !!selectedTournament &&
+  !!joinedMap[selectedTournament.id] &&
+  currentBalance <= startingBalance * 0.5;
+
 
 
   const [adminCode, setAdminCode] = useState("");
@@ -171,6 +191,32 @@ const [loadingActions, setLoadingActions] = useState<
     return () => unsub();
   }, []);
 
+
+ useEffect(() => {
+  if (!currentUser || tournaments.length === 0) return;
+
+  const unsubs: (() => void)[] = [];
+
+  tournaments.forEach((t) => {
+    const ref = doc(db, "tournaments", t.id, "players", currentUser.uid);
+
+    const unsub = onSnapshot(ref, (snap) => {
+      setJoinedMap((prev) => ({
+        ...prev,
+        [t.id]: snap.exists(),
+      }));
+    });
+
+    unsubs.push(unsub);
+  });
+
+  return () => {
+    unsubs.forEach((u) => u());
+  };
+}, [tournaments, currentUser]);
+
+
+
 useEffect(() => {
   if (tournaments.length === 0) return;
 
@@ -206,51 +252,6 @@ snap.docs.forEach((d) => {
 }, [tournaments]);
 
 
-// Keep a light-weight subscription to the selected tournament's players subcollection
-useEffect(() => {
-  // if no tournament selected, clear players and skip subscribing
-  if (!selectedTournament?.id) {
-    setPlayers([]);
-    return;
-  }
-
-  const playersRef = collection(db, "tournaments", selectedTournament.id, "players");
-  const q = query(playersRef, orderBy("joinedAt", "asc")); // ordering is optional, useful for previews
-
-  const unsub = onSnapshot(
-    q,
-    (snapshot) => {
-      const list = snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
-      setPlayers(list);
-    },
-    (err) => {
-      console.error("players listener error:", err);
-      setPlayers([]); // fail gracefully
-    }
-  );
-
-  return () => unsub();
-}, [selectedTournament?.id]);
-useEffect(() => {
-  if (!selectedTournament?.id || !currentUser) return;
-
-  const ref = doc(
-    db,
-    "tournaments",
-    selectedTournament.id,
-    "players",
-    currentUser.uid
-  );
-
-  getDoc(ref).then((snap) => {
-    setJoinedMap((p) => ({
-      ...p,
-      [selectedTournament.id]: snap.exists(),
-    }));
-  });
-}, [selectedTournament?.id, currentUser]);
-
-
   // ✅ GLOBAL LEADERBOARD (only when no tournament is open)
   useEffect(() => {
     if (selectedTournament) return; // stop if modal is open
@@ -282,6 +283,38 @@ useEffect(() => {
 
     return () => unsub();
   }, [selectedTournament]);
+  
+  useEffect(() => {
+  if (!tournamentId || tournaments.length === 0) return;
+
+  const found = tournaments.find((t) => t.id === tournamentId);
+  if (found) {
+    setSelectedTournament(found);
+    setViewTab("info");
+  }
+}, [tournamentId, tournaments]);
+useEffect(() => {
+  if (!selectedTournament?.id) return;
+
+  const ref = collection(
+    db,
+    "tournaments",
+    selectedTournament.id,
+    "players"
+  );
+
+  const unsub = onSnapshot(ref, (snap) => {
+    const list = snap.docs.map((d) => ({
+      id: d.id,
+      ...d.data(),
+    }));
+    setPlayers(list);
+  });
+
+  return () => unsub();
+}, [selectedTournament?.id]);
+
+
 
   // ---------- Helper: read user's wallet balance ----------
   const getUserWalletBalance = async (uid: string) => {
@@ -337,61 +370,94 @@ if (loadingActions[tournamentId]?.register) return;
     );
 
     await runTransaction(db, async (transaction) => {
-      const userSnap = await transaction.get(userDocRef);
-      const participantSnap = await transaction.get(participantRef);
+  const userSnap = await transaction.get(userDocRef);
+  const participantSnap = await transaction.get(participantRef);
 
-      if (participantSnap.exists()) {
-        throw new Error("ALREADY_REGISTERED");
-      }
-
-      if (!userSnap.exists()) {
-        throw new Error("USER_NOT_FOUND");
-      }
-
-      const username = userSnap.data()?.username ?? "Unknown";
-
-      // 💰 PAID TOURNAMENT ONLY
-      if (entryFee > 0) {
-        const walletBalance = Number(userSnap.data()?.walletBalance ?? 0);
-
-        if (walletBalance < entryFee) {
-          throw new Error("INSUFFICIENT_FUNDS");
-        }
-
-        transaction.update(userDocRef, {
-          walletBalance: walletBalance - entryFee,
-        });
-      }
-
-      // ✅ CREATE PARTICIPANT (FREE & PAID)
-      transaction.set(participantRef, {
-        uid: user.uid,
-        username,
-        balance: Number(tour.startingBalance ?? 0),
-        joinedAt: serverTimestamp(),
-        rebuys: [],
-      });
-    });
-
-    // ✅ UPDATE UI STATE
-    setJoinedMap((p) => ({ ...p, [tournamentId]: true }));
-
-    Alert.alert("Success", "You have successfully registered!");
-  } catch (err: any) {
-    console.error("REGISTRATION ERROR:", err);
-
-    if (err?.message === "ALREADY_REGISTERED") {
-      Alert.alert("Already Registered", "You are already registered.");
-    } else if (err?.message === "USER_NOT_FOUND") {
-      Alert.alert("Error", "User account not found.");
-    } else if (err?.message === "INSUFFICIENT_FUNDS") {
-      Alert.alert("Insufficient Funds", "Not enough balance.");
-    } else {
-      Alert.alert("Error", "Registration failed. Try again.");
-    }
-  } finally {
-    setLoadingFor(tournamentId, "register", false);
+  if (participantSnap.exists()) {
+    throw new Error("ALREADY_REGISTERED");
   }
+
+  if (!userSnap.exists()) {
+    throw new Error("USER_NOT_FOUND");
+  }
+
+  const username = userSnap.data()?.username ?? "Unknown";
+
+  const rawWallet = userSnap.data()?.walletBalance;
+  const walletBalance = Number(rawWallet ?? 0);
+
+  if (isNaN(walletBalance)) {
+    throw new Error("INVALID_WALLET");
+  }
+
+  if (entryFee > 0 && walletBalance < entryFee) {
+    throw new Error("INSUFFICIENT_FUNDS");
+  }
+
+  const startingBalance = Number(tour.startingBalance);
+  const finalStartingBalance = isNaN(startingBalance) ? 1000 : startingBalance;
+
+  // ✅ CREATE PARTICIPANT
+  transaction.set(participantRef, {
+    uid: user.uid,
+    username,
+    balance: finalStartingBalance,
+    joinedAt: serverTimestamp(),
+    rebuys: [],
+  });
+
+  // ✅ SINGLE USER UPDATE (VERY IMPORTANT)
+  transaction.set(
+  userDocRef,
+  {
+    walletBalance: entryFee > 0 ? walletBalance - entryFee : walletBalance,
+    accounts: {
+      tournament: {
+        balance: finalStartingBalance,
+        initialBalance: finalStartingBalance,
+        activeTournament: tournamentId,
+      },
+    },
+  },
+  { merge: true }
+);
+
+});
+
+ // ✅✅✅ CLOSE runTransaction HERE
+
+Alert.alert("Success", "You have successfully registered!");
+// ✅ FORCE UI UPDATE IMMEDIATELY
+setJoinedMap((prev) => ({
+  ...prev,
+  [tournamentId]: true,
+}));
+
+ } catch (err: any) {
+  console.error("REGISTRATION ERROR:", err);
+
+  if (err?.message === "ALREADY_REGISTERED") {
+    Alert.alert("Already Registered", "You are already registered.");
+
+  } else if (err?.message === "USER_NOT_FOUND") {
+    Alert.alert("Error", "User account not found.");
+
+  } else if (err?.message === "INSUFFICIENT_FUNDS") {
+    Alert.alert("Insufficient Funds", "Not enough balance.");
+
+  } else if (err?.message === "INVALID_WALLET") {
+    Alert.alert(
+      "Account Error",
+      "Your wallet data is invalid. Please contact support."
+    );
+
+  } else {
+    Alert.alert("Error", "Registration failed. Try again.");
+  }
+} finally {
+  setLoadingFor(tournamentId, "register", false);
+}
+  
 };
 
 // ----------- REBUY ACTION (CLEAN + CORRECT + SAFE) -----------
@@ -469,15 +535,24 @@ const handleRebuy = async (tournamentId: string) => {
       return;
     }
 
-    // 🔁 RESET PLAYER BALANCE + TRACK REBUY
-    await updateDoc(playerRef, {
-      balance: Number(tour.startingBalance ?? 0),
-      rebuys: arrayUnion({
-        at: Date.now(),
-        amount: rebuyCost,
-        createdAt: serverTimestamp(),
-      }),
-    });
+    // 🔁 ADD TO PLAYER BALANCE + TRACK REBUY
+const startingBalance = Number(tour.startingBalance);
+const currentBalance = Number(playerSnap.data()?.balance ?? 0);
+const newBalance =
+  currentBalance + (isNaN(startingBalance) ? 1000 : startingBalance);
+
+await updateDoc(playerRef, {
+  balance: newBalance,
+  rebuys: arrayUnion({
+    at: Date.now(),
+    amount: isNaN(startingBalance) ? 1000 : startingBalance,
+    createdAt: serverTimestamp(),
+  }),
+});
+
+await updateDoc(doc(db, "users", currentUser.uid), {
+  "accounts.tournament.balance": newBalance,
+});
 
     Alert.alert("Rebuy Successful", "You have re-entered the tournament!");
   } catch (error) {
@@ -502,17 +577,36 @@ const handleRebuy = async (tournamentId: string) => {
     }
   };
 
+  const formatDuration = (ms: number) => {
+  const sec = Math.floor(ms / 1000);
+  const min = Math.floor(sec / 60);
+  const hour = Math.floor(min / 60);
+  const day = Math.floor(hour / 24);
+  const week = Math.floor(day / 7);
+  const month = Math.floor(day / 30);
+
+  if (month >= 1) return `${month} month${month > 1 ? "s" : ""}`;
+  if (week >= 1) return `${week} week${week > 1 ? "s" : ""}`;
+  if (day >= 1) return `${day} day${day > 1 ? "s" : ""}`;
+  if (hour >= 1) return `${hour} hour${hour > 1 ? "s" : ""}`;
+  if (min >= 1) return `${min} minute${min > 1 ? "s" : ""}`;
+
+  return `${sec} second${sec > 1 ? "s" : ""}`;
+};
+
   // Tournament card
  const TournamentCard = ({ item }: { item: Tournament }) => {
   const status =
     now < item.startTime ? "Upcoming" : now <= item.endTime ? "Ongoing" : "Past";
   const timeLeft = status === "Past" ? 0 : item.endTime - now;
-  const progress =
-    status === "Past"
-    
-      ? 1
-      : Math.max(0, Math.min((now - item.startTime) / (item.endTime - item.startTime), 1));
+  const duration = item.endTime - item.startTime;
+  
+const progress =
+  status === "Past" || duration <= 0
+    ? 1
+    : Math.max(0, Math.min((now - item.startTime) / duration, 1));
 
+ const durationText = formatDuration(duration);
   const rebuyFee = item.rebuyFee ?? item.entryFee ?? 0;
   
   // color by status
@@ -531,6 +625,8 @@ const handleRebuy = async (tournamentId: string) => {
 
       {/* STRONG BOLD TITLE */}
       <Text style={styles.cardBigTitle}>{item.name}</Text>
+
+<Text style={styles.metaText}>Duration: {durationText}</Text>
 
       {/* STATUS TAG */}
       <View style={[styles.tag, tagStyle]}>
@@ -552,7 +648,7 @@ const handleRebuy = async (tournamentId: string) => {
 
       {/* LIVE STATS */}
       <View style={styles.cardStatsRow}>
-        <Text style={styles.cardDetail}>⏰ {formatTime(timeLeft)}</Text>
+      <Text style={styles.cardDetail}>⏰ Ends in {formatTime(timeLeft)}</Text>
         <Text style={styles.cardDetail}>👥 {tournamentCounts[item.id] ?? 0} Joined</Text>
         <Text style={styles.cardDetail}>♻️ {tournamentRebuys[item.id] ?? 0} Rebuys</Text>
    <Text style={styles.cardDetail}>🏅 Winners: {item.payoutStructure?.length ?? 0}</Text>
@@ -564,13 +660,13 @@ const handleRebuy = async (tournamentId: string) => {
   style={[
     styles.actionBtn,
     (status === "Past" ||
-      loadingActions[item.id] ||
+      loadingActions[item.id]?.register ||
       joinedMap[item.id]) &&
       styles.disabledBtn,
   ]}
   disabled={
     status === "Past" ||
-    !!loadingActions[item.id] ||
+    !!loadingActions[item.id]?.register ||
     !!joinedMap[item.id]
   }
   onPress={() => handleRegister(item.id)}
@@ -580,7 +676,7 @@ const handleRebuy = async (tournamentId: string) => {
       ? "Closed"
       : joinedMap[item.id]
       ? "You're In"
-      : loadingActions[item.id]
+      : loadingActions[item.id]?.register
       ? "Processing..."
       : item.entryFee === 0
       ? "Register (Free)"
@@ -588,31 +684,31 @@ const handleRebuy = async (tournamentId: string) => {
   </Text>
 </TouchableOpacity>
 
-
 <TouchableOpacity
   style={[
     styles.actionBtnAlt,
     (status !== "Ongoing" ||
-      !joinedMap[item.id] ||
-      loadingActions[item.id]) &&
-      styles.disabledBtn,
+ !joinedMap[item.id] ||
+ !canRebuy ||
+ loadingActions[item.id]?.rebuy) &&
+ styles.disabledBtn,
   ]}
   disabled={
-    status !== "Ongoing" ||
-    !joinedMap[item.id] ||
-    !!loadingActions[item.id]
-  }
+  status !== "Ongoing" ||
+  !joinedMap[item.id] ||
+  !canRebuy ||
+  !!loadingActions[item.id]?.rebuy
+}
   onPress={() => handleRebuy(item.id)}
 >
   <Text style={styles.actionTextAlt}>
-    {loadingActions[item.id]
+    {loadingActions[item.id]?.rebuy
       ? "..."
       : rebuyFee === 0
       ? "Rebuy (Free)"
       : `Rebuy • ${rebuyFee} $`}
   </Text>
 </TouchableOpacity>
-
 
       </View>
 
@@ -856,22 +952,16 @@ const handleRebuy = async (tournamentId: string) => {
 
 
   {/* REBUY BUTTON */}
-  {/* REBUY BUTTON */}
   <TouchableOpacity
-    style={[
-      styles.rebuyBtn,
-      (modalStatus !== "Ongoing" ||
-        !joinedMap[selectedTournament.id] ||
-        loadingActions[selectedTournament.id]?.rebuy) &&
-        styles.disabledBtn,
-    ]}
-    disabled={
-      modalStatus !== "Ongoing" ||
-      !joinedMap[selectedTournament.id] ||
-      loadingActions[selectedTournament.id]?.rebuy
-    }
-    onPress={() => handleRebuy(selectedTournament.id)}
-  >
+  style={[
+    styles.rebuyBtn,
+    (!canRebuy || loadingActions[selectedTournament.id]?.rebuy) &&
+      styles.disabledBtn,
+  ]}
+  disabled={!canRebuy || !!loadingActions[selectedTournament.id]?.rebuy}
+  onPress={() => handleRebuy(selectedTournament.id)}
+>
+
     <Text style={styles.btnTextAlt}>
       {loadingActions[selectedTournament.id]?.rebuy
         ? "Processing..."
@@ -980,7 +1070,8 @@ confirmBtn: {  flex: 1,  backgroundColor: "#22c55e",  padding: 12,  borderRadius
   },
   // small utilities
   pinnedText: { color: "#fff", fontWeight: "900" },
-  cardBigTitle: { fontSize: 20, fontWeight: "900", color: "rgba(236, 220, 220, 1)1)323ff", marginBottom: 6,},
+  cardBigTitle: { fontSize: 20, fontWeight: "900", color: "rgba(236, 220, 220, 1)", marginBottom: 6,},
+metaText: {color: "#aaa", fontSize: 13, marginTop: 4,},
 
 cardPrizeRow: { marginTop: 8, marginBottom: 6,},
 

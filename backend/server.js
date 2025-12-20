@@ -2,33 +2,51 @@ require("dotenv").config();
 
 const express = require("express");
 const cors = require("cors");
+const { Buffer } = require("buffer");
+const { testCampay } = require("./campay");
 
+// If your Node version < 18, uncomment next two lines
+// const fetch = require("node-fetch");
+// global.fetch = fetch;
 
 const app = express();
 
 // ---------------------------------------------------------------------
-// CORS + JSON + RAW BODY SUPPORT FOR WEBHOOKS
+// CORS + JSON
 // ---------------------------------------------------------------------
-app.use(
-  express.json({
-    verify: (req, res, buf) => {
-      req.rawBody = buf; // needed for Flutterwave Secret Hash validation
-    },
-  })
-);
+app.use(express.json());
 app.use(cors());
+app.get("/api/test/campay", testCampay);
+
 
 // ---------------------------------------------------------------------
-// HEALTH CHECK ROUTE
+// HEALTH CHECK ROUTE (CamPay reachability depends on server being up)
 // ---------------------------------------------------------------------
-app.post("/health", (req, res) => {
+app.get("/health", (req, res) => {
   res.send("Backend running");
 });
+app.get("/webhook/campay", (req, res) => {
+  res.status(200).send("Campay webhook endpoint is live");
+});
 
-// Firebase
+// ---------------------------------------------------------------------
+// INVITE ROUTE
+// ---------------------------------------------------------------------
+app.get("/invite", (req, res) => {
+  const ref = req.query.ref;
+
+  if (!ref) {
+    return res.status(400).send("Missing referral code");
+  }
+
+  const redirectUrl = `forextournamentsarena://welcome?ref=${ref}`;
+  return res.redirect(302, redirectUrl);
+});
+
+// ---------------------------------------------------------------------
+// FIREBASE + TREASURY
+// ---------------------------------------------------------------------
 const { db } = require("./firebaseAdmin");
-
-// Treasury logic
 const treasury = require("./treasury");
 
 // ---------------------------------------------------------------------
@@ -44,13 +62,13 @@ app.get("/api/treasury/balances", async (req, res) => {
       lastUpdated: doc.data()?.lastUpdated || null,
     });
   } catch (err) {
-    console.error("Treasury check error:", err);
+    console.error("Treasury check error:", err.message);
     res.status(500).json({ success: false, error: err.message });
   }
 });
 
 // ---------------------------------------------------------------------
-// BASIC DEPOSIT (NO FLUTTERWAVE)
+// MANUAL DEPOSIT (TESTING ONLY)
 // ---------------------------------------------------------------------
 app.post("/deposit", async (req, res) => {
   try {
@@ -87,7 +105,7 @@ app.post("/withdraw", async (req, res) => {
 });
 
 // ---------------------------------------------------------------------
-// REBUY
+// TOURNAMENT REBUY
 // ---------------------------------------------------------------------
 app.post("/tournament-rebuy", async (req, res) => {
   try {
@@ -102,50 +120,8 @@ app.post("/tournament-rebuy", async (req, res) => {
 });
 
 // ---------------------------------------------------------------------
-// FLUTTERWAVE INITIALIZATION
-// ---------------------------------------------------------------------
-const Flutterwave = require("flutterwave-node-v3");
-const flw = new Flutterwave(
-  process.env.FLW_PUBLIC_KEY,
-  process.env.FLW_SECRET_KEY
-);
-
-// ---------------------------------------------------------------------
-// CREATE PAYMENT SESSION (FLUTTERWAVE)
-// ---------------------------------------------------------------------
-app.post("/create-payment", async (req, res) => {
-  try {
-    const { amount, currency, email, userId } = req.body;
-
-    if (!amount || !currency || !email || !userId) {
-      return res.status(400).json({ success: false, error: "Missing fields" });
-    }
-
-    const txRef = `tx-${userId}-${Date.now()}`;
-
-    const response = await flw.Payment.initialize({
-      tx_ref: txRef,
-      amount,
-      currency,
-      customer: { email },
-      redirect_url: `${process.env.BACKEND_URL}/flutterwave-redirect`,
-    });
-
-    res.json({
-      success: true,
-      link: response.data.link,
-      txRef,
-    });
-  } catch (err) {
-    console.error("Payment init error:", err.message);
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-// ---------------------------------------------------------------------
 // TOURNAMENT SETTLEMENT
 // ---------------------------------------------------------------------
-
 app.post("/tournament-settle", async (req, res) => {
   try {
     const { tournamentId } = req.body;
@@ -157,81 +133,78 @@ app.post("/tournament-settle", async (req, res) => {
 });
 
 // ---------------------------------------------------------------------
-// REDIRECT HANDLER (GET) - User returns after payment
+// CAMPAY - CREATE PAYMENT
 // ---------------------------------------------------------------------
-app.get("/flutterwave-redirect", async (req, res) => {
+app.post("/campay/create-payment", async (req, res) => {
   try {
-    const { status, tx_ref, transaction_id } = req.query;
+    const { amount, phone, operator, userId } = req.body;
 
-    if (status !== "successful") {
-      return res.send("Payment not successful");
+    if (!amount || !phone || !operator || !userId) {
+      return res.status(400).json({ error: "Missing fields" });
     }
 
-    // verify transaction
-    const verify = await flw.Transaction.verify({ id: transaction_id });
+    const response = await fetch(
+      `${process.env.CAMPAY_BASE_URL}/collect`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization:
+            "Basic " +
+            Buffer.from(
+              `${process.env.CAMPAY_USERNAME}:${process.env.CAMPAY_PASSWORD}`
+            ).toString("base64"),
+        },
+        body: JSON.stringify({
+          amount,
+          currency: "XAF",
+          from: phone,
+          description: "Forex Tournament Deposit",
+          external_reference: userId,
+          operator, // MTN or ORANGE
+        }),
+      }
+    );
 
-    if (verify.data.status === "successful") {
-      const amount = verify.data.amount;
-      const userId = tx_ref.split("-")[1];
+    const data = await response.json();
 
-      await treasury.addDepositToUser(userId, amount);
-      await treasury.addDepositToTreasury(amount);
-
-      console.log("🎉 Verified via redirect:", userId, amount);
+    if (!response.ok) {
+      console.error("CamPay error:", data);
+      return res.status(400).json(data);
     }
 
-    res.send("Payment successful!");
+    res.json({
+      success: true,
+      message: "Payment request sent",
+      data,
+    });
   } catch (err) {
-    console.error("Redirect verification error:", err.message);
-    res.status(500).send("Verification error");
+    console.error("CamPay create-payment error:", err.message);
+    res.status(500).json({ error: "CamPay payment failed" });
   }
 });
 
 // ---------------------------------------------------------------------
-// WEBHOOK HANDLER (POST) - Server-to-server confirmation
+// CAMPAY WEBHOOK (CALLBACK URL)
 // ---------------------------------------------------------------------
-app.post("/webhook/flutterwave", async (req, res) => {
-  const signature = req.headers["verif-hash"];
-  const secretHash = process.env.FLW_SECRET_HASH;
-
-  // Immediately respond 200 so Flutterwave stops retrying
-  res.status(200).send("OK");
-
-  // After sending 200, continue processing asynchronously
-  if (!signature || signature !== secretHash) {
-    console.log("❌ Invalid webhook hash");
-    return; // stop processing
-  }
-
-  const event = req.body;
-
+app.post("/webhook/campay", async (req, res) => {
   try {
-    if (event?.data?.status === "successful") {
-      const { tx_ref, amount } = event.data;
-      const userId = tx_ref.split("-")[1];
+    console.log("📩 CamPay webhook received:", req.body);
 
-      await treasury.addDepositToUser(userId, amount);
-      await treasury.addDepositToTreasury(amount);
+    const { status, amount, reference } = req.body;
 
-      console.log("💰 Webhook confirmed:", userId, amount);
+    if (status === "SUCCESSFUL") {
+      await treasury.addDepositToUser(reference, Number(amount));
+      await treasury.addDepositToTreasury(Number(amount));
+
+      console.log("💰 CamPay deposit confirmed:", reference, amount);
     }
+
+    res.status(200).json({ success: true });
   } catch (err) {
-    console.error("Webhook processing error:", err.message);
+    console.error("CamPay webhook error:", err.message);
+    res.status(500).json({ success: false });
   }
-});
-
-// ---------------------------------------------------------------------
-// TEST WEBHOOK ENDPOINT (SAFE - DOES NOT AFFECT DATA)
-// ---------------------------------------------------------------------
-app.post("/test-webhook", (req, res) => {
-  const fs = require("fs");
-  const timestamp = new Date().toISOString();
-
-  fs.appendFileSync("webhook-test.log", `Webhook hit at: ${timestamp}\n`);
-
-  console.log("🔔 Test webhook hit:", timestamp);
-
-  res.status(200).send("TEST_OK");
 });
 
 // ---------------------------------------------------------------------

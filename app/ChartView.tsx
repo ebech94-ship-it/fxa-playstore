@@ -256,6 +256,9 @@ const displayBar = applyWickCompression(
 series.update(displayBar);
 lastBar = bar;
 
+// 🔑 FORCE AUTO-SCROLL
+chart.timeScale().scrollToRealTime();
+
     window.ReactNativeWebView?.postMessage(JSON.stringify({
       type:"TICK",
       close:bar.close
@@ -270,6 +273,7 @@ window.setWickCompression = v => {
     (useHeikinAshi ? haBars : rawBars).map(applyWickCompression)
   );
 };
+
 
 window.setHeikinAshi = enabled => {
   useHeikinAshi = enabled;

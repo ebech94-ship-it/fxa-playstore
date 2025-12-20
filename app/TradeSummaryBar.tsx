@@ -1,11 +1,6 @@
-// TradeSummaryBar.tsx
+// TradeSummaryBar.tsx — CLEAN / UI-ONLY / STABLE
 
-import {
-  collection,
-  onSnapshot,
-  query,
-} from "firebase/firestore";
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Animated,
   Dimensions,
@@ -15,12 +10,15 @@ import {
   Text,
   View,
 } from "react-native";
-import { auth, db } from "../firebaseConfig";
 
 const { height } = Dimensions.get("window");
 
 const COLLAPSED_HEIGHT = 50;
 const EXPANDED_HEIGHT = height * 0.5;
+
+/* ===============================
+   TYPES
+=============================== */
 
 interface TradeSummaryBarProps {
   openTrades?: any[];
@@ -29,78 +27,53 @@ interface TradeSummaryBarProps {
   onResizeChart?: () => void;
 }
 
+/* ===============================
+   COMPONENT
+=============================== */
+
 export default function TradeSummaryBar({
   openTrades: parentOpenTrades = [],
   closedTrades: parentClosedTrades = [],
 }: TradeSummaryBarProps) {
+  /* -------------------------------
+     PANEL ANIMATION STATE
+  ------------------------------- */
   const translateY = useRef(
     new Animated.Value(EXPANDED_HEIGHT - COLLAPSED_HEIGHT)
   ).current;
 
   const lastY = useRef(EXPANDED_HEIGHT - COLLAPSED_HEIGHT);
 
-  const user = auth.currentUser;
-
+  /* -------------------------------
+     LOCAL MIRROR STATE (UI ONLY)
+  ------------------------------- */
   const [openTrades, setOpenTrades] = useState<any[]>([]);
   const [closedTrades, setClosedTrades] = useState<any[]>([]);
 
-  // ⏱ Tick to force countdown updates
+  /* -------------------------------
+     FORCE RE-RENDER FOR COUNTDOWN
+  ------------------------------- */
   const [tick, setTick] = useState(0);
 
-  // ❗ Prevent React 18 double subscription
-  const effectGuard = useRef(false);
+  const formatTime = (timestamp: number) => {
+  const d = new Date(timestamp);
 
+  return d.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+};
   /* ===============================
-     FIRESTORE TRADES LISTENER
+     SYNC FROM PARENT (SOURCE OF TRUTH)
      =============================== */
   useEffect(() => {
-    if (effectGuard.current) return;
-    effectGuard.current = true;
-
-    const parentHasTrades =
-      parentOpenTrades.length > 0 || parentClosedTrades.length > 0;
-
-    // ✅ Use parent-provided trades if available
-    if (parentHasTrades) {
-      setOpenTrades(parentOpenTrades);
-      setClosedTrades(parentClosedTrades);
-      return;
-    }
-
-    if (!user?.uid) return;
-
-    const tradesRef = collection(db, "users", user.uid, "trades");
-    const q = query(tradesRef);
-
-    const unsubscribe = onSnapshot(
-      q,
-      (snapshot) => {
-        const open: any[] = [];
-        const closed: any[] = [];
-
-        snapshot.forEach((doc) => {
-          const data = doc.data();
-
-          if (data.status === "open") {
-            open.push({ id: doc.id, ...data });
-          } else if (data.status === "closed") {
-            closed.push({ id: doc.id, ...data });
-          }
-        });
-
-        setOpenTrades(open);
-        setClosedTrades(closed);
-      },
-      (error) => {
-        console.log("❌ TradeSummaryBar snapshot error:", error);
-      }
-    );
-
-    return () => unsubscribe();
-  }, [user?.uid, parentOpenTrades, parentClosedTrades]);
+    setOpenTrades(parentOpenTrades);
+    setClosedTrades(parentClosedTrades);
+  }, [parentOpenTrades, parentClosedTrades]);
 
   /* ===============================
-     COUNTDOWN RE-RENDER TIMER
+     COUNTDOWN TIMER
      =============================== */
   useEffect(() => {
     const timer = setInterval(() => {
@@ -144,6 +117,9 @@ export default function TradeSummaryBar({
     })
   ).current;
 
+  /* ===============================
+     RENDER
+     =============================== */
   return (
     <Animated.View
       style={[
@@ -167,25 +143,26 @@ export default function TradeSummaryBar({
         ) : (
           openTrades.map((t, i) => (
             <View key={t.id ?? i} style={styles.tradeRow}>
-              <Text style={styles.tradeText}>
-                {(t.type ?? "buy").toUpperCase()} • Stake: ${t.amount}
-              </Text>
+            <Text style={styles.tradeText}>
+  Entry: {t.entryPrice.toFixed(2)} → Now:{" "}
+  <Text
+    style={{
+      color:
+        t.type === "buy"
+          ? t.currentPrice >= t.entryPrice
+            ? "#4caf50"
+            : "#f44336"
+          : t.currentPrice <= t.entryPrice
+          ? "#4caf50"
+          : "#f44336",
+    }}
+  >
+    {t.currentPrice.toFixed(2)}
+  </Text>
+</Text>
 
-              <Text style={styles.tradeText}>
-                Entry: {t.entryPrice?.toFixed(2) ?? "-"}
-              </Text>
 
-              <Text style={styles.tradeText}>
-                Exp:{" "}
-                {t.expireTime
-                  ? `${Math.max(
-                      0,
-                      Math.floor((t.expireTime - Date.now()) / 1000)
-                    )}s`
-                  : "-"}
-              </Text>
-
-              {/* force re-render for countdown */}
+              {/* force re-render */}
               <Text style={{ height: 0, opacity: 0 }}>{tick}</Text>
             </View>
           ))
@@ -204,33 +181,32 @@ export default function TradeSummaryBar({
                 : `-$${Number(t.amount).toFixed(2)}`;
 
             return (
-              <View
-                key={t.id ?? i}
-                style={[
-                  styles.tradeRow,
-                  {
-                    backgroundColor:
-                      t.result === "GAIN" ? "#1e4620" : "#5a1d1d",
-                  },
-                ]}
-              >
-                <Text style={styles.tradeText}>
-                  {(t.type ?? "buy").toUpperCase()} • {t.result} • {profit}
-                </Text>
+  <View
+    key={t.id ?? i}
+    style={[
+      styles.tradeRow,
+      {
+        backgroundColor:
+          t.result === "GAIN" ? "#1e4620" : "#5a1d1d",
+      },
+    ]}
+  >
+    <Text style={styles.tradeText}>
+      {(t.type ?? "buy").toUpperCase()} • {t.result} • {profit}
+    </Text>
 
-                <Text style={styles.tradeText}>
-                  Open: {t.entryPrice?.toFixed(2)} → Close:{" "}
-                  {t.closePrice?.toFixed(2)}
-                </Text>
+    <Text style={styles.tradeText}>
+      Open: {t.entryPrice?.toFixed(2)} → Close:{" "}
+      {t.closePrice?.toFixed(2)}
+    </Text>
 
-                <Text style={styles.timeText}>
-                  Time Closed:{" "}
-                  {t.closeTime
-                    ? new Date(t.closeTime).toLocaleTimeString()
-                    : "-"}
-                </Text>
-              </View>
-            );
+    <Text style={styles.timeText}>
+      Opened: {formatTime(t.openTime)} | Closed:{" "}
+      {formatTime(t.closeTime)}
+    </Text>
+  </View>
+);
+
           })
         )}
       </ScrollView>
@@ -240,7 +216,8 @@ export default function TradeSummaryBar({
 
 /* ===============================
    STYLES
-   =============================== */
+=============================== */
+
 const styles = StyleSheet.create({
   panel: {
     position: "absolute",

@@ -2,7 +2,7 @@
 import React from "react";
 import {  Text, StyleSheet, Linking, TouchableOpacity, ScrollView } from "react-native";
 
-export default function AboutContactScreen() {
+export default function AboutScreen() {
   const email = "ebech94@gmail.com"; // <-- replace with your email
 
   const handleEmailPress = () => {

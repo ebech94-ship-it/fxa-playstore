@@ -2,6 +2,7 @@
 import { Ionicons } from "@expo/vector-icons";
 import uuid from "react-native-uuid";
 
+import type { AccountType, TournamentAccount } from "../types/accounts";
 
 import type { ChartViewHandle } from "./ChartView";
 
@@ -11,25 +12,25 @@ import {
   Animated, Dimensions, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from "react-native";
 
-import AboutContact from "./AboutContact";
+import AboutScreen from "./About";
 import AccountSwitcher from "./AccountSwitcher";
 import AlertScreen from "./Alert";
 import ChartView from "./ChartView";
 import DepositWithdrawScreen from "./DepositWithdraw";
+import InviteEarnScreen from "./InviteEarn";
 import LeaderboardBar from "./LeaderboardBar";
 import ProfileScreen from "./Profile";
 import TournamentScreen from "./Tournament";
-import TradeHistoryScreen from "./Tradehistory";
 import TradeSummaryBar from "./TradeSummaryBar";
 
 
 import { getAuth, onAuthStateChanged } from "firebase/auth";
-import { doc, onSnapshot,  setDoc, updateDoc, } from "firebase/firestore";
+import { doc, increment, onSnapshot, serverTimestamp, setDoc, updateDoc, } from "firebase/firestore";
 import { db } from "../firebaseConfig";
 
 // ------------------------ TYPES ------------------------
 
-type AccountType = "real" | "demo" | "tournament";
+
 type TradeType = "buy" | "sell";
 
 interface Trade {
@@ -37,16 +38,22 @@ interface Trade {
   type: TradeType;
   amount: number;
   entryPrice: number;
+   currentPrice: number; 
   expireTime: number;
   account: AccountType;
+  
+  openTime: number;
     
 }
+
+
 
 interface ClosedTrade extends Trade {
   result: "GAIN" | "LOSS";
   payout: number;
   closePrice: number;
-   openPrice: number; 
+   openPrice: number;
+    closeTime: number; 
   
 }
 
@@ -55,31 +62,30 @@ interface ClosedTrade extends Trade {
 
 const auth = getAuth();
 
-
 const updateAccountBalance = async (
   userId: string,
   account: AccountType,
-  newBalance: number
+  delta: number
 ) => {
-  // ❌ Never update demo balance
-  if (account === "demo") return;
+  // ❌ Demo → local only
+  // ❌ Tournament → handled elsewhere
+  if (account.type !== "real") return;
 
   try {
     const userRef = doc(db, "users", userId);
-    await updateDoc(userRef, {
-      [`accounts.${account}.balance`]: newBalance,
-    });
 
-    console.log(`Updated ${account} balance →`, newBalance);
-  } catch (error) {
-    console.error("Error updating balance:", error);
+    await updateDoc(userRef, {
+      "accounts.real.balance": increment(delta),
+    });
+  } catch (e) {
+    console.error("❌ Failed to update account balance:", e);
   }
 };
 
 // ------------------------ MAIN COMPONENT ------------------------
 
 export default function TradingLayout() {
-  const PAYOUT = 90; // Fixed payout %
+  const PAYOUT = 95; // Fixed payout %
   const [activePage, setActivePage] = useState<string | null>(null);
   const [amount, setAmount] = useState<number>(10);
   const [expiration, setExpiration] = useState<string>("15s");
@@ -90,7 +96,6 @@ export default function TradingLayout() {
     demo: 1000,
     tournament: 0,
   });
-
 const [profile, setProfile] = useState<any>(null);
 const [profileVerified, setProfileVerified] = useState<boolean>(false);
 
@@ -124,11 +129,17 @@ useEffect(() => {
       const userData = docSnap.data();
       if (!userData?.accounts) return;
 
-      setBalances(prev => ({
-  real: userData.accounts?.real?.balance ?? prev.real,
+    setBalances(prev => ({
+  real:
+    typeof userData.accounts?.real?.balance === "number"
+      ? userData.accounts.real.balance
+      : prev.real,
+
   demo: prev.demo,
-  tournament: userData.accounts?.tournament?.balance ?? prev.tournament,
+tournament: prev.tournament, // 🔥 DO NOT TOUCH HERE
+
 }));
+
 
     });
 
@@ -139,9 +150,11 @@ useEffect(() => {
   return () => unsubAuth(); // cleanup auth listener
 }, []); // no external deps needed now
 
-  const [activeAccount, setActiveAccount] = useState<
-    "real" | "demo" | "tournament"
-  >("demo");
+  const [activeAccount, setActiveAccount] = useState<AccountType>({
+  type: "demo",
+});
+const [tournaments, setTournaments] = useState<TournamentAccount[]>([]);
+
 
 const chartRef = useRef<ChartViewHandle | null>(null);
 
@@ -184,16 +197,10 @@ const closeTradeInFirestore = async (userId: string, closed: ClosedTrade) => {
 };
 
 
- 
  // Open a trade (deduct stake now, add marker now)
 const handleTrade = (type: "buy" | "sell") => {
   const stake = Number(amount) || 0;
   if (stake <= 0) return;
-
-  if (balances[activeAccount] - stake < 0) {
-    console.log("Not enough balance");
-    return;
-  }
 
   const uid = auth.currentUser?.uid;
   if (!uid) {
@@ -207,25 +214,63 @@ const handleTrade = (type: "buy" | "sell") => {
     return;
   }
 
+  // 🔎 CHECK BALANCE FIRST
+  if (activeAccount.type === "demo" && balances.demo - stake < 0) {
+    console.log("Not enough demo balance");
+    return;
+  }
+
+  if (activeAccount.type === "real" && balances.real - stake < 0) {
+    console.log("Not enough real balance");
+    return;
+  }
+
+ if (activeAccount.type === "tournament") {
+  if (balances.tournament - stake < 0) {
+    console.log("Not enough tournament balance");
+    return;
+  }
+}
+
+
   const now = Date.now();
   const id = uuid.v4() as string;
 
+  // ===============================
+  // 💰 DEDUCT STAKE IMMEDIATELY
+  // ===============================
 
-  // Deduct stake immediately (demo = local only)
-  setBalances((prev) => {
-    const newBalance = prev[activeAccount] - stake;
-
-    // SAVE ONLY for real & tournament
-    if (activeAccount !== "demo") {
-      const uidLocal = auth.currentUser?.uid;
-      if (uidLocal) updateAccountBalance(uidLocal, activeAccount, newBalance);
-    }
-
-    return {
+  // 🟦 DEMO → local only
+  if (activeAccount.type === "demo") {
+    setBalances((prev) => ({
       ...prev,
-      [activeAccount]: newBalance,
-    };
-  });
+      demo: prev.demo - stake,
+    }));
+  }
+
+  // 🟨 REAL → Firestore
+  if (activeAccount.type === "real") {
+    updateAccountBalance(uid, activeAccount, -stake);
+  }
+
+  // 🟥 TOURNAMENT → tournament player doc
+  if (activeAccount.type === "tournament") {
+    const playerRef = doc(
+      db,
+      "tournaments",
+      activeAccount.tournamentId,
+      "players",
+      uid
+    );
+
+    updateDoc(playerRef, {
+      balance: increment(-stake),
+      updatedAt: serverTimestamp(),
+    });
+  }
+
+  
+
 
   // Track open trade (include openPrice for summary)
   const t: Trade & { openPrice?: number } = {
@@ -233,21 +278,24 @@ const handleTrade = (type: "buy" | "sell") => {
     type,
     amount: stake,
     entryPrice,
+    currentPrice: entryPrice,
     openPrice: entryPrice, // keep an explicit field for summary & closedTrades
+    openTime: now,
     expireTime: now + parseExpirationMs(expiration),
     account: activeAccount,
   };
 
   setOpenTrades((prev) => [...prev, t]);
 
-  // 🔥 SAVE TO FIRESTORE
+// 🔥 SAVE TO FIRESTORE (ONLY REAL & TOURNAMENT)
+if (activeAccount.type !== "demo") {
   createTradeInFirestore(uid, t);
+}
 
-  // Calculate potential profit
-  const potentialProfit = stake * (1 + profitPercent / 100);
+// Calculate potential profit
+const potentialProfit = stake * (1 + profitPercent / 100);
 
-  
- // Drop a marker on the chart — correct 6-argument call
+// Drop a marker on the chart — correct 6-argument call
 if (chartRef.current?.onTrade) {
   chartRef.current.onTrade(
     type.toUpperCase(),             // string
@@ -260,98 +308,109 @@ if (chartRef.current?.onTrade) {
 }
 
 console.log(
-  `Opened ${type} ${stake} @ ${entryPrice} on ${activeAccount}| Potential: $${potentialProfit.toFixed(
-    2
-  )}`
+  `Opened ${type.toUpperCase()} ${stake} @ ${entryPrice} | Account=${activeAccount.type}`
 );
 
 };
-
-  // Resolve expired trades every second: win/loss → update balance, remove marker
+// 🕒 SINGLE MASTER CLOCK — updates price + resolves trades
 useEffect(() => {
   const timer = setInterval(() => {
     const now = Date.now();
-    const finalPrice = chartRef.current?.getCurrentPrice?.();
-    if (finalPrice == null) return;
+
+    // 1️⃣ Get ONE price for this tick
+    const livePrice = chartRef.current?.getCurrentPrice?.();
+    if (livePrice == null) return;
 
     setOpenTrades((prev) => {
-      let stillOpen: Trade[] = [];
+      const stillOpen: Trade[] = [];
 
       prev.forEach((t) => {
-        if (t.expireTime <= now) {
-          // WIN / LOSS
-          const wentUp = finalPrice > t.entryPrice;
-          const wentDown = finalPrice < t.entryPrice;
-          const isWin =
-            (t.type === "buy" && wentUp) ||
-            (t.type === "sell" && wentDown);
+        // 2️⃣ Update trade price
+        const updatedTrade = {
+          ...t,
+          currentPrice: livePrice,
+        };
 
-          // Calculate payout ONCE
-          const tradePayout = isWin
-            ? t.amount * (1 + profitPercent / 100)
-            : 0;
-
-          // -----------------------
-          // 🟢 WIN → add payout
-          // -----------------------
-          if (isWin) {
-            setBalances((b) => {
-              const newBalance = b[t.account] + tradePayout;
-
-              // Firestore update (real + tournament only)
-              if (t.account !== "demo") {
-                const uid = auth.currentUser?.uid;
-                if (uid) updateAccountBalance(uid, t.account, newBalance);
-              }
-
-              return { ...b, [t.account]: newBalance };
-            });
-
-            console.log(
-              `WIN ${t.type} → +${tradePayout} | entry=${t.entryPrice} close=${finalPrice}`
-            );
-          }
-
-          // -----------------------
-          // 🔴 LOSS → no balance change
-          // -----------------------
-          else {
-            console.log(
-              `LOSS ${t.type} | entry=${t.entryPrice} close=${finalPrice} | balance unchanged`
-            );
-
-            // Firestore still gets the unchanged balance
-            setBalances((b) => {
-              const newBalance = b[t.account];
-
-              if (t.account !== "demo") {
-                const uid = auth.currentUser?.uid;
-                if (uid) updateAccountBalance(uid, t.account, newBalance);
-              }
-
-              return b; // no change
-            });
-          }
-
-          // Build closed trade record
-          const closedTrade: ClosedTrade = {
-            ...t,
-            openPrice: (t as any).openPrice ?? t.entryPrice,
-            result: isWin ? "GAIN" : "LOSS",
-            payout: tradePayout,
-            closePrice: finalPrice,
-          };
-
-          setClosedTrades((prev) => [...prev, closedTrade]);
-
-          const uidLocal = auth.currentUser?.uid;
-          if (uidLocal) closeTradeInFirestore(uidLocal, closedTrade);
-
-          // Remove marker
-          chartRef.current?.removeMarker?.(t.id);
-        } else {
-          stillOpen.push(t);
+        // 3️⃣ Not expired → keep it
+        if (t.expireTime > now) {
+          stillOpen.push(updatedTrade);
+          return;
         }
+
+        // 4️⃣ Expired → decide WIN / LOSS
+        const isWin =
+          (t.type === "buy" && livePrice > t.entryPrice) ||
+          (t.type === "sell" && livePrice < t.entryPrice);
+
+        const payout = isWin
+          ? t.amount * (1 + profitPercent / 100)
+          : 0;
+
+        if (isWin) {
+          console.log(
+            `🟢 WIN | ${t.type.toUpperCase()} | entry=${t.entryPrice} close=${livePrice}`
+          );
+
+          const uid = auth.currentUser?.uid;
+          if (!uid) return;
+
+          // 🟦 DEMO → local only
+          if (t.account.type === "demo") {
+            setBalances((b) => ({
+              ...b,
+              demo: b.demo + payout,
+            }));
+          }
+
+          // 🟨 REAL → users/{uid}
+          if (t.account.type === "real") {
+            updateAccountBalance(uid, t.account, payout);
+          }
+
+          // 🟥 TOURNAMENT → tournaments/{id}/players/{uid}
+          if (t.account.type === "tournament") {
+            const playerRef = doc(
+              db,
+              "tournaments",
+              t.account.tournamentId,
+              "players",
+              uid
+            );
+
+            updateDoc(playerRef, {
+              balance: increment(payout),
+              updatedAt: serverTimestamp(),
+            });
+          }
+        } else {
+          console.log(
+            `🔴 LOSS | ${t.type.toUpperCase()} | entry=${t.entryPrice} close=${livePrice}`
+          );
+        }
+
+        // 5️⃣ Build closed trade
+        const closedTrade: ClosedTrade = {
+          ...updatedTrade,
+          result: isWin ? "GAIN" : "LOSS",
+          payout,
+          closePrice: livePrice,
+          openPrice: t.entryPrice,
+          closeTime: Date.now(),
+        };
+
+        // ✅ Always keep locally (UI / history)
+        setClosedTrades((c) => [...c, closedTrade]);
+
+        // ✅ Save to Firestore ONLY for real & tournament
+        if (t.account.type !== "demo") {
+          const uid = auth.currentUser?.uid;
+          if (uid) {
+            closeTradeInFirestore(uid, closedTrade);
+          }
+        }
+
+        // 6️⃣ Remove chart marker
+        chartRef.current?.removeMarker?.(t.id);
       });
 
       return stillOpen;
@@ -384,6 +443,10 @@ useEffect(() => {
   return () => unsub();
 }, [currentUser]);
 
+useEffect(() => {
+  console.log("🔥 TradingLayout balances:", balances);
+}, [balances]);
+
   // Marquee
   const screenWidth = Dimensions.get("window").width;
   const scrollAnim = useRef(new Animated.Value(screenWidth)).current;
@@ -398,6 +461,81 @@ useEffect(() => {
     };
     animate();
   }, [scrollAnim, screenWidth]);
+
+useEffect(() => {
+  if (!currentUser) return;
+
+  const userRef = doc(db, "users", currentUser.uid);
+
+  let unsubPlayer: (() => void) | null = null;
+
+  const unsubUser = onSnapshot(userRef, (snap) => {
+    if (!snap.exists()) return;
+
+    const activeTournament =
+      snap.data()?.accounts?.tournament?.activeTournament;
+
+    if (!activeTournament) {
+  setBalances((b) => ({ ...b, tournament: 0 }));
+  setTournaments([]);
+
+  if (unsubPlayer) {
+    unsubPlayer();
+    unsubPlayer = null;
+  }
+  return;
+}
+
+
+    // 🔁 Re-switch listener if tournament changes
+    if (unsubPlayer) {
+      unsubPlayer();
+      unsubPlayer = null;
+    }
+
+    const playerRef = doc(
+      db,
+      "tournaments",
+      activeTournament,
+      "players",
+      currentUser.uid
+    );
+
+    unsubPlayer = onSnapshot(playerRef, (playerSnap) => {
+      if (!playerSnap.exists()) {
+        console.log("⚠️ Player doc not found");
+        return;
+      }
+
+      const bal = playerSnap.data()?.balance;
+
+      if (typeof bal === "number") {
+  setBalances((b) => ({
+    ...b,
+    tournament: bal,
+  }));
+
+  setTournaments([
+    {
+      id: activeTournament,
+      name: "Active Tournament",
+      balance: bal,
+      status: "live",
+    },
+  ]);
+}
+
+    });
+  });
+
+  return () => {
+    unsubUser();
+    if (unsubPlayer) unsubPlayer();
+  };
+}, [currentUser]);
+
+
+
   /* -----------------------------------------------------------
    5. PROFILE COMPLETION CHECK — FIXED
       ✔ This must NOT block save
@@ -436,9 +574,9 @@ useEffect(() => {
     { icon: "person-outline", label: "Profile", color: "#00FF00" },
     { icon: "cash-outline", label: "DepositWithdraw", color: "green" },
     { icon: "trophy-outline", label: "Tournaments", color: "#FFD700" },
-    { icon: "time-outline", label: "Trade History", color: "#00BFFF" },
+    { icon :"gift-outline", label: "Invite&Earn", color: "#00BFFF" },
     { icon: "notifications-outline", label: "Alerts", color: "#FF4500" },
-     { icon: "information-circle-outline", label: "AboutContact", color: "#FF69B4" },
+     { icon: "information-circle-outline", label: "About", color: "#FF69B4" },
   ];
 
   const renderPage = () => {
@@ -452,8 +590,8 @@ useEffect(() => {
       case "Tournaments":
         Component = TournamentScreen;
         break;
-      case "Trade History":
-        Component = TradeHistoryScreen;
+      case "Invite&Earn":
+        Component = InviteEarnScreen;
         break;
       case "Alerts":
         Component = AlertScreen;
@@ -461,14 +599,15 @@ useEffect(() => {
       case "DepositWithdraw":
         Component = DepositWithdrawScreen;
         break;
-       case "AboutContact":
-  Component = AboutContact;
+       case "About":
+  Component = AboutScreen;
   break;
       default:
         return null;
     }
 
     return (
+    
   <View style={styles.overlay}>
     <TouchableOpacity
       style={styles.closeButton}
@@ -497,12 +636,16 @@ useEffect(() => {
   return (
   <View style={{ flex: 1, flexDirection: "row", backgroundColor: "#0a0a0a" }}>
 
-    {/* 🔥 FLOATING ACCOUNT SWITCHER – at top-right, OUTSIDE right panel */}
-    <AccountSwitcher
-  balances={balances}
+{/* 🔥 FLOATING ACCOUNT SWITCHER – top-right */}
+<AccountSwitcher
+  balances={{
+    demo: balances.demo,
+    real: balances.real,
+  }}
+   tournaments={tournaments}
   activeAccount={activeAccount}
-  onSwitch={(id) => {
-    setActiveAccount(id);
+  onSwitch={(account) => {
+    setActiveAccount(account);
 
     // resize chart after account switches
     setTimeout(() => {
@@ -511,19 +654,22 @@ useEffect(() => {
   }}
   onTopUp={() => {
     // only demo account can top up
-    if (activeAccount !== "demo") {
+    if (activeAccount.type !== "demo") {
       alert("You can only top up your demo account.");
       return;
     }
+
     // ✔ local balance update (no Firestore write)
     setBalances((prev) => ({
       ...prev,
       demo: prev.demo + 10000,
     }));
   }}
-  onDeposit={() => setActivePage("DepositWithdraw")}
+    onDeposit={() => setActivePage("DepositWithdraw")}
   onWithdraw={() => setActivePage("DepositWithdraw")}
+
 />
+
 
     {/* Left vertical menu */}
     <ScrollView
@@ -617,7 +763,7 @@ useEffect(() => {
       <TradeSummaryBar
   openTrades={openTrades}
   closedTrades={closedTrades}
-  activeAccount={activeAccount}
+  activeAccount={activeAccount.type}
    onResizeChart={() => chartRef.current?.resize?.()}
 />
 

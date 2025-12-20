@@ -1,7 +1,7 @@
 import { AntDesign, Ionicons } from "@expo/vector-icons";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import * as AuthSession from "expo-auth-session";
+
 import * as Google from "expo-auth-session/providers/google";
 import { useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
@@ -12,7 +12,7 @@ import {
   signInWithCredential,
   signInWithEmailAndPassword,
 } from "firebase/auth";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
 import { useEffect, useState } from "react";
 
 import {
@@ -31,6 +31,51 @@ import {
 import { auth, db } from "../firebaseConfig";
 
 WebBrowser.maybeCompleteAuthSession();
+
+ // 📘 Create Firestore profile
+export const createUserAccounts = async (
+  uid: string,
+  name: string,
+  email: string
+) => {
+  const userRef = doc(db, "users", uid);
+  const docSnap = await getDoc(userRef);
+
+  // Only create once
+  if (!docSnap.exists()) {
+    // 🔗 Read referral
+    const inviteRef = await AsyncStorage.getItem("inviteRef");
+
+    // ✅ Determine valid referrer BEFORE writing
+    let referredBy: string | null = null;
+
+    if (inviteRef && inviteRef !== uid) {
+      const refUserSnap = await getDoc(doc(db, "users", inviteRef));
+      if (refUserSnap.exists()) {
+        referredBy = inviteRef;
+      }
+    }
+
+    // ✅ Now create user
+    await setDoc(userRef, {
+      uid,
+      name,
+      email,
+      referredBy,
+      createdAt: serverTimestamp(),
+      accounts: {
+        demo: { balance: 1000, type: "practice" },
+        real: { balance: 0, type: "real" },
+        tournament: { balance: 0, type: "tournament" },
+      },
+    });
+
+    // 🧹 Clear referral after use
+    if (inviteRef) {
+      await AsyncStorage.removeItem("inviteRef");
+    }
+  }
+};
 
 export default function Welcome() {
   const router = useRouter();
@@ -53,66 +98,60 @@ const [accepted, setAccepted] = useState(false);
   // 🔐 Google login (clean, correct, single setup)
 // Your client IDs
 // 🔐 GOOGLE LOGIN SETUP
-const redirectUri = AuthSession.makeRedirectUri();
+
 
 const [request, response, promptAsync] = Google.useAuthRequest({
-  androidClientId: "895363795197-g1dkogsl8uu0k5en3ks24uitcs5khfnn.apps.googleusercontent.com",
-  webClientId: "895363795197-qmuod36rndhkmef0kb0kv3qhjcjn4d2c.apps.googleusercontent.com",
-  clientId: "895363795197-qmuod36rndhkmef0kb0kv3qhjcjn4d2c.apps.googleusercontent.com",
+  androidClientId:
+    "895363795197-g1dkogsl8uu0k5en3ks24uitcs5khfnn.apps.googleusercontent.com",
 
-  redirectUri,
+  webClientId:
+    "895363795197-qmuod36rndhkmef0kb0kv3qhjcjn4d2c.apps.googleusercontent.com",
 
-  // ‼️ REQUIRED for Firebase
-  responseType: "id_token",
   scopes: ["profile", "email"],
+  responseType: "id_token",
 });
+
 
   const [showSignupEmail, setShowSignupEmail] = useState(false);
   const [showSignupPhone, setShowSignupPhone] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
-
+const [inviteRef, setInviteRef] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  // 📘 Create Firestore profile
-  const createUserAccounts = async (uid: string, name: string, email: string) => {
-    const userRef = doc(db, "users", uid);
-    const docSnap = await getDoc(userRef);
-    if (!docSnap.exists()) {
-      await setDoc(userRef, {
-        name,
-        email,
-        createdAt: new Date().toISOString(),
-        accounts: {
-          demo: { balance: 1000, type: "practice" },
-          real: { balance: 0, type: "real" },
-          tournament: { balance: 0, type: "tournament" },
-        },
-      });
-    }
-  };
-
-
+useEffect(() => {
+  AsyncStorage.getItem("inviteRef").then((ref) => {
+    if (ref) setInviteRef(ref);
+  });
+}, []);
   // 🔁 Auto login if already authenticated
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, async (user) => {
-      if (user) {
-        await AsyncStorage.setItem("isLoggedIn", "true");
-       router.replace("/tradinglayout");
+  const unsub = onAuthStateChanged(auth, async (user) => {
+    const inviteRef = await AsyncStorage.getItem("inviteRef");
 
-      }
-    });
-    return unsub;
-  }, [router]);
+    if (user && !inviteRef) {
+      await AsyncStorage.setItem("isLoggedIn", "true");
+      router.replace("/tradinglayout");
+    }
+  });
+
+  return unsub;
+}, [router]);
+
 
   // 🎯 Google login handler
 useEffect(() => {
+  if (!response) return;
+
   const run = async () => {
-    if (response?.type === "success" && response.authentication?.idToken) {
+    if (response.type === "success" && response.authentication?.idToken) {
       try {
         setLoading(true);
-const credential = GoogleAuthProvider.credential(
-  response.authentication.idToken);
-const userCred = await signInWithCredential(auth, credential);
+
+        const credential = GoogleAuthProvider.credential(
+          response.authentication.idToken
+        );
+
+        const userCred = await signInWithCredential(auth, credential);
 
         await createUserAccounts(
           userCred.user.uid,
@@ -121,7 +160,6 @@ const userCred = await signInWithCredential(auth, credential);
         );
 
         await AsyncStorage.setItem("isLoggedIn", "true");
-
         router.replace("/tradinglayout");
 
       } catch (e) {
@@ -134,6 +172,7 @@ const userCred = await signInWithCredential(auth, credential);
 
   run();
 }, [response, router]);
+
 
   // Animations
   const openForm = (setter: any) => {
@@ -244,6 +283,13 @@ const handleLogin = async () => {
       >
         <View style={styles.overlay}>
           <Text style={styles.title}>Welcome to Forex Tournaments Arena</Text>
+          {inviteRef && (
+  <View style={{ marginBottom: 16 }}>
+    <Text style={{ color: "#21e6c1", textAlign: "center" }}>
+      🎁 You were invited by a friend
+    </Text>
+  </View>
+)}
           <Text style={styles.desc}>
             Join live Forex Tournaments, compete for real cash rewards by growing your virtual account balance!
           </Text>

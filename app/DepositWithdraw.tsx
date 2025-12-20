@@ -9,8 +9,6 @@ import {
 } from "firebase/firestore";
 
 
-import { WebView, WebViewNavigation } from 'react-native-webview';
-
 import { useRouter } from "expo-router";
 import { useEffect, useState } from "react";
 import {
@@ -64,7 +62,6 @@ export default function PaymentsPage() {
   const [activeMethod, setActiveMethod] = useState("");
 
   const [modalVisible, setModalVisible] = useState(false);
-const [paymentModalVisible, setPaymentModalVisible] = useState(false);
 
 
   const [loading, setLoading] = useState(false);
@@ -74,7 +71,6 @@ const [paymentModalVisible, setPaymentModalVisible] = useState(false);
 
   // track auth state gracefully
   const [currentUser, setCurrentUser] = useState(auth.currentUser);
-const [paymentLink, setPaymentLink] = useState<string | null>(null);
 
 
   // ---------------------------
@@ -150,19 +146,8 @@ const openForm = async (method: string) => {
   // -------------------------
   // Deposit (create payment)
   // -------------------------
- const handleFlutterwavePayment = async (form: any) => {
-  console.log("Starting Flutterwave payment...", form);
-
-  const numeric = parseFloat(form.amount);
-  if (!form.amount || isNaN(numeric) || numeric <= 0) {
-    Alert.alert("Invalid amount", "Please enter a valid amount greater than 0.");
-    return;
-  }
-
-  if (!currentUser?.email || !currentUser?.uid) {
-    Alert.alert("Not logged in", "Please login to make a deposit.");
-    return;
-  }
+ const handleCampayPayment = async (form: any) => {
+  if (!currentUser?.uid) return;
 
   setLoading(true);
 
@@ -171,43 +156,32 @@ const openForm = async (method: string) => {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        amount: numeric,
-        currency: selectedCurrency,
-        email: currentUser.email,
         userId: currentUser.uid,
-        type: "deposit",
-        method: activeMethod,
-        fullName: form.fullName,
+        amount: Number(form.amount),
         phone: form.phone,
-        note: form.note,
+        operator: activeMethod, // MTN or Orange
+        currency: selectedCurrency,
       }),
     });
 
-    if (!res.ok) {
-      const text = await res.text();
-      console.error("Create payment FAILED:", res.status, text);
-      Alert.alert("Payment Error", "Could not create payment. Try again.");
-      return;
-    }
-
     const data = await res.json();
-    console.log("Payment created:", data);
 
-    const payLink = data.link;
-    if (!payLink) {
-      Alert.alert("Error", "No payment link returned by the server.");
+    if (!res.ok) {
+      Alert.alert("Payment Error", data.error || "Failed");
       return;
     }
-setPaymentLink(payLink);
-setPaymentModalVisible(true);
 
-  } catch (err) {
-    console.error("Flutterwave Payment Error:", err);
-    Alert.alert("Network Error", "Unable to reach payment server.");
+    Alert.alert(
+      "Payment Started",
+      "Please confirm the payment on your phone."
+    );
+  } catch  {
+    Alert.alert("Network Error", "Server unreachable");
   } finally {
     setLoading(false);
   }
 };
+
 
   // -------------------------
   // Withdrawal (request)
@@ -314,7 +288,7 @@ const submitForm = async () => {
 
   try {
     if (isDeposit) {
-      await handleFlutterwavePayment(formData);   // pass full form
+      await handleCampayPayment(formData);    // pass full form
     } else {
       await handleWithdrawal();     // pass amount only
     }
@@ -460,82 +434,19 @@ const submitForm = async () => {
               <TouchableOpacity style={[styles.modalButton, { backgroundColor: "#FF6B6B" }]} onPress={() => setModalVisible(false)}>
                 <Text style={styles.modalButtonText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={[styles.modalButton, { backgroundColor: "#6a5acd" }]} onPress={submitForm}>
-                <Text style={styles.modalButtonText}>Submit</Text>
-              </TouchableOpacity>
+             <TouchableOpacity
+  disabled={loading} style={[styles.modalButton,
+    { backgroundColor: loading ? "#999" : "#6a5acd" },
+  ]} onPress={submitForm}> <Text style={styles.modalButtonText}> 
+  {loading ? "Processing..." : "Submit"}
+  </Text>
+</TouchableOpacity>
+
             </View>
 
           </View>
         </ScrollView>
       </Modal>
-
-{paymentModalVisible && paymentLink && (
-  <Modal visible={paymentModalVisible} animationType="slide">
-    <View style={{ flex: 1, backgroundColor: "#000" }}>
-      <WebView
-        source={{ uri: paymentLink }}
-       onNavigationStateChange={async (state: WebViewNavigation) => {
-  const url = state.url;
-  if (!url) return;
-
-  // Prevent multiple triggers
-  if (loading) return;
-
-  // When success
-  if (url.includes("status=successful") || url.includes("success")) {
-    setLoading(true);
-    setPaymentModalVisible(false);
-
-    try {
-      const uid = currentUser?.uid;
-      if (!uid) throw new Error("User not logged in");
-
-      const userRef = doc(db, "users", uid);
-      const depositRef = collection(db, "deposits");
-
-      const amount = Number(formData.amount);
-
-      await runTransaction(db, async (tx) => {
-        const snap = await tx.get(userRef);
-        if (!snap.exists()) throw "User not found";
-
-        const oldBalance = snap.data().walletBalance || 0;
-
-        // create deposit record
-        tx.set(doc(depositRef), {
-          userId: uid,
-          amount,
-          currency: selectedCurrency,
-          method: activeMethod,
-          status: "successful",
-          createdAt: serverTimestamp(),
-          type: "deposit",
-        });
-
-        // update wallet
-        tx.update(userRef, {
-          walletBalance: oldBalance + amount,
-        });
-      });
-
-      Alert.alert("Deposit Successful!", "Your wallet balance has been updated.");
-    } catch (err) {
-      Alert.alert("Error", String(err));
-    }
-
-    setLoading(false);
-  }
-
-  // When failed or cancelled
-  if (url.includes("cancel") || url.includes("failed")) {
-    setPaymentModalVisible(false);
-    Alert.alert("Payment Cancelled");
-  }
-}}
-      />
-    </View>
-  </Modal>
-)}
 
     </ScrollView>
   );

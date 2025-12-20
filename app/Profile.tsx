@@ -1,4 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import { deleteUser, getAuth } from "firebase/auth";
@@ -8,12 +9,14 @@ import {
   deleteDoc,
   doc,
   onSnapshot,
+  orderBy,
+  query,
   serverTimestamp,
   updateDoc,
+  where,
 } from "firebase/firestore";
 import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
 import { useEffect, useState } from "react";
-import DateTimePicker from "@react-native-community/datetimepicker";
 import {
   ActivityIndicator,
   Alert,
@@ -86,6 +89,10 @@ export default function ProfileScreen({
   const [supportName, setSupportName] = useState("");
   const [supportEmail, setSupportEmail] = useState("");
   const [supportMessage, setSupportMessage] = useState("");
+const [sendingSupport, setSendingSupport] = useState(false);
+
+const [userThread, setUserThread] = useState<any | null>(null);
+const [messages, setMessages] = useState<any[]>([]);
 
   const [profile, setProfile] = useState<UserProfile>({
     displayName: "",
@@ -119,7 +126,40 @@ useEffect(() => {
   return () => unsubscribe();
 }, [user]); // ✅ ESLint happy, no unused vars
 
+useEffect(() => {
+  if (!user) return;
 
+  const q = query(
+    collection(db, "supportThreads"),
+    where("userId", "==", user.uid)
+  );
+
+  const unsub = onSnapshot(q, (snap) => {
+    if (!snap.empty) {
+      const doc = snap.docs[0];
+      setUserThread({ id: doc.id, ...doc.data() });
+    }
+  });
+
+  return () => unsub();
+}, [user]);
+
+useEffect(() => {
+  if (!userThread) return;
+
+  const q = query(
+    collection(db, "supportThreads", userThread.id, "messages"),
+    orderBy("createdAt", "asc")
+  );
+
+  const unsub = onSnapshot(q, (snap) => {
+    const list: any[] = [];
+    snap.forEach((d) => list.push({ id: d.id, ...d.data() }));
+    setMessages(list);
+  });
+
+  return () => unsub();
+}, [userThread]);
 
 // ---------- Date Picker Handler ----------
 const handleDateChange = (event: any, selectedDate?: Date) => {
@@ -279,28 +319,68 @@ const handleLogout = async () => {
 
 // handleSupportSend
 const handleSupportSend = async () => {
-  if (!supportName || !supportEmail || !supportMessage) {
-    Alert.alert("Incomplete", "Please fill in all fields before sending.");
+  if (!supportMessage) {
+    Alert.alert("Incomplete", "Please enter a message.");
     return;
   }
 
-  try {
-    await addDoc(collection(db, "supportMessages"), {
-      name: supportName,
-      email: supportEmail,
-      message: supportMessage,
-      timestamp: serverTimestamp(),
-    });
+  if (!user) {
+    Alert.alert("Error", "You must be logged in.");
+    return;
+  }
 
-    Alert.alert("Sent!", "Your message has been delivered successfully.");
-    setSupportName("");
-    setSupportEmail("");
+  setSendingSupport(true);
+
+  try {
+    let threadId = userThread?.id;
+
+    // 🟡 CREATE THREAD ONLY ONCE
+    if (!threadId) {
+      const threadRef = await addDoc(collection(db, "supportThreads"), {
+        userId: user.uid,
+        userName: supportName,
+        userEmail: supportEmail,
+        status: "open",
+        lastMessage: supportMessage,
+        createdAt: serverTimestamp(),
+        lastMessageAt: serverTimestamp(),
+      });
+
+      threadId = threadRef.id;
+    } else {
+      // 🔁 UPDATE THREAD META
+      await updateDoc(doc(db, "supportThreads", threadId), {
+        lastMessage: supportMessage,
+        lastMessageAt: serverTimestamp(),
+        status: "open",
+      });
+    }
+
+    // 📨 ADD MESSAGE
+    await addDoc(
+      collection(db, "supportThreads", threadId, "messages"),
+      {
+        sender: "user",
+        text: supportMessage,
+        createdAt: serverTimestamp(),
+        read: false,
+      }
+    );
+
     setSupportMessage("");
-  } catch (error) {
-    console.error("Error sending message:", error);
-    Alert.alert("Error", "Failed to send message. Please try again.");
+  } catch (error: any) {
+    console.error("Support send error:", error);
+    Alert.alert("Error", "Failed to send message.");
+  } finally {
+    setSendingSupport(false);
   }
 };
+useEffect(() => {
+  if (user && !supportEmail) {
+    setSupportEmail(user.email || "");
+  }
+}, [user, supportEmail]);
+
 
   return (
     <View style={styles.modalContainer}>
@@ -586,39 +666,115 @@ const handleSupportSend = async () => {
         )}
 
         {/* Support Section */}
-       {activeSection === "support" && (
+{activeSection === "support" && (
   <ScrollView style={styles.section}>
     <Text style={styles.sectionTitle}>Support</Text>
 
-    <TextInput
-      style={styles.input}
-      placeholder="Your Name"
-      placeholderTextColor="#ccc"
-      value={supportName}
-      onChangeText={setSupportName}
-    />
+    {/* 🟢 CHAT MODE (thread exists) */}
+    {userThread ? (
+      <>
+        {/* Messages */}
+        {messages.map((m) => (
+          <View
+            key={m.id}
+            style={{
+              alignSelf: m.sender === "user" ? "flex-end" : "flex-start",
+              backgroundColor: m.sender === "user" ? "#21e6c1" : "#0f3460",
+              padding: 10,
+              borderRadius: 10,
+              marginBottom: 8,
+              maxWidth: "80%",
+            }}
+          >
+            <Text
+              style={{
+                color: m.sender === "user" ? "#16213e" : "#fff",
+              }}
+            >
+              {m.text}
+            </Text>
+          </View>
+        ))}
 
-    <TextInput
-      style={styles.input}
-      placeholder="Your Email"
-      placeholderTextColor="#ccc"
-      value={supportEmail}
-      onChangeText={setSupportEmail}
-    />
+        {/* Message input */}
+        <TextInput
+          style={[styles.input, { height: 80 }]}
+          placeholder="Type your message..."
+          placeholderTextColor="#ccc"
+          value={supportMessage}
+          onChangeText={setSupportMessage}
+          multiline
+        />
 
-    <TextInput
-      style={[styles.input, { height: 100 }]}
-      placeholder="Message"
-      placeholderTextColor="#ccc"
-      value={supportMessage}
-      onChangeText={setSupportMessage}
-      multiline
-    />
+        <TouchableOpacity
+          style={[
+            styles.sendButton,
+            { opacity: sendingSupport || !supportMessage ? 0.5 : 1 },
+          ]}
+          onPress={handleSupportSend}
+          disabled={sendingSupport}
+        >
+          {sendingSupport ? (
+            <ActivityIndicator color="#16213e" />
+          ) : (
+            <Text style={styles.sendText}>Send</Text>
+          )}
+        </TouchableOpacity>
+      </>
+    ) : (
+      /* 🟡 FIRST MESSAGE MODE */
+      <>
+        <TextInput
+          style={styles.input}
+          placeholder="Your Name"
+          placeholderTextColor="#ccc"
+          value={supportName}
+          onChangeText={setSupportName}
+        />
 
-    <TouchableOpacity style={styles.sendButton} onPress={handleSupportSend}>
-      <Text style={styles.sendText}>Send</Text>
-    </TouchableOpacity>
+        <TextInput
+          style={styles.input}
+          placeholder="Your Email"
+          placeholderTextColor="#ccc"
+          value={supportEmail}
+          onChangeText={setSupportEmail}
+        />
 
+        <TextInput
+          style={[styles.input, { height: 100 }]}
+          placeholder="Message"
+          placeholderTextColor="#ccc"
+          value={supportMessage}
+          onChangeText={setSupportMessage}
+          multiline
+        />
+
+        <TouchableOpacity
+          style={[
+            styles.sendButton,
+            {
+              opacity:
+                sendingSupport ||
+                !supportName ||
+                !supportEmail ||
+                !supportMessage
+                  ? 0.5
+                  : 1,
+            },
+          ]}
+          onPress={handleSupportSend}
+          disabled={sendingSupport}
+        >
+          {sendingSupport ? (
+            <ActivityIndicator color="#16213e" />
+          ) : (
+            <Text style={styles.sendText}>Send</Text>
+          )}
+        </TouchableOpacity>
+      </>
+    )}
+
+    {/* Back */}
     <TouchableOpacity
       style={styles.backButton}
       onPress={() => setActiveSection(null)}
@@ -627,6 +783,7 @@ const handleSupportSend = async () => {
     </TouchableOpacity>
   </ScrollView>
 )}
+
 
 {/*  DELETE ACCOUNT MODAL */}
 {showDeleteModal && (

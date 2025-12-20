@@ -1,6 +1,6 @@
 // LeaderboardBar.tsx — 3‑mode leaderboard (Live, CTA, Preview)
 import { getAuth } from "firebase/auth";
-import { collection, doc, getDoc, onSnapshot } from "firebase/firestore";
+import { collection, doc, onSnapshot } from "firebase/firestore";
 import { useContext, useEffect, useState } from "react";
 import { Alert, Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import Animated, { FadeIn, FadeOut, Layout } from "react-native-reanimated";
@@ -54,24 +54,31 @@ const handleRegister = () => {
 
 useEffect(() => {
   if (!tournamentId) {
-    setMode("preview");
-    setPlayers(PREVIEW_PLAYERS);
-    return;
-  }
+  setMode("preview");
+  setIsRegistered(false);
+  setPlayers(PREVIEW_PLAYERS);
+  return;
+}
+
 
   const tRef = doc(db, "tournaments", tournamentId);
-  getDoc(tRef).then((snap) => {
+
+  const unsub = onSnapshot(tRef, (snap) => {
     if (!snap.exists()) return;
 
     const status = snap.data().status;
+
     if (status === "live") {
       setMode("live");
     } else {
-      setMode("idle"); // upcoming / closed
+      setMode("idle");
       setPlayers([]);
     }
   });
+
+  return unsub;
 }, [tournamentId]);
+
 
   useEffect(() => {
   if (mode !== "live" || !tournamentId) return;
@@ -80,13 +87,14 @@ useEffect(() => {
     collection(db, `tournaments/${tournamentId}/players`),
     (snap) => {
       const list = snap.docs.map((d) => ({
-        id: d.id,
-        ...d.data(),
-      })) as Player[];
+  id: d.id,
+  ...d.data(),
+})) as Player[];
 
-      setPlayers(
-        list.sort((a, b) => (b.balance ?? 0) - (a.balance ?? 0))
-      );
+list.sort((a, b) => (b.balance ?? 0) - (a.balance ?? 0));
+
+setPlayers(list);
+
     }
   );
 
@@ -97,13 +105,21 @@ useEffect(() => {
 
   // Check if user registered
   useEffect(() => {
-    if (!tournamentId || !currentUser) return;
+  if (!tournamentId || !currentUser) return;
 
-    const rRef = doc(db, `tournaments/${tournamentId}/players`, currentUser.uid);
-    getDoc(rRef).then((snap) => {
-      setIsRegistered(snap.exists());
-    });
-  }, [tournamentId, currentUser]);
+  const rRef = doc(
+    db,
+    `tournaments/${tournamentId}/players`,
+    currentUser.uid
+  );
+
+  const unsub = onSnapshot(rRef, (snap) => {
+    setIsRegistered(snap.exists());
+  });
+
+  return unsub;
+}, [tournamentId, currentUser]);
+
 
   const renderCTA = () => (
   <View style={styles.ctaBox}>
