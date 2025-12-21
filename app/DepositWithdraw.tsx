@@ -279,21 +279,44 @@ const openForm = async (method: string) => {
 const submitForm = async () => {
   console.log("Submitting form:", formData);
 
-  if (!formData.amount || Number(formData.amount) <= 0) {
+  // 🔴 Basic amount validation
+  const numericAmount = Number(formData.amount);
+  if (!formData.amount || isNaN(numericAmount) || numericAmount <= 0) {
     Alert.alert("Invalid Amount", "Please enter a valid amount.");
     return;
+  }
+
+  // 🔴 Deposit-specific validation (CamPay)
+  if (isDeposit && (activeMethod === "MTN" || activeMethod === "Orange")) {
+    if (!formData.phone || !formData.phone.startsWith("237")) {
+      Alert.alert("Invalid Phone", "Phone number must start with 237");
+      return;
+    }
+
+    // Sandbox limit
+    if (numericAmount > 10) {
+      Alert.alert("Sandbox Limit", "Maximum test amount is 10 XAF");
+      return;
+    }
+
+    if (selectedCurrency !== "XAF") {
+      Alert.alert("Invalid Currency", "CamPay requires XAF currency");
+      return;
+    }
   }
 
   setLoading(true);
 
   try {
     if (isDeposit) {
-      await handleCampayPayment(formData);    // pass full form
+      // 🔹 CamPay deposit
+      await handleCampayPayment(formData);
     } else {
-      await handleWithdrawal();     // pass amount only
+      // 🔹 Withdrawal
+      await handleWithdrawal();
     }
 
-    // Only reset AFTER success
+    // ✅ Reset ONLY after successful submission
     setFormData({
       fullName: "",
       phone: "",
@@ -315,7 +338,6 @@ const submitForm = async () => {
     setLoading(false);
   }
 };
-
 
 
  
