@@ -1,50 +1,70 @@
-import { useEffect, useRef } from "react";
-import * as Linking from "expo-linking";
+import { auth } from "@/firebaseConfig"; // ✅ FIX
+import { useColorScheme } from "@/hooks/use-color-scheme";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import {
+    DarkTheme,
+    DefaultTheme,
+    ThemeProvider,
+} from "@react-navigation/native";
+import * as Linking from "expo-linking";
 import { Stack, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import {
-  ThemeProvider,
-  DarkTheme,
-  DefaultTheme,
-} from "@react-navigation/native";
-import { useColorScheme } from "@/hooks/use-color-scheme";
+import { onAuthStateChanged } from "firebase/auth";
+import { useEffect, useRef } from "react";
 import "react-native-reanimated";
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   const router = useRouter();
-  const handledRef = useRef(false); // 🔐 guard
+  const handledRef = useRef(false); // 🔐 deep link guard
 
+const routerRef = useRef(router);
+
+  /* ===============================
+     1️⃣ AUTH STATE LISTENER (GLOBAL)
+     =============================== */
   useEffect(() => {
-    const handleLink = async (url: string) => {
-      if (handledRef.current) return;
+  const unsub = onAuthStateChanged(auth, async (user) => {
+    if (user) {
+      await AsyncStorage.setItem("isLoggedIn", "true");
+      routerRef.current.replace("/tradinglayout");
+    }
+  });
 
-      const parsed = Linking.parse(url);
-      const ref = parsed.queryParams?.ref;
+  return unsub;
+}, []);
+// ✅ no router dependency needed
 
-      // Optional safety check
-      if (parsed.scheme !== "forextournamentsarena") return;
+  /* ===============================
+     2️⃣ DEEP LINK HANDLING
+     =============================== */
+ useEffect(() => {
+  const handleLink = async (url: string) => {
+    if (handledRef.current) return;
 
-      if (ref) {
-        handledRef.current = true;
-        await AsyncStorage.setItem("inviteRef", String(ref));
-        router.replace("/welcome");
-      }
-    };
+    const parsed = Linking.parse(url);
+    const ref = parsed.queryParams?.ref;
 
-    // Cold start
-    Linking.getInitialURL().then((url) => {
-      if (url) handleLink(url);
-    });
+    if (parsed.scheme !== "forextournamentsarena") return;
 
-    // Background → foreground
-    const sub = Linking.addEventListener("url", ({ url }) => {
-      handleLink(url);
-    });
+    if (ref) {
+      handledRef.current = true;
+      await AsyncStorage.setItem("inviteRef", String(ref));
+      routerRef.current.replace("/welcome");
+    }
+  };
 
-    return () => sub.remove();
-  }, [router]);
+  Linking.getInitialURL().then((url) => {
+    if (url) handleLink(url);
+  });
+
+  const sub = Linking.addEventListener("url", ({ url }) => {
+    handleLink(url);
+  });
+
+  return () => sub.remove();
+}, []);
+ // ✅ safe
 
   return (
     <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>

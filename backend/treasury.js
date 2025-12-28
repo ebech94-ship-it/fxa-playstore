@@ -161,99 +161,93 @@ module.exports = {
     });
 
     console.log(`📤 Withdrawal request for ${userId} → ${amount}`);
-  },/* ---------------------------------------------------
-   5️⃣  TOURNAMENT PAYOUT (FINAL SETTLEMENT)
---------------------------------------------------- */
-async processTournamentPayout(tournamentId) {
-  const tournamentRef = db.collection("tournaments").doc(tournamentId);
-  const treasuryRef = db.collection("treasury").doc("main");
+  },
 
-  await db.runTransaction(async (t) => {
-    const tournamentSnap = await t.get(tournamentRef);
-    if (!tournamentSnap.exists) throw new Error("Tournament not found");
+  /* ---------------------------------------------------
+     5️⃣  TOURNAMENT PAYOUT (FINAL SETTLEMENT)
+  --------------------------------------------------- */
+  async processTournamentPayout(tournamentId) {
+    const tournamentRef = db.collection("tournaments").doc(tournamentId);
+    const treasuryRef = db.collection("treasury").doc("main");
 
-    const tournament = tournamentSnap.data();
+    const payoutLogs = [];
 
-    if (tournament.paidOut)
-      throw new Error("Tournament already paid");
+    await db.runTransaction(async (t) => {
+      const tournamentSnap = await t.get(tournamentRef);
+      if (!tournamentSnap.exists) throw new Error("Tournament not found");
 
-    const prizePool = tournament.prizePool || 0;
-    const payoutStructure = tournament.payoutStructure || [];
+      const tournament = tournamentSnap.data();
+      if (tournament.paidOut) throw new Error("Tournament already paid");
 
-    if (payoutStructure.length === 0)
-      throw new Error("No payout structure defined");
+      const prizePool = tournament.prizePool || 0;
+      const payoutStructure = tournament.payoutStructure || [];
 
-    // Validate payout total
-    const totalDefined = payoutStructure.reduce(
-      (sum, p) => sum + p.amount,
-      0
-    );
+      if (!payoutStructure.length)
+        throw new Error("No payout structure defined");
 
-    if (totalDefined !== prizePool)
-      throw new Error("Payout structure does not match prize pool");
+      const totalDefined = payoutStructure.reduce(
+        (sum, p) => sum + p.amount,
+        0
+      );
 
-    const treasurySnap = await t.get(treasuryRef);
-    const treasuryBalance = treasurySnap.data()?.balance || 0;
+      if (totalDefined !== prizePool)
+        throw new Error("Payout structure mismatch");
 
-    if (treasuryBalance < prizePool)
-      throw new Error("Treasury insufficient");
+      const treasurySnap = await t.get(treasuryRef);
+      const treasuryBalance = treasurySnap.data()?.balance || 0;
 
-    // Get top N players (N = payoutStructure.length)
-    const playersSnap = await db
-      .collection("tournamentParticipants")
-      .doc(tournamentId)
-      .collection("players")
-      .orderBy("balance", "desc")
-      .limit(payoutStructure.length)
-      .get();
+      if (treasuryBalance < prizePool)
+        throw new Error("Treasury insufficient");
 
-    if (playersSnap.empty)
-      throw new Error("No players found");
+      const playersSnap = await db
+        .collection("tournamentParticipants")
+        .doc(tournamentId)
+        .collection("players")
+        .orderBy("balance", "desc")
+        .limit(payoutStructure.length)
+        .get();
 
-    let totalDistributed = 0;
+      let distributed = 0;
 
-    for (let i = 0; i < playersSnap.docs.length; i++) {
-      const playerDoc = playersSnap.docs[i];
-      const payout = payoutStructure[i];
+      playersSnap.docs.forEach((playerDoc, i) => {
+        const payout = payoutStructure[i];
+        if (!payout) return;
 
-      if (!payout) break;
+        const userRef = db.collection("users").doc(playerDoc.id);
 
-      const userRef = db.collection("users").doc(playerDoc.id);
-      const userSnap = await t.get(userRef);
-      if (!userSnap.exists) continue;
+        t.update(userRef, {
+          walletBalance: admin.firestore.FieldValue.increment(payout.amount),
+          lastUpdated: admin.firestore.Timestamp.now(),
+        });
 
-      const wallet = userSnap.data().walletBalance || 0;
+        payoutLogs.push({
+          userId: playerDoc.id,
+          tournamentId,
+          amount: payout.amount,
+          type: "tournament_win",
+          rank: payout.rank,
+          createdAt: admin.firestore.Timestamp.now(),
+        });
 
-      t.update(userRef, {
-        walletBalance: wallet + payout.amount,
-        lastUpdated: admin.firestore.Timestamp.now(),
+        distributed += payout.amount;
       });
 
-      await db.collection("transactions").add({
-        userId: playerDoc.id,
-        tournamentId,
-        amount: payout.amount,
-        type: "tournament_win",
-        rank: payout.rank,
-        createdAt: admin.firestore.Timestamp.now(),
+      t.update(treasuryRef, {
+        balance: treasuryBalance - distributed,
       });
 
-      totalDistributed += payout.amount;
+      t.update(tournamentRef, {
+        status: "completed",
+        paidOut: true,
+        paidOutAt: admin.firestore.Timestamp.now(),
+      });
+    });
+
+    // 🔹 Log payouts AFTER transaction
+    for (const log of payoutLogs) {
+      await db.collection("transactions").add(log);
     }
 
-    // Deduct from treasury & lock tournament
-    t.update(treasuryRef, {
-      balance: treasuryBalance - totalDistributed,
-    });
-
-    t.update(tournamentRef, {
-      status: "completed",
-      paidOut: true,
-      paidOutAt: admin.firestore.Timestamp.now(),
-    });
-  });
-
-  console.log(`🏆 Tournament ${tournamentId} payout completed`);
-}
-
+    console.log(`🏆 Tournament ${tournamentId} payout completed`);
+  },
 };

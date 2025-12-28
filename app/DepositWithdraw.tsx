@@ -1,5 +1,5 @@
 // PaymentsPage.tsx
-import { Picker } from "@react-native-picker/picker";
+
 import { LinearGradient } from "expo-linear-gradient";
 import {
   collection,
@@ -46,13 +46,16 @@ const fakeConversionRateAPI = async (currency: string) => {
 
 // 🔹 Payment method icons
 const paymentMethods = [
-  { name: "MTN", color: "#FFCD00", icon: require("../assets/images/mtn.png") },
-  { name: "Orange", color: "#FF7900", icon: require("../assets/images/orange.png") },
-  { name: "Visa", color: "#1A1F71", icon: require("../assets/images/VISA.jpg") },
-  { name: "MasterCard", color: "#EB001B", icon: require("../assets/images/mastercard.png") },
-  { name: "BTC", color: "#F7931A", icon: require("../assets/images/BT.jpg") },
-  { name: "USDT", color: "#26A17B", icon: require("../assets/images/USDT.jpg") },
+  { name: "MTN", color: "#FFCD00", icon: require("../assets/images/mtn.png"), enabled: true },
+  { name: "Orange", color: "#FF7900", icon: require("../assets/images/orange.png"), enabled: true },
+  { name: "Visa", color: "#1A1F71", icon: require("../assets/images/VISA.jpg"), enabled: true },
+  { name: "MasterCard", color: "#EB001B", icon: require("../assets/images/mastercard.png"), enabled: true },
+
+  // Disabled for now
+  { name: "BTC", color: "#555", icon: require("../assets/images/BT.jpg"), enabled: false },
+  { name: "USDT", color: "#555", icon: require("../assets/images/USDT.jpg"), enabled: false },
 ];
+
 
 export default function PaymentsPage() {
   const [isDeposit, setIsDeposit] = useState(true);
@@ -125,6 +128,16 @@ const handleChange = (key: string, value: string) => {
 const openForm = async (method: string) => {
   setActiveMethod(method);
 
+  // Force XAF for CamPay
+  if (method === "MTN" || method === "Orange") {
+  setSelectedCurrency("XAF");
+}
+
+if (method === "Visa" || method === "MasterCard") {
+  setSelectedCurrency("USD"); // or XAF depending on backend
+}
+
+
   // PREFILL amount into modal form
   setFormData((prev) => ({
     ...prev,
@@ -148,21 +161,30 @@ const openForm = async (method: string) => {
   // -------------------------
  const handleCampayPayment = async (form: any) => {
   if (!currentUser?.uid) return;
-
-  setLoading(true);
-
   try {
     const res = await fetch(`${API_BASE}/create-payment`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        userId: currentUser.uid,
-        amount: Number(form.amount),
-        phone: form.phone,
-        operator: activeMethod, // MTN or Orange
-        currency: selectedCurrency,
-      }),
+     body: JSON.stringify({
+  userId: currentUser.uid,
+  amount: Number(form.amount),
+  currency: selectedCurrency,
+
+  method:
+    activeMethod === "MTN" || activeMethod === "Orange"
+      ? "mobile"
+      : "card",
+
+  operator: activeMethod, // MTN, Orange, Visa, MasterCard
+
+  phone: activeMethod === "MTN" || activeMethod === "Orange"
+    ? form.phone
+    : undefined,
+}),
+
     });
+
+
 
     const data = await res.json();
 
@@ -171,18 +193,19 @@ const openForm = async (method: string) => {
       return;
     }
 
-    Alert.alert(
-      "Payment Started",
-      "Please confirm the payment on your phone."
-    );
+   Alert.alert(
+  "Payment Processing",
+  "Please confirm the payment on your phone.\n\nYour wallet will be updated once the payment is confirmed."
+);
+
   } catch  {
     Alert.alert("Network Error", "Server unreachable");
   } finally {
-    setLoading(false);
+  
   }
 };
 
-
+const IS_CAMPAY_SANDBOX = true;
   // -------------------------
   // Withdrawal (request)
   // -------------------------
@@ -196,9 +219,6 @@ const openForm = async (method: string) => {
       Alert.alert("Not logged in", "Please log in to request withdrawal.");
       return;
     }
-
-    setLoading(true);
-
     try {
       const uid = currentUser.uid;
       const userRef = doc(db, "users", uid);
@@ -252,7 +272,7 @@ const openForm = async (method: string) => {
         Alert.alert("Withdrawal Failed", "An error occurred. Try again later.");
       }
     } finally {
-      setLoading(false);
+     
     }
   };
 
@@ -274,34 +294,79 @@ const openForm = async (method: string) => {
     );
   }
 
+const isValidCameroonPhone = (phone: string, operator: string) => {
+  // must be digits only
+  if (!/^\d+$/.test(phone)) return false;
+
+  // must start with country code
+  if (!phone.startsWith("237")) return false;
+
+  // must be 12 digits total
+  if (phone.length !== 12) return false;
+
+  const MTN_PREFIXES = ["67", "68", "650", "651", "652", "653", "654", "655"];
+  const ORANGE_PREFIXES = ["69", "655", "656", "657", "658", "659"];
+
+  if (operator === "MTN") {
+    return MTN_PREFIXES.some(p => phone.startsWith("237" + p));
+  }
+
+  if (operator === "Orange") {
+    return ORANGE_PREFIXES.some(p => phone.startsWith("237" + p));
+  }
+
+  return false;
+};
 
 // Submit form depending on deposit/withdraw
 const submitForm = async () => {
   console.log("Submitting form:", formData);
 
-  // 🔴 Basic amount validation
   const numericAmount = Number(formData.amount);
   if (!formData.amount || isNaN(numericAmount) || numericAmount <= 0) {
     Alert.alert("Invalid Amount", "Please enter a valid amount.");
     return;
   }
 
-  // 🔴 Deposit-specific validation (CamPay)
-  if (isDeposit && (activeMethod === "MTN" || activeMethod === "Orange")) {
-    if (!formData.phone || !formData.phone.startsWith("237")) {
-      Alert.alert("Invalid Phone", "Phone number must start with 237");
-      return;
+  // 🔴 Deposit-specific validation
+  if (isDeposit) {
+    const isMoMo = activeMethod === "MTN" || activeMethod === "Orange";
+    const isCard = activeMethod === "Visa" || activeMethod === "MasterCard";
+
+    // 🔹 Mobile Money (MTN / Orange)
+    if (isMoMo) {
+     if (!isValidCameroonPhone(formData.phone, activeMethod)) {
+  Alert.alert(
+    "Invalid Phone Number",
+    `Please enter a valid ${activeMethod} Cameroon number starting with 237`
+  );
+  return;
+}
+
+
+      if (selectedCurrency !== "XAF") {
+        Alert.alert("Invalid Currency", "Mobile money requires XAF");
+        return;
+      }
+
+      // CamPay sandbox rule (MoMo only)
+     // CamPay sandbox rule (MoMo only)
+if (IS_CAMPAY_SANDBOX && numericAmount > 10) {
+  Alert.alert(
+    "Sandbox Limit",
+    "Test mode: maximum deposit is 10 XAF"
+  );
+  return;
+}
+
     }
 
-    // Sandbox limit
-    if (numericAmount > 10) {
-      Alert.alert("Sandbox Limit", "Maximum test amount is 10 XAF");
-      return;
-    }
-
-    if (selectedCurrency !== "XAF") {
-      Alert.alert("Invalid Currency", "CamPay requires XAF currency");
-      return;
+    // 🔹 Cards (Visa / MasterCard)
+    if (isCard) {
+      if (!["USD", "XAF"].includes(selectedCurrency)) {
+        Alert.alert("Invalid Currency", "Cards support USD or XAF only");
+        return;
+      }
     }
   }
 
@@ -309,14 +374,11 @@ const submitForm = async () => {
 
   try {
     if (isDeposit) {
-      // 🔹 CamPay deposit
       await handleCampayPayment(formData);
     } else {
-      // 🔹 Withdrawal
       await handleWithdrawal();
     }
 
-    // ✅ Reset ONLY after successful submission
     setFormData({
       fullName: "",
       phone: "",
@@ -330,7 +392,6 @@ const submitForm = async () => {
     });
 
     setModalVisible(false);
-
   } catch (err) {
     console.error("SubmitForm error:", err);
     Alert.alert("Error", "Unable to complete your request.");
@@ -371,27 +432,22 @@ const submitForm = async () => {
         onChangeText={setAmount}
       />
 
-      {/* Currency Picker */}
-      <Text style={styles.inputLabel}>Select Currency</Text>
-      <View style={styles.pickerContainer}>
-        <Picker
-          selectedValue={selectedCurrency}
-          onValueChange={(itemValue) => setSelectedCurrency(itemValue)}
-          style={styles.picker}
-        >
-          <Picker.Item label="USD" value="USD" />
-          <Picker.Item label="XAF" value="XAF" />
-          <Picker.Item label="EUR" value="EUR" />
-          <Picker.Item label="NGN" value="NGN" />
-          <Picker.Item label="BTC" value="BTC" />
-          <Picker.Item label="USDT" value="USDT" />
-        </Picker>
-      </View>
+      {/* Currency (Auto-selected by payment method) */}
+<Text style={styles.inputLabel}>Currency</Text>
+<View style={styles.input}>
+  <Text style={{ color: "#fff", fontSize: 16 }}>
+    {selectedCurrency}
+  </Text>
+</View>
+
 
       {/* Converted Amount */}
       <Text style={styles.convertedText}>
-        Equivalent: {convertedAmount} {selectedCurrency}
-      </Text>
+  {activeMethod === "MTN" || activeMethod === "Orange"
+    ? `Amount to pay: ${amount || 0} XAF`
+    : `Equivalent: ${convertedAmount} ${selectedCurrency}`}
+</Text>
+
 
       {/* Payment Methods */}
       <Text style={styles.methodHeader}>Select Payment Method</Text>
@@ -400,7 +456,14 @@ const submitForm = async () => {
           <TouchableOpacity
             key={index}
             style={[styles.methodButton, { backgroundColor: method.color }]}
-            onPress={() => openForm(method.name)}
+            onPress={() => {
+  if (!method.enabled) {
+    Alert.alert("Coming Soon", `${method.name} payments will be available later.`);
+    return;
+  }
+  openForm(method.name);
+}}
+
           >
             <Image source={method.icon} style={styles.methodIcon} />
             <Text style={styles.methodText}>{method.name}</Text>
@@ -426,8 +489,13 @@ const submitForm = async () => {
               <>
                 <TextInput placeholder="Full Name" value={formData.fullName} onChangeText={v => handleChange("fullName", v)} style={styles.modalInput} placeholderTextColor="#888" />
                 <TextInput placeholder="Phone Number" value={formData.phone} onChangeText={v => handleChange("phone", v)} style={styles.modalInput} keyboardType="phone-pad" placeholderTextColor="#888" />
-                <TextInput placeholder="Amount" value={formData.amount} onChangeText={v => handleChange("amount", v)} style={styles.modalInput} keyboardType="numeric" placeholderTextColor="#888" />
-                <TextInput placeholder="Transaction Code" value={formData.code} onChangeText={v => handleChange("code", v)} style={styles.modalInput} keyboardType="numeric" placeholderTextColor="#888" />
+              <View style={styles.modalInput}>
+  <Text style={{ color: "#fff" }}>
+    Amount: {formData.amount} {selectedCurrency}
+  </Text>
+</View>
+
+                <TextInput placeholder="Ref:" value={formData.code} onChangeText={v => handleChange("code", v)} style={styles.modalInput} keyboardType="numeric" placeholderTextColor="#888" />
               </>
             )}
 
@@ -438,7 +506,12 @@ const submitForm = async () => {
                 <TextInput placeholder="Card Number" value={formData.cardNumber} onChangeText={v => handleChange("cardNumber", v)} style={styles.modalInput} keyboardType="numeric" placeholderTextColor="#888" />
                 <TextInput placeholder="Expiry Date (MM/YY)" value={formData.expiry} onChangeText={v => handleChange("expiry", v)} style={styles.modalInput} placeholderTextColor="#888" />
                 <TextInput placeholder="CVV" value={formData.cvv} onChangeText={v => handleChange("cvv", v)} style={styles.modalInput} keyboardType="numeric" placeholderTextColor="#888" />
-                <TextInput placeholder="Amount" value={formData.amount} onChangeText={v => handleChange("amount", v)} style={styles.modalInput} keyboardType="numeric" placeholderTextColor="#888" />
+               <View style={styles.modalInput}>
+  <Text style={{ color: "#fff" }}>
+    Amount: {formData.amount} {selectedCurrency}
+  </Text>
+</View>
+
               </>
             )}
 
@@ -446,7 +519,12 @@ const submitForm = async () => {
             {(activeMethod === "BTC" || activeMethod === "USDT") && (
               <>
                 <TextInput placeholder="Wallet Address" value={formData.walletAddress} onChangeText={v => handleChange("walletAddress", v)} style={styles.modalInput} placeholderTextColor="#888" />
-                <TextInput placeholder="Amount" value={formData.amount} onChangeText={v => handleChange("amount", v)} style={styles.modalInput} keyboardType="numeric" placeholderTextColor="#888" />
+               <View style={styles.modalInput}>
+  <Text style={{ color: "#fff" }}>
+    Amount: {formData.amount} {selectedCurrency}
+  </Text>
+</View>
+
                 <TextInput placeholder="Transaction Note (Optional)" value={formData.note} onChangeText={v => handleChange("note", v)} style={styles.modalInput} placeholderTextColor="#888" />
               </>
             )}

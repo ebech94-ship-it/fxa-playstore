@@ -81,6 +81,8 @@ export default function ProfileScreen({
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
+
+  
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [confirmLegal, setConfirmLegal] = useState(false);
@@ -93,6 +95,11 @@ const [sendingSupport, setSendingSupport] = useState(false);
 
 const [userThread, setUserThread] = useState<any | null>(null);
 const [messages, setMessages] = useState<any[]>([]);
+
+const [balance, setBalance] = useState<number>(0);
+const [deposits, setDeposits] = useState<any[]>([]);
+const [withdrawals, setWithdrawals] = useState<any[]>([]);
+
 
   const [profile, setProfile] = useState<UserProfile>({
     displayName: "",
@@ -119,7 +126,15 @@ useEffect(() => {
       const data = snap.data();
 
       // Update entire profile (including avatar)
-      setProfile((prev) => ({ ...prev, ...data }));
+      setProfile((prev) => ({
+  ...prev,
+  ...Object.fromEntries(
+    Object.entries(data).filter(
+      ([_, v]) => v !== undefined && v !== null && v !== ""
+    )
+  ),
+}));
+
     }
   });
 
@@ -143,6 +158,54 @@ useEffect(() => {
 
   return () => unsub();
 }, [user]);
+
+useEffect(() => {
+  if (!user) return;
+
+  const userRef = doc(db, "users", user.uid);
+
+  const unsub = onSnapshot(userRef, (snap) => {
+    if (snap.exists()) {
+      setBalance(snap.data()?.balance || 0);
+    }
+  });
+
+  return () => unsub();
+}, [user]);
+useEffect(() => {
+  if (!user) return;
+
+  const q = query(
+    collection(db, "users", user.uid, "deposits"),
+    orderBy("createdAt", "desc")
+  );
+
+  const unsub = onSnapshot(q, (snap) => {
+    const list: any[] = [];
+    snap.forEach((d) => list.push({ id: d.id, ...d.data() }));
+    setDeposits(list);
+  });
+
+  return () => unsub();
+}, [user]);
+useEffect(() => {
+  if (!user) return;
+
+  const q = query(
+    collection(db, "users", user.uid, "withdrawals"),
+    orderBy("createdAt", "desc")
+  );
+
+  const unsub = onSnapshot(q, (snap) => {
+    const list: any[] = [];
+    snap.forEach((d) => list.push({ id: d.id, ...d.data() }));
+    setWithdrawals(list);
+  });
+
+  return () => unsub();
+}, [user]);
+
+
 
 useEffect(() => {
   if (!userThread) return;
@@ -380,6 +443,11 @@ useEffect(() => {
     setSupportEmail(user.email || "");
   }
 }, [user, supportEmail]);
+const getStatusStyle = (status: string) => ({
+  color: status === "completed" ? "#21e6c1" : "#e94560",
+  fontWeight: "bold" as const,
+  fontSize: 13,
+});
 
 
   return (
@@ -653,17 +721,59 @@ useEffect(() => {
 
         {/* Balance Section */}
         {activeSection === "balance" && (
-          <View style={styles.section}>
-            <Text style={styles.sectionTitle}>Account Balance</Text>
-            <Text style={styles.balance}>$ 0.00</Text>
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={() => setActiveSection(null)}
-            >
-              <Text style={styles.backText}>Back</Text>
-            </TouchableOpacity>
-          </View>
-        )}
+  <ScrollView style={styles.section}>
+    <Text style={styles.sectionTitle}>Account Balance</Text>
+
+    <Text style={styles.balance}>
+      $ {balance.toFixed(2)}
+    </Text>
+
+    {/* -------- DEPOSITS -------- */}
+    <Text style={styles.subTitle}>Deposit History</Text>
+
+    {deposits.length === 0 && (
+      <Text style={styles.muted}>No deposits yet</Text>
+    )}
+
+    {deposits.map((d) => (
+      <View key={d.id} style={styles.historyRow}>
+        <Text style={styles.historyText}>
+          +${d.amount} • {d.method}
+        </Text>
+       <Text style={getStatusStyle(d.status)}>
+
+          {d.status}
+        </Text>
+      </View>
+    ))}
+
+    {/* -------- WITHDRAWALS -------- */}
+    <Text style={styles.subTitle}>Withdrawal History</Text>
+
+    {withdrawals.length === 0 && (
+      <Text style={styles.muted}>No withdrawals yet</Text>
+    )}
+
+    {withdrawals.map((w) => (
+      <View key={w.id} style={styles.historyRow}>
+        <Text style={styles.historyText}>
+          -${w.amount} • {w.method}
+        </Text>
+        <Text style={getStatusStyle(w.status)}>
+          {w.status}
+        </Text>
+      </View>
+    ))}
+
+    <TouchableOpacity
+      style={styles.backButton}
+      onPress={() => setActiveSection(null)}
+    >
+      <Text style={styles.backText}>Back</Text>
+    </TouchableOpacity>
+  </ScrollView>
+)}
+
 
         {/* Support Section */}
 {activeSection === "support" && (
@@ -956,94 +1066,34 @@ useEffect(() => {
 }
 
 const styles = StyleSheet.create({
-  modalContainer: {
-    flex: 1,
-    backgroundColor: "#16213e",
-    padding: 20,
-  },
-  header: {
-    marginBottom: 15,
-  },
+  modalContainer: { flex: 1,   backgroundColor: "#16213e", padding: 20,  },
+  header: {  marginBottom: 15,  },
   headerText: { fontSize: 22, fontWeight: "bold", color: "white" },
   menuList: { marginTop: 10 },
-  menuItem: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: 15,
-    backgroundColor: "#0f3460",
-    marginBottom: 8,
-    borderRadius: 10,
-  },
+  menuItem: { flexDirection: "row", alignItems: "center", padding: 15, backgroundColor: "#0f3460", marginBottom: 8,
+   borderRadius: 10,  },
   menuText: { marginLeft: 10, color: "white", fontSize: 16 },
-  logoutButton: {
-    marginTop: 20,
-    backgroundColor: "crimson",
-    padding: 15,
-    borderRadius: 10,
-    alignItems: "center",
-  },
+  logoutButton: {  marginTop: 20,  backgroundColor: "crimson",  padding: 15,  borderRadius: 10,  alignItems: "center", },
   logoutText: { color: "white", fontWeight: "bold" },
   section: { flex: 1, padding: 15 },
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: "bold",
-    color: "#e94560",
-    marginBottom: 15,
+  sectionTitle: {  fontSize: 20, fontWeight: "bold", color: "#e94560", marginBottom: 15, },
+  input: { borderWidth: 1, borderColor: "#444", borderRadius: 8, padding: 10, marginBottom: 10, color: "white", backgroundColor: "#0f3460",
   },
-  input: {
-    borderWidth: 1,
-    borderColor: "#444",
-    borderRadius: 8,
-    padding: 10,
-    marginBottom: 10,
-    color: "white",
-    backgroundColor: "#0f3460",
-  },
-  balance: {
-    fontSize: 28,
-    fontWeight: "bold",
-    color: "#21e6c1",
-    marginVertical: 20,
-  },
-  sendButton: {
-    backgroundColor: "#21e6c1",
-    padding: 12,
-    borderRadius: 10,
-    alignItems: "center",
-    marginBottom: 15,
-  },
+  balance: { fontSize: 28,  fontWeight: "bold", color: "#21e6c1", marginVertical: 20, },
+  sendButton: {  backgroundColor: "#21e6c1", padding: 12,  borderRadius: 10,  alignItems: "center",  marginBottom: 15, },
   sendText: { color: "#16213e", fontWeight: "bold" },
-  backButton: {
-    marginTop: 10,
-    padding: 12,
-    borderRadius: 10,
-    backgroundColor: "#e94560",
-    alignItems: "center",
-  },
+  backButton: { marginTop: 10,  padding: 12,  borderRadius: 10, backgroundColor: "#e94560",  alignItems: "center", },
   backText: { color: "white", fontWeight: "bold" },
-  settingRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    marginVertical: 10,
-  },
+  settingRow: { flexDirection: "row",  justifyContent: "space-between",  alignItems: "center",  marginVertical: 10, },
   settingText: { color: "white", fontSize: 16 },
-  deleteButton: {
-  backgroundColor: "#ff3b30",
-  padding: 12,
-  borderRadius: 10,
-  marginTop: 20,
-},
-deleteText: {
-  color: "white",
-  textAlign: "center",
-  fontWeight: "bold",
-},
-errorText: {
-  color: "red",
-  fontSize: 12,
-  marginBottom: 8,
-  marginLeft: 4,
-},
+  deleteButton: { backgroundColor: "#ff3b30", padding: 12, borderRadius: 10, marginTop: 20,},
+deleteText: { color: "white", textAlign: "center", fontWeight: "bold",},
+errorText: { color: "red", fontSize: 12, marginBottom: 8, marginLeft: 4,},
+subTitle: { color: "#21e6c1",  fontSize: 16, fontWeight: "bold", marginTop: 20, marginBottom: 8,},
+historyRow: { backgroundColor: "#0f3460",  padding: 10,  borderRadius: 8, marginBottom: 6, flexDirection: "row",
+  justifyContent: "space-between",},
+historyText: { color: "white", fontSize: 14,},
+
+muted: { color: "#aaa", fontStyle: "italic",},
 
 });

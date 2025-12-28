@@ -2,8 +2,9 @@ require("dotenv").config();
 
 const express = require("express");
 const cors = require("cors");
-const { Buffer } = require("buffer");
 const { testCampay } = require("./campay");
+const { getCampayToken } = require("./campayAuth");
+
 
 // If your Node version < 18, uncomment next two lines
 // const fetch = require("node-fetch");
@@ -143,20 +144,18 @@ app.post("/campay/create-payment", async (req, res) => {
       return res.status(400).json({ error: "Missing fields" });
     }
 
+    const token = await getCampayToken();
+
     const response = await fetch(
-      `${process.env.CAMPAY_BASE_URL}/collect`,
+      `${process.env.CAMPAY_BASE_URL}/collect/`,
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization:
-            "Basic " +
-            Buffer.from(
-              `${process.env.CAMPAY_USERNAME}:${process.env.CAMPAY_PASSWORD}`
-            ).toString("base64"),
+          Authorization: `Token ${token}`,
         },
         body: JSON.stringify({
-          amount,
+          amount: Number(amount),
           currency: "XAF",
           from: phone,
           description: "Forex Tournament Deposit",
@@ -169,20 +168,22 @@ app.post("/campay/create-payment", async (req, res) => {
     const data = await response.json();
 
     if (!response.ok) {
-      console.error("CamPay error:", data);
+      console.error("CamPay collect error:", data);
       return res.status(400).json(data);
     }
 
     res.json({
       success: true,
-      message: "Payment request sent",
-      data,
+      message: "Payment request sent to CamPay",
+      reference: data.reference || null,
+      status: data.status || "PENDING",
     });
   } catch (err) {
     console.error("CamPay create-payment error:", err.message);
     res.status(500).json({ error: "CamPay payment failed" });
   }
 });
+
 
 // ---------------------------------------------------------------------
 // CAMPAY WEBHOOK (CALLBACK URL)
@@ -191,13 +192,49 @@ app.post("/webhook/campay", async (req, res) => {
   try {
     console.log("📩 CamPay webhook received:", req.body);
 
-    const { status, amount, reference } = req.body;
+    const {
+      reference,
+      status,
+      amount,
+      currency,
+      operator,
+      external_reference, // this is userId
+    } = req.body;
 
+    if (!reference || !status || !amount || !external_reference) {
+      return res.status(400).json({ error: "Invalid webhook payload" });
+    }
+
+    const txRef = String(reference);
+    const txDoc = db.collection("campay_transactions").doc(txRef);
+    const txSnap = await txDoc.get();
+
+    // ⛔ Already processed
+    if (txSnap.exists) {
+      console.log("⚠️ Duplicate CamPay webhook ignored:", txRef);
+      return res.status(200).json({ success: true });
+    }
+
+    // Save transaction record
+    await txDoc.set({
+      reference: txRef,
+      userId: external_reference,
+      amount: Number(amount),
+      currency: currency || "XAF",
+      operator: operator || null,
+      status,
+      createdAt: new Date(),
+    });
+
+    // Credit ONLY on success
     if (status === "SUCCESSFUL") {
-      await treasury.addDepositToUser(reference, Number(amount));
+      await treasury.addDepositToUser(
+        external_reference,
+        Number(amount)
+      );
       await treasury.addDepositToTreasury(Number(amount));
 
-      console.log("💰 CamPay deposit confirmed:", reference, amount);
+      console.log("💰 CamPay deposit credited:", txRef);
     }
 
     res.status(200).json({ success: true });
@@ -206,6 +243,7 @@ app.post("/webhook/campay", async (req, res) => {
     res.status(500).json({ success: false });
   }
 });
+
 
 // ---------------------------------------------------------------------
 // START SERVER

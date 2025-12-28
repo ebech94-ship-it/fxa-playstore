@@ -3,6 +3,8 @@ import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import type { User } from "firebase/auth";
+import { verifyAdminAccess } from "./services/adminAccess";
+
 
 import { getAuth } from "firebase/auth";
 
@@ -564,19 +566,6 @@ await updateDoc(doc(db, "users", currentUser.uid), {
   }
 };
 
-
-
-  const handleAccess = () => {
-    const correctCode = "FOREXADMIN2025"; // change this anytime
-    if (adminCode.trim() === correctCode) {
-      setAdminModal(false);
-      Alert.alert("✅ Access Granted", "Welcome Administrator!");
-      router.push("/admin/AdminDashboard"); // navigate directly to your Admin Dashboard screen
-    } else {
-      Alert.alert("⛔ Access Denied", "Incorrect admin code.");
-    }
-  };
-
   const formatDuration = (ms: number) => {
   const sec = Math.floor(ms / 1000);
   const min = Math.floor(sec / 60);
@@ -830,7 +819,13 @@ const progress =
               <TouchableOpacity style={styles.cancelBtn} onPress={() => setAdminModal(false)}>
                 <Text style={styles.btnTextAlt}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.confirmBtn} onPress={handleAccess}>
+              <TouchableOpacity
+  style={styles.confirmBtn} onPress={() => verifyAdminAccess(   adminCode, router, () => setAdminModal(false), // success
+      () => {} // failure (optional)
+                     )
+                    }
+                      >
+
                 <Text style={styles.btnText}>Confirm</Text>
               </TouchableOpacity>
             </View>

@@ -1,25 +1,33 @@
 import { AntDesign, Ionicons } from "@expo/vector-icons";
 
+
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import * as Google from "expo-auth-session/providers/google";
+
 import { useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
+
 import {
   createUserWithEmailAndPassword,
+  fetchSignInMethodsForEmail,
   GoogleAuthProvider,
-  onAuthStateChanged,
+  PhoneAuthProvider,
   signInWithCredential,
   signInWithEmailAndPassword,
 } from "firebase/auth";
 import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
-import { useEffect, useState } from "react";
+import { useEffect, useState, } from "react";
+
 
 import {
   ActivityIndicator,
   Animated,
   ImageBackground,
   Keyboard,
+  Modal,
+
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -51,6 +59,7 @@ export const createUserAccounts = async (
 
     if (inviteRef && inviteRef !== uid) {
       const refUserSnap = await getDoc(doc(db, "users", inviteRef));
+      
       if (refUserSnap.exists()) {
         referredBy = inviteRef;
       }
@@ -58,17 +67,19 @@ export const createUserAccounts = async (
 
     // ✅ Now create user
     await setDoc(userRef, {
-      uid,
-      name,
-      email,
-      referredBy,
-      createdAt: serverTimestamp(),
-      accounts: {
-        demo: { balance: 1000, type: "practice" },
-        real: { balance: 0, type: "real" },
-        tournament: { balance: 0, type: "tournament" },
-      },
-    });
+  uid,
+  name,
+  email,
+  provider: auth.currentUser?.providerData[0]?.providerId || "password",
+  profileCompleted: true,
+  createdAt: serverTimestamp(),
+  accounts: {
+    demo: { balance: 1000, type: "practice" },
+    real: { balance: 0, type: "real" },
+    tournament: { balance: 0, type: "tournament" },
+  },
+});
+
 
     // 🧹 Clear referral after use
     if (inviteRef) {
@@ -79,36 +90,34 @@ export const createUserAccounts = async (
 
 export default function Welcome() {
   const router = useRouter();
+console.log("WEB CLIENT ID:", process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID);
+
 
   const slideAnim = useState(new Animated.Value(400))[0];
   const fadeAnim = useState(new Animated.Value(0))[0];
 const [accepted, setAccepted] = useState(false);
 
+const [countryCode, setCountryCode] = useState("CM");
+const [callingCode, setCallingCode] = useState("237");
+const [showPicker, setShowPicker] = useState(false);
+
 
   // 👤 form states
   const [name, setName] = useState("");
   const [phone, setPhone] = useState(""); // <-- fixed duplicate
-  const [phonePassword, setPhonePassword] = useState("");
+  
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
-  // 🔐 Google login
-  // 🔐 Google login (clean, correct, single setup)
-// Your client IDs
 // 🔐 GOOGLE LOGIN SETUP
-
-
 const [request, response, promptAsync] = Google.useAuthRequest({
-  androidClientId:
-    "895363795197-g1dkogsl8uu0k5en3ks24uitcs5khfnn.apps.googleusercontent.com",
-
-  webClientId:
-    "895363795197-qmuod36rndhkmef0kb0kv3qhjcjn4d2c.apps.googleusercontent.com",
-
+  webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+  androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
+  iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+  clientId: process.env.EXPO_PUBLIC_GOOGLE_EXPO_CLIENT_ID, // ✅ ADD THIS
   scopes: ["profile", "email"],
-  responseType: "id_token",
 });
 
 
@@ -118,60 +127,177 @@ const [request, response, promptAsync] = Google.useAuthRequest({
 const [inviteRef, setInviteRef] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+const [verificationId, setVerificationId] = useState<string | null>(null);
+const [otp, setOtp] = useState("");
+const [googleHandled, setGoogleHandled] = useState(false);
+const COUNTRIES = [
+  // 🇨🇲 Central & West Africa
+  { code: "CM", name: "Cameroon", callingCode: "237" },
+  { code: "NG", name: "Nigeria", callingCode: "234" },
+  { code: "GH", name: "Ghana", callingCode: "233" },
+  { code: "CI", name: "Côte d’Ivoire", callingCode: "225" },
+  { code: "SN", name: "Senegal", callingCode: "221" },
+  { code: "ML", name: "Mali", callingCode: "223" },
+
+  // 🇰🇪 East Africa
+  { code: "KE", name: "Kenya", callingCode: "254" },
+  { code: "UG", name: "Uganda", callingCode: "256" },
+  { code: "TZ", name: "Tanzania", callingCode: "255" },
+
+  // 🇿🇦 Southern Africa
+  { code: "ZA", name: "South Africa", callingCode: "27" },
+  { code: "ZW", name: "Zimbabwe", callingCode: "263" },
+
+  // 🌍 North Africa
+  { code: "EG", name: "Egypt", callingCode: "20" },
+  { code: "MA", name: "Morocco", callingCode: "212" },
+
+  // 🇺🇸 Americas
+  { code: "US", name: "United States", callingCode: "1" },
+  { code: "CA", name: "Canada", callingCode: "1" },
+  { code: "BR", name: "Brazil", callingCode: "55" },
+  { code: "MX", name: "Mexico", callingCode: "52" },
+
+  // 🌏 Asia
+  { code: "TH", name: "Thailand", callingCode: "66" },
+  { code: "IN", name: "India", callingCode: "91" },
+  { code: "PH", name: "Philippines", callingCode: "63" },
+  { code: "ID", name: "Indonesia", callingCode: "62" },
+
+  // 🇪🇺 Europe
+  { code: "GB", name: "United Kingdom", callingCode: "44" },
+  { code: "FR", name: "France", callingCode: "33" },
+  { code: "DE", name: "Germany", callingCode: "49" },
+];
+
+
+const sendOTP = async () => {
+  if (!name.trim()) {
+    alert("Please enter your full name");
+    return;
+  }
+
+  const cleanedPhone = phone.replace(/\s+/g, "");
+
+  const minLength = 7;
+  const maxLength = 14;
+
+  if (cleanedPhone.length < minLength || cleanedPhone.length > maxLength) {
+    alert("Please enter a valid phone number");
+    return;
+  }
+
+  try {
+    setLoading(true);
+
+    const provider = new PhoneAuthProvider(auth);
+    const fullPhoneNumber = `+${callingCode}${cleanedPhone}`;
+
+    console.log("Sending OTP to:", fullPhoneNumber);
+
+    const id = await provider.verifyPhoneNumber(fullPhoneNumber);
+
+    setVerificationId(id);
+    alert("OTP sent to your phone");
+  } catch (e) {
+    console.error(e);
+    alert((e as Error).message || "Failed to send OTP");
+  } finally {
+    setLoading(false);
+  }
+};
+
+
+
+const verifyOTP = async () => {
+  if (!verificationId || otp.length < 6) {
+    alert("Enter valid OTP");
+    return;
+  }
+
+  try {
+    setLoading(true);
+
+    const credential = PhoneAuthProvider.credential(
+      verificationId,
+      otp
+    );
+
+    const userCred = await signInWithCredential(auth, credential);
+
+    await createUserAccounts(
+      userCred.user.uid,
+      name || "Phone User",
+      `${userCred.user.uid}@phone.fx`
+    );
+
+    await AsyncStorage.setItem("isLoggedIn", "true");
+    router.replace("/tradinglayout");
+
+  } catch {
+    alert("Invalid OTP");
+  } finally {
+    setLoading(false);
+  }
+};
+
+
 useEffect(() => {
   AsyncStorage.getItem("inviteRef").then((ref) => {
     if (ref) setInviteRef(ref);
   });
 }, []);
-  // 🔁 Auto login if already authenticated
-  useEffect(() => {
-  const unsub = onAuthStateChanged(auth, async (user) => {
-    const inviteRef = await AsyncStorage.getItem("inviteRef");
+  
 
-    if (user && !inviteRef) {
-      await AsyncStorage.setItem("isLoggedIn", "true");
-      router.replace("/tradinglayout");
-    }
-  });
 
-  return unsub;
-}, [router]);
 
 
   // 🎯 Google login handler
 useEffect(() => {
-  if (!response) return;
+  if (!response || googleHandled) return;
+  if (response.type !== "success") return;
+
+  const { idToken, accessToken } = response.authentication ?? {};
+
+  if (!idToken && !accessToken) {
+    alert("Google authentication failed.");
+    return;
+  }
 
   const run = async () => {
-    if (response.type === "success" && response.authentication?.idToken) {
-      try {
-        setLoading(true);
+    try {
+      setLoading(true);
 
-        const credential = GoogleAuthProvider.credential(
-          response.authentication.idToken
-        );
+      // ✅ FIX: pass BOTH tokens
+      const credential = GoogleAuthProvider.credential(
+        idToken ?? undefined,
+        accessToken ?? undefined
+      );
 
-        const userCred = await signInWithCredential(auth, credential);
+      const userCred = await signInWithCredential(auth, credential);
 
-        await createUserAccounts(
-          userCred.user.uid,
-          userCred.user.displayName || "Google User",
-          userCred.user.email || ""
-        );
+      await createUserAccounts(
+        userCred.user.uid,
+        userCred.user.displayName || "Google User",
+        userCred.user.email || ""
+      );
 
-        await AsyncStorage.setItem("isLoggedIn", "true");
-        router.replace("/tradinglayout");
+      await AsyncStorage.setItem("isLoggedIn", "true");
+      setGoogleHandled(true);
 
-      } catch (e) {
-        alert((e as Error).message);
-      } finally {
-        setLoading(false);
-      }
+      // ✅ NOW navigation will work
+      router.replace("/tradinglayout");
+    } catch (e) {
+      setGoogleHandled(false);
+      alert((e as Error).message);
+    } finally {
+      setLoading(false);
     }
   };
 
   run();
-}, [response, router]);
+}, [response, googleHandled, router]);
+
 
 
   // Animations
@@ -204,9 +330,17 @@ useEffect(() => {
 
       setLoading(true);
       const userCred = await createUserWithEmailAndPassword(auth, email, password);
-      await createUserAccounts(userCred.user.uid, name, email);
-      await AsyncStorage.setItem("isLoggedIn", "true");
-      router.replace("/tradinglayout");
+
+await createUserAccounts(
+  userCred.user.uid,
+  name,
+  email,
+  
+);
+
+await AsyncStorage.setItem("isLoggedIn", "true");
+router.replace("/tradinglayout");
+
 
     } catch (e) {
       alert((e as Error).message);
@@ -218,37 +352,32 @@ useEffect(() => {
   // 🔑 Email Login
   // 🔑 Email Login (RETURNING USERS ONLY)
 const handleLogin = async () => {
+  if (!email || !password) {
+    alert("Enter email and password");
+    return;
+  }
+
   try {
     setLoading(true);
 
-    // 1. Sign in
-    const res = await signInWithEmailAndPassword(auth, email, password);
-    const uid = res.user.uid;
+    // 🔍 Check how this email was registered
+    const methods = await fetchSignInMethodsForEmail(
+      auth,
+      email.trim().toLowerCase()
+    );
 
-    // 2. Save login state
+    if (!methods.includes("password")) {
+      alert(
+        "This account was created using Google or Phone. Please use the same method to log in."
+      );
+      return;
+    }
+
+    // ✅ Safe to login
+    await signInWithEmailAndPassword(auth, email.trim(), password);
+
     await AsyncStorage.setItem("isLoggedIn", "true");
-
-    // 3. Get user profile document
-    const userRef = doc(db, "users", uid);
-    const snap = await getDoc(userRef);
-
-    // 4. If no profile exists → force Profile Setup
-    if (!snap.exists()) {
-      router.replace("/tradinglayout");
-      return;
-    }
-
-    const data = snap.data();
-
-    // 5. If profile not completed → go to ProfileSetup
-    if (!data.profileCompleted) {
-      router.replace("/tradinglayout");
-      return;
-    }
-
-    // 6. Otherwise user is verified → go to main trading page
     router.replace("/tradinglayout");
-
   } catch (e) {
     alert((e as Error).message);
   } finally {
@@ -256,23 +385,8 @@ const handleLogin = async () => {
   }
 };
 
-  // 📱 Phone Signup
-  const handleSignupPhone = async () => {
-    if (phone.length < 8) return alert("Enter valid phone number");
 
-    const fullNumber = "+237" + phone;
 
-    try {
-      setLoading(true);
-      const uid = fullNumber;
-      await createUserAccounts(uid, name, `${uid}@phoneuser.fx`);
-      await AsyncStorage.setItem("isLoggedIn", "true");
-      router.replace("/tradinglayout");
-
-    } finally {
-      setLoading(false);
-    }
-  };
 
   return (
     <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
@@ -281,6 +395,7 @@ const handleLogin = async () => {
         style={styles.bg}
         resizeMode="cover"
       >
+   
         <View style={styles.overlay}>
           <Text style={styles.title}>Welcome to Forex Tournaments Arena</Text>
           {inviteRef && (
@@ -479,53 +594,158 @@ const handleLogin = async () => {
                   </TouchableOpacity>
                 </>
               )}
+{/* 📱 PHONE SIGNUP (OTP) */}
+{showSignupPhone && (
+  <>
+    <Text style={styles.subtitle}>Sign Up with Phone</Text>
 
-              {/* PHONE SIGNUP */}
-              {showSignupPhone && (
-                <>
-                  <Text style={styles.subtitle}>Sign Up with Phone</Text>
+    {/* Name */}
+    <TextInput
+      style={styles.input}
+      placeholder="Full Name"
+      placeholderTextColor="#aaa"
+      value={name}
+      onChangeText={setName}
+    />
 
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Full Name"
-                    placeholderTextColor="#aaa"
-                    value={name}
-                    onChangeText={setName}
-                  />
+    {/* Phone Row */}
+    <View style={{ flexDirection: "row", alignItems: "center" }}>
+      {/* COUNTRY CODE BUTTON */}
+      <TouchableOpacity
+        onPress={() => setShowPicker(true)}
+        style={{
+          paddingVertical: 14,
+          paddingHorizontal: 12,
+          borderRadius: 8,
+          borderWidth: 1,
+          borderColor: "#5A4BE7",
+          marginRight: 8,
+          minWidth: 80,
+          alignItems: "center",
+        }}
+      >
+       <Text style={{ color: "white", fontWeight: "bold" }}>
+  {COUNTRIES.find(c => c.code === countryCode)?.name} +{callingCode}
+        </Text>
+      </TouchableOpacity>
 
-                  <TextInput
-                    style={styles.input}
-                    placeholder="country code + Phone number"
-                    placeholderTextColor="#ddd"
-                    keyboardType="phone-pad"
-                    value={phone}
-                    onChangeText={setPhone}
-                    />
+      {/* PHONE INPUT */}
+      <TextInput
+        style={[styles.input, { flex: 1 }]}
+        placeholder="Phone number"
+        placeholderTextColor="#ddd"
+        keyboardType="phone-pad"
+        value={phone}
+       onChangeText={(text) => {
+  const cleaned = text
+    .replace(/\s+/g, "")      // remove spaces
+    .replace(/[-()]/g, "")    // remove dashes & brackets
+    .replace(/^\+/, "");      // remove leading +
 
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Enter 5-digit Password"
-                    placeholderTextColor="#aaa"
-                    secureTextEntry={!showPassword}
-                    value={phonePassword}
-                    onChangeText={setPhonePassword}
-                  />
-              <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-                       <Ionicons
-              name={showPassword ? "eye-off" : "eye"}
-                  size={22}  color="#fff"
-                    style={{ paddingHorizontal: 6 }}
-                         />
-                  </TouchableOpacity>
-                  <TouchableOpacity style={styles.button} onPress={handleSignupPhone}>
-                    <Text style={styles.buttonText}>Submit</Text>
-                  </TouchableOpacity>
+  setPhone(cleaned.replace(/[^0-9]/g, ""));
+}}
 
-                  <TouchableOpacity style={styles.link} onPress={closeForm}>
-                    <Text style={styles.linkText}>Back</Text>
-                  </TouchableOpacity>
-                </>
-              )}
+
+      />
+    </View>
+
+    {/* STEP 1 — SEND OTP */}
+    {!verificationId && (
+      <TouchableOpacity style={styles.button} onPress={sendOTP}>
+        <Text style={styles.buttonText}>Send OTP</Text>
+      </TouchableOpacity>
+    )}
+
+    {/* STEP 2 — VERIFY OTP */}
+    {verificationId && (
+      <>
+        <TextInput
+          style={styles.input}
+          placeholder="Enter 6-digit OTP"
+          placeholderTextColor="#aaa"
+          keyboardType="number-pad"
+          value={otp}
+          onChangeText={setOtp}
+        />
+
+        <TouchableOpacity style={styles.button} onPress={verifyOTP}>
+          <Text style={styles.buttonText}>Verify & Continue</Text>
+        </TouchableOpacity>
+      </>
+    )}
+
+    <TouchableOpacity style={styles.link} onPress={closeForm}>
+      <Text style={styles.linkText}>Back</Text>
+    </TouchableOpacity>
+
+    {/* 🌍 COUNTRY PICKER MODAL */}
+    <Modal visible={showPicker} transparent animationType="slide">
+      <View
+        style={{
+          flex: 1,
+          backgroundColor: "rgba(0,0,0,0.6)",
+          justifyContent: "center",
+        }}
+      >
+        <View
+          style={{
+            backgroundColor: "#111",
+            margin: 20,
+            borderRadius: 12,
+            padding: 16,
+            maxHeight: "70%",
+          }}
+        >
+          <Text
+            style={{
+              color: "white",
+              fontSize: 18,
+              fontWeight: "bold",
+              marginBottom: 12,
+              textAlign: "center",
+            }}
+          >
+            Select Country
+          </Text>
+
+          <ScrollView>
+            {COUNTRIES.map((c) => (
+              <TouchableOpacity
+                key={c.code}
+                onPress={() => {
+                  setCountryCode(c.code);
+                  setCallingCode(c.callingCode);
+                  setShowPicker(false);
+                }}
+                style={{
+                  paddingVertical: 12,
+                  borderBottomWidth: 1,
+                  borderBottomColor: "#333",
+                }}
+              >
+                <Text style={{ color: "white" }}>
+                  {c.name} (+{c.callingCode})
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+
+          <TouchableOpacity
+            onPress={() => setShowPicker(false)}
+            style={{ marginTop: 12, alignItems: "center" }}
+          >
+            <Text style={{ color: "#5A4BE7", fontWeight: "bold" }}>
+              Cancel
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  </>
+)}
+
+
+
 
               {/* LOGIN */}
               {showLogin && (
@@ -715,5 +935,4 @@ dimBackground: {
   bottom: 0,
   backgroundColor: "rgba(0,0,0,0.6)",
 },
-
 });

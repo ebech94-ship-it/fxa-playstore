@@ -117,6 +117,21 @@ export default function TradeSummaryBar({
     })
   ).current;
 
+const getRemainingTime = (expiryTime: number) => {
+  const now = Date.now();
+  const diff = expiryTime - now;
+
+  if (diff <= 0) return "00:00";
+
+  const seconds = Math.floor(diff / 1000);
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+
+  return `${mins.toString().padStart(2, "0")}:${secs
+    .toString()
+    .padStart(2, "0")}`;
+};
+
   /* ===============================
      RENDER
      =============================== */
@@ -138,35 +153,51 @@ export default function TradeSummaryBar({
         {/* ================= OPEN TRADES ================= */}
         <Text style={styles.sectionTitle}>Open Trades</Text>
 
-        {openTrades.length === 0 ? (
-          <Text style={styles.emptyText}>No open trades</Text>
-        ) : (
-          openTrades.map((t, i) => (
-            <View key={t.id ?? i} style={styles.tradeRow}>
-            <Text style={styles.tradeText}>
-  Entry: {t.entryPrice.toFixed(2)} → Now:{" "}
-  <Text
-    style={{
-      color:
-        t.type === "buy"
-          ? t.currentPrice >= t.entryPrice
-            ? "#4caf50"
-            : "#f44336"
-          : t.currentPrice <= t.entryPrice
-          ? "#4caf50"
-          : "#f44336",
-    }}
-  >
-    {t.currentPrice.toFixed(2)}
-  </Text>
-</Text>
+       {openTrades.length === 0 ? (
+  <Text style={styles.emptyText}>No open trades</Text>
+) : (
+  openTrades.map((t, i) => {
+    const remaining = getRemainingTime(t.expiryTime);
 
+    return (
+      <View key={t.id ?? i} style={styles.tradeRow}>
+        <Text style={styles.tradeText}>
+          Entry: {t.entryPrice.toFixed(2)} → Now:{" "}
+          <Text
+            style={{
+              color:
+                t.type === "buy"
+                  ? t.currentPrice >= t.entryPrice
+                    ? "#4caf50"
+                    : "#f44336"
+                  : t.currentPrice <= t.entryPrice
+                  ? "#4caf50"
+                  : "#f44336",
+            }}
+          >
+            {t.currentPrice.toFixed(2)}
+          </Text>
+        </Text>
 
-              {/* force re-render */}
-              <Text style={{ height: 0, opacity: 0 }}>{tick}</Text>
-            </View>
-          ))
-        )}
+        {/* ⏱ COUNTDOWN */}
+        <Text
+          style={{
+            marginTop: 4,
+            fontSize: 12,
+            fontWeight: "600",
+            color: remaining === "00:00" ? "#f44336" : "#ffcc00",
+          }}
+        >
+          Expires in: {remaining}
+        </Text>
+
+        {/* force re-render every second */}
+        <Text style={{ height: 0, opacity: 0 }}>{tick}</Text>
+      </View>
+    );
+  })
+)}
+
 
         {/* ================= CLOSED TRADES ================= */}
         <Text style={styles.sectionTitle}>Closed Trades</Text>

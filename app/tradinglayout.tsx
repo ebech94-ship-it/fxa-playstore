@@ -39,7 +39,7 @@ interface Trade {
   amount: number;
   entryPrice: number;
    currentPrice: number; 
-  expireTime: number;
+  expiryTime: number;
   account: AccountType;
   
   openTime: number;
@@ -281,7 +281,7 @@ const handleTrade = (type: "buy" | "sell") => {
     currentPrice: entryPrice,
     openPrice: entryPrice, // keep an explicit field for summary & closedTrades
     openTime: now,
-    expireTime: now + parseExpirationMs(expiration),
+    expiryTime: now + parseExpirationMs(expiration),
     account: activeAccount,
   };
 
@@ -332,7 +332,7 @@ useEffect(() => {
         };
 
         // 3️⃣ Not expired → keep it
-        if (t.expireTime > now) {
+        if (t.expiryTime > now) {
           stillOpen.push(updatedTrade);
           return;
         }
