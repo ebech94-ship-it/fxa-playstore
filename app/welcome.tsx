@@ -4,19 +4,18 @@ import { AntDesign, Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import * as Google from "expo-auth-session/providers/google";
-
+import * as Localization from "expo-localization";
 import { useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 
 import {
   createUserWithEmailAndPassword,
-  fetchSignInMethodsForEmail,
   GoogleAuthProvider,
   PhoneAuthProvider,
   signInWithCredential,
   signInWithEmailAndPassword,
 } from "firebase/auth";
-import { doc, getDoc, serverTimestamp, setDoc } from "firebase/firestore";
+import { doc, getDoc, runTransaction, serverTimestamp, setDoc } from "firebase/firestore";
 import { useEffect, useState, } from "react";
 
 
@@ -48,6 +47,8 @@ export const createUserAccounts = async (
 ) => {
   const userRef = doc(db, "users", uid);
   const docSnap = await getDoc(userRef);
+const countryCode =
+  Localization.getLocales()?.[0]?.regionCode ?? null;
 
   // Only create once
   if (!docSnap.exists()) {
@@ -64,14 +65,18 @@ export const createUserAccounts = async (
         referredBy = inviteRef;
       }
     }
+const publicUserId = await generateUserId();
 
     // ✅ Now create user
     await setDoc(userRef, {
   uid,
+  userId: publicUserId,
   name,
+   countryCode,
   email,
   provider: auth.currentUser?.providerData[0]?.providerId || "password",
   profileCompleted: true,
+   referredBy: referredBy,
   createdAt: serverTimestamp(),
   accounts: {
     demo: { balance: 1000, type: "practice" },
@@ -87,6 +92,28 @@ export const createUserAccounts = async (
     }
   }
 };
+const generateUserId = async () => {
+  const counterRef = doc(db, "meta", "userCounter");
+
+  const newUserId = await runTransaction(db, async (transaction) => {
+    const snap = await transaction.get(counterRef);
+
+    if (!snap.exists()) {
+      throw "Counter does not exist";
+    }
+
+    const current = snap.data().count || 0;
+    const next = current + 1;
+
+    transaction.update(counterRef, { count: next });
+
+    return `USR-${String(next).padStart(6, "0")}`;
+  });
+
+  return newUserId;
+};
+
+
 
 export default function Welcome() {
   const router = useRouter();
@@ -360,26 +387,17 @@ const handleLogin = async () => {
   try {
     setLoading(true);
 
-    // 🔍 Check how this email was registered
-    const methods = await fetchSignInMethodsForEmail(
+    await signInWithEmailAndPassword(
       auth,
-      email.trim().toLowerCase()
+      email.trim().toLowerCase(),
+      password
     );
-
-    if (!methods.includes("password")) {
-      alert(
-        "This account was created using Google or Phone. Please use the same method to log in."
-      );
-      return;
-    }
-
-    // ✅ Safe to login
-    await signInWithEmailAndPassword(auth, email.trim(), password);
 
     await AsyncStorage.setItem("isLoggedIn", "true");
     router.replace("/tradinglayout");
-  } catch (e) {
-    alert((e as Error).message);
+
+  } catch {
+    alert("Invalid email or password");
   } finally {
     setLoading(false);
   }

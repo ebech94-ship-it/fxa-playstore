@@ -6,7 +6,6 @@ import type { AccountType, TournamentAccount } from "../types/accounts";
 
 import type { ChartViewHandle } from "./ChartView";
 
-
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Animated, Dimensions, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
@@ -25,7 +24,13 @@ import TradeSummaryBar from "./TradeSummaryBar";
 
 
 import { getAuth, onAuthStateChanged } from "firebase/auth";
-import { doc, increment, onSnapshot, serverTimestamp, setDoc, updateDoc, } from "firebase/firestore";
+import {
+  collectionGroup,
+  doc, increment, onSnapshot,
+  query,
+  serverTimestamp, setDoc, updateDoc,
+  where,
+} from "firebase/firestore";
 import { db } from "../firebaseConfig";
 
 // ------------------------ TYPES ------------------------
@@ -46,6 +51,12 @@ interface Trade {
     
 }
 
+type PlayerTournamentAccount = {
+  tournamentId: string;
+  balance: number;
+  initialBalance: number;
+  status: "active" | "completed";
+};
 
 
 interface ClosedTrade extends Trade {
@@ -81,6 +92,13 @@ const updateAccountBalance = async (
     console.error("❌ Failed to update account balance:", e);
   }
 };
+type TournamentMeta = {
+  id: string;
+  name: string;
+  symbol: string; // "$" | "T"
+};
+
+
 
 // ------------------------ MAIN COMPONENT ------------------------
 
@@ -102,7 +120,9 @@ const [profileVerified, setProfileVerified] = useState<boolean>(false);
 // -------- Chart Settings --------
 const [useHeikinAshi, setUseHeikinAshi] = useState(false);
 const [compressWicks, setCompressWicks] = useState(false);
-
+const [tournamentMeta, setTournamentMeta] = useState<
+  Record<string, TournamentMeta>
+>({});
 
 
 useEffect(() => {
@@ -153,7 +173,8 @@ tournament: prev.tournament, // 🔥 DO NOT TOUCH HERE
   const [activeAccount, setActiveAccount] = useState<AccountType>({
   type: "demo",
 });
-const [tournaments, setTournaments] = useState<TournamentAccount[]>([]);
+const [tournaments, setTournaments] = useState<PlayerTournamentAccount[]>([]);
+
 
 
 const chartRef = useRef<ChartViewHandle | null>(null);
@@ -462,77 +483,63 @@ useEffect(() => {
     animate();
   }, [scrollAnim, screenWidth]);
 
+
 useEffect(() => {
   if (!currentUser) return;
 
-  const userRef = doc(db, "users", currentUser.uid);
+  const q = query(
+    collectionGroup(db, "players"),
+    where("uid", "==", currentUser.uid)
+  );
 
-  let unsubPlayer: (() => void) | null = null;
-
-  const unsubUser = onSnapshot(userRef, (snap) => {
-    if (!snap.exists()) return;
-
-    const activeTournament =
-      snap.data()?.accounts?.tournament?.activeTournament;
-
-    if (!activeTournament) {
-  setBalances((b) => ({ ...b, tournament: 0 }));
-  setTournaments([]);
-
-  if (unsubPlayer) {
-    unsubPlayer();
-    unsubPlayer = null;
-  }
-  return;
-}
-
-
-    // 🔁 Re-switch listener if tournament changes
-    if (unsubPlayer) {
-      unsubPlayer();
-      unsubPlayer = null;
-    }
-
-    const playerRef = doc(
-      db,
-      "tournaments",
-      activeTournament,
-      "players",
-      currentUser.uid
-    );
-
-    unsubPlayer = onSnapshot(playerRef, (playerSnap) => {
-      if (!playerSnap.exists()) {
-        console.log("⚠️ Player doc not found");
-        return;
-      }
-
-      const bal = playerSnap.data()?.balance;
-
-      if (typeof bal === "number") {
-  setBalances((b) => ({
-    ...b,
-    tournament: bal,
-  }));
-
-  setTournaments([
-    {
-      id: activeTournament,
-      name: "Active Tournament",
-      balance: bal,
-      status: "live",
-    },
-  ]);
-}
-
+  const unsub = onSnapshot(q, (snap) => {
+    const list = snap.docs.map((d) => {
+      const data = d.data();
+      return {
+        tournamentId: d.ref.parent.parent?.id ?? "",
+        balance: data.balance,
+        initialBalance: data.initialBalance,
+        status: data.status,
+      };
     });
+
+    setTournaments(list);
   });
 
-  return () => {
-    unsubUser();
-    if (unsubPlayer) unsubPlayer();
-  };
+  return () => unsub();
 }, [currentUser]);
+
+useEffect(() => {
+  if (tournaments.length === 0) return;
+
+  const unsubs: (() => void)[] = [];
+
+  tournaments.forEach((t) => {
+    if (tournamentMeta[t.tournamentId]) return; // already loaded
+
+    const ref = doc(db, "tournaments", t.tournamentId);
+
+    const unsub = onSnapshot(ref, (snap) => {
+      if (!snap.exists()) return;
+
+      const data = snap.data();
+
+      setTournamentMeta((prev) => ({
+        ...prev,
+        [t.tournamentId]: {
+          id: snap.id,
+          name: data.name,
+          symbol: data.symbol ?? "T",
+        },
+      }));
+    });
+
+    unsubs.push(unsub);
+  });
+
+  return () => unsubs.forEach((u) => u());
+}, [tournaments, tournamentMeta]);
+
 
 
 
@@ -564,6 +571,7 @@ const checkProfileCompletion = useCallback(() => {
 useEffect(() => {
   checkProfileCompletion();
 }, [checkProfileCompletion]);
+
 
   const expirations = [
     "5s", "8s", "12s", "15s", "25s", "30s", "1m", "2m", "3m",  "5m",  "15m",
@@ -606,6 +614,8 @@ useEffect(() => {
         return null;
     }
 
+
+
     return (
     
   <View style={styles.overlay}>
@@ -630,9 +640,28 @@ useEffect(() => {
     </View>
   </View>
 );
-
   };
-  
+ const tournamentAccountsForUI: TournamentAccount[] = tournaments
+  .map((t) => {
+    const meta = tournamentMeta[t.tournamentId];
+    if (!meta) return null;
+
+// 🔁 Map player status → UI status
+    const uiStatus: TournamentAccount["status"] =
+      t.status === "active" ? "live" : "closed";
+
+    return {
+      id: meta.id,
+      name: meta.name,      // ✅ REAL NAME
+      balance: t.balance,
+       status: uiStatus, 
+      symbol: meta.symbol,  // ✅ "$" or "T"
+    };
+  })
+  .filter(Boolean) as TournamentAccount[];
+ 
+
+
   return (
   <View style={{ flex: 1, flexDirection: "row", backgroundColor: "#0a0a0a" }}>
 
@@ -642,7 +671,7 @@ useEffect(() => {
     demo: balances.demo,
     real: balances.real,
   }}
-   tournaments={tournaments}
+  tournaments={tournamentAccountsForUI}
   activeAccount={activeAccount}
   onSwitch={(account) => {
     setActiveAccount(account);

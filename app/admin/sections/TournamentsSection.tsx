@@ -39,6 +39,9 @@ interface Tournament {
   durationMinutes: number;
   description: string;
   status: "Upcoming" | "Live" | "Completed";
+    startTime?: number;
+  endTime?: number;
+
   // participants is optional in doc but we'll load counts from subcollection
   participantsCount?: number;
     rules?: string;
@@ -59,6 +62,17 @@ const capitalize = (s: any) => {
   if (low === "live") return "Live";
   if (low === "completed") return "Completed";
   return "Upcoming";
+};
+
+const computeStatus = (
+  startTime: number,
+  endTime: number
+): "Upcoming" | "Live" | "Completed" => {
+  const now = Date.now();
+
+  if (now < startTime) return "Upcoming";
+  if (now >= startTime && now < endTime) return "Live";
+  return "Completed";
 };
 
 const TournamentsSection = () => {
@@ -89,9 +103,11 @@ const [formRebuyFee, setFormRebuyFee] = useState("");
 
 const [saving, setSaving] = useState(false);
 
+const [formStartDelay, setFormStartDelay] = useState("0");
   const [formDuration, setFormDuration] = useState("");
   const [formDesc, setFormDesc] = useState("");
   const [formStatus, setFormStatus] = useState<"Upcoming" | "Live" | "Completed">("Upcoming");
+
 const [formRules, setFormRules] = useState("");
 const [formOnRegisterInfo, setFormOnRegisterInfo] = useState("");
 const [templateDesc, setTemplateDesc] = useState("");
@@ -294,7 +310,8 @@ useEffect(() => {
       setPayouts(t.payoutStructure || [{ rank: 1, amount: 0 }]);
      setFormEntryFee(String(t.entryFee ?? 0));
 
-      setFormDuration(String(t.durationMinutes ?? 0));
+     
+ setFormDuration(String(t.durationMinutes ?? 0));
       setFormDesc(t.description ?? "");
       setFormStatus(capitalize(t.status) as "Upcoming" | "Live" | "Completed");
       setFormRules(t.rules || "");
@@ -309,6 +326,7 @@ useEffect(() => {
       setFormPrize("500");
       setFormEntryFee("0");
       setFormRebuyFee("");
+      
       setFormDuration("60");
       setFormStatus("Upcoming");     
   // PREFILL FROM LAST USED TEMPLATE
@@ -386,8 +404,15 @@ const saveTournament = async () => {
   }
 
   // Convert duration into timestamps
-  const startTime = Date.now();
-  const endTime = startTime + durationNum * 60 * 1000;
+  // Manual start delay in minutes (admin input)
+// Empty or invalid → defaults to 0 (start immediately)
+
+const delayMinutes = Number(formStartDelay) || 0;
+
+const startTime = Date.now() + delayMinutes * 60 * 1000;
+const endTime = startTime + durationNum * 60 * 1000;
+
+
 
   // Unified tournament data
   const data = {
@@ -397,11 +422,12 @@ const saveTournament = async () => {
     prizePool: prizeNum,
     payoutStructure: payouts,
     entryFee: entryFeeNum,
-    rebuyFee: Number(formRebuyFee) || entryFeeNum,
+    rebuyFee:formRebuyFee.trim() === ""? entryFeeNum
+    : Number(formRebuyFee),
     durationMinutes: durationNum,
     startTime,
     endTime,
-    status: formStatus || "Upcoming",
+    status: computeStatus(startTime, endTime),
     rules: formRules || "",
     onRegisterInfo: formOnRegisterInfo || "",
   };
@@ -422,6 +448,10 @@ try {
   } else {
     const newDoc = await addDoc(collection(db, "tournaments"), {
       ...data,
+
+       // 💰 REAL MONEY BUCKET (BACKEND CONTROLLED)
+  collectedFunds: 0,
+  
       createdAt: serverTimestamp(),
     });
     tournamentId = newDoc.id;
@@ -708,6 +738,12 @@ setSaving(false);
             keyboardType="numeric"
             value={formDuration}
             onChangeText={setFormDuration}
+          />
+          <TextInput
+  placeholder="Start after (minutes)"
+  keyboardType="numeric"
+  value={formStartDelay}
+  onChangeText={setFormStartDelay}
           />
 
           {/* Tournament Status */}

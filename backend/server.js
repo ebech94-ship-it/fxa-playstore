@@ -4,7 +4,7 @@ const express = require("express");
 const cors = require("cors");
 const { testCampay } = require("./campay");
 const { getCampayToken } = require("./campayAuth");
-
+const admin = require("firebase-admin");
 
 // If your Node version < 18, uncomment next two lines
 // const fetch = require("node-fetch");
@@ -68,31 +68,123 @@ app.get("/api/treasury/balances", async (req, res) => {
   }
 });
 
-// ---------------------------------------------------------------------
-// MANUAL DEPOSIT (TESTING ONLY)
-// ---------------------------------------------------------------------
-app.post("/deposit", async (req, res) => {
-  try {
-    const { userId, amount } = req.body;
 
+// ---------------------------------------------------------------------
+// ⚠️ ADMIN / TEST ONLY — REMOVE IN PRODUCTION
+// ---------------------------------------------------------------------
+
+app.post("/deposit", authenticate, async (req, res) => {
+  try {
+    // only admin allowed
+    if (!req.user.admin) {
+      return res.status(403).json({ error: "Forbidden" });
+    }
+
+    const { userId, amount } = req.body;
     if (!userId || !amount)
       return res.status(400).json({ error: "Missing fields" });
 
     await treasury.addDepositToUser(userId, amount);
     await treasury.addDepositToTreasury(amount);
 
-    res.json({ success: true, message: "Deposit successful" });
+    res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+
+// ---------------------------------------------------------------------
+// TOURNAMENTS HANDLING
+// ---------------------------------------------------------------------
+app.post("/tournament/register", authenticate, async (req, res) => {
+  try {
+    const userId = req.user.uid;
+    const { tournamentId } = req.body;
+
+    if (!tournamentId)
+      return res.status(400).json({ error: "Missing tournamentId" });
+
+    const userRef = db.collection("users").doc(userId);
+    const tournamentRef = db.collection("tournaments").doc(tournamentId);
+    const playerRef = tournamentRef.collection("players").doc(userId);
+
+    await db.runTransaction(async (t) => {
+      const [userSnap, tournamentSnap, playerSnap] = await Promise.all([
+        t.get(userRef),
+        t.get(tournamentRef),
+        t.get(playerRef),
+      ]);
+
+      if (!userSnap.exists) throw new Error("User not found");
+      if (!tournamentSnap.exists) throw new Error("Tournament not found");
+      if (playerSnap.exists) throw new Error("Already joined");
+
+      const user = userSnap.data();
+      const tournament = tournamentSnap.data();
+
+      const entryFee = tournament.entryFee || 0;
+      const startingBalance = tournament.startingBalance || 0;
+      const prizePool = tournament.prizePool || 0;
+
+      if (entryFee > 0 && (user.walletBalance || 0) < entryFee) {
+        throw new Error("Insufficient wallet balance");
+      }
+
+      // 🔻 Deduct entry fee
+      if (entryFee > 0) {
+        t.update(userRef, {
+          walletBalance: user.walletBalance - entryFee,
+        });
+
+        t.update(tournamentRef, {
+          prizePool: prizePool + entryFee,
+          lastUpdated: admin.firestore.Timestamp.now(),
+        });
+      }
+
+      // 🧩 Create tournament player
+      t.set(playerRef, {
+        uid: userId,
+        username: user.username || "Player",
+        balance: startingBalance,
+        rebuys: [],
+        joinedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      // 🧠 Create tournament account snapshot
+      t.set(
+  userRef,
+  {
+    "accounts.activeTournamentId": tournamentId,
+    [`accounts.tournaments.${tournamentId}`]: {
+      balance: startingBalance,
+      initialBalance: startingBalance,
+      status: "active",
+      joinedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+  },
+  { merge: true }
+);
+
+    });
+
+    res.json({ success: true, message: "Tournament registered successfully" });
+  } catch (err) {
+    console.error("Tournament register error:", err.message);
+    res.status(400).json({ success: false, error: err.message });
   }
 });
 
 // ---------------------------------------------------------------------
 // WITHDRAWAL
 // ---------------------------------------------------------------------
-app.post("/withdraw", async (req, res) => {
+app.post("/withdraw", authenticate, async (req, res) => {
+
   try {
-    const { userId, amount } = req.body;
+    const userId = req.user.uid;
+const { amount } = req.body;
+
 
     if (!userId || !amount)
       return res.status(400).json({ error: "Missing fields" });
@@ -108,9 +200,11 @@ app.post("/withdraw", async (req, res) => {
 // ---------------------------------------------------------------------
 // TOURNAMENT REBUY
 // ---------------------------------------------------------------------
-app.post("/tournament-rebuy", async (req, res) => {
+app.post("/tournament-rebuy", authenticate, async (req, res) => {
+
   try {
-    const { userId, tournamentId, amount } = req.body;
+    const userId = req.user.uid;
+const { tournamentId, amount } = req.body;
 
     await treasury.processRebuy(userId, tournamentId, amount);
 
@@ -120,55 +214,74 @@ app.post("/tournament-rebuy", async (req, res) => {
   }
 });
 
+
+// Middleware to verify Firebase ID token
+const authenticate = async (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return res.status(401).json({ error: "No Firebase token provided" });
+  }
+
+  const idToken = authHeader.split(" ")[1];
+  try {
+    const decodedToken = await admin.auth().verifyIdToken(idToken);
+    req.user = decodedToken; // attach decoded user info to request
+    next();
+  } catch (err) {
+    console.error("Firebase auth error:", err.message);
+    return res.status(401).json({ error: "Invalid Firebase token" });
+  }
+};
 // ---------------------------------------------------------------------
 // TOURNAMENT SETTLEMENT
 // ---------------------------------------------------------------------
-app.post("/tournament-settle", async (req, res) => {
+app.post("/campay/create-payment", authenticate, async (req, res) => {
   try {
-    const { tournamentId } = req.body;
-    await treasury.processTournamentPayout(tournamentId);
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
+    const { amount, phone, operator, method } = req.body;
 
-// ---------------------------------------------------------------------
-// CAMPAY - CREATE PAYMENT
-// ---------------------------------------------------------------------
-app.post("/campay/create-payment", async (req, res) => {
-  try {
-    const { amount, phone, operator, userId } = req.body;
+    // Use the userId from verified Firebase token (safer!)
+    const userId = req.user.uid;
 
-    if (!amount || !phone || !operator || !userId) {
+    if (!amount || !method) {
       return res.status(400).json({ error: "Missing fields" });
+    }
+
+    // Mobile money validation
+    if (method === "mobile" && (!phone || !operator)) {
+      return res.status(400).json({ error: "Phone and operator are required for mobile money" });
     }
 
     const token = await getCampayToken();
 
-    const response = await fetch(
-      `${process.env.CAMPAY_BASE_URL}/collect/`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Token ${token}`,
-        },
-        body: JSON.stringify({
-          amount: Number(amount),
-          currency: "XAF",
-          from: phone,
-          description: "Forex Tournament Deposit",
-          external_reference: userId,
-          operator, // MTN or ORANGE
-        }),
-      }
-    );
+    const bodyPayload = {
+      amount: Number(amount),
+      currency: "XAF",
+      description: "Forex Tournament Deposit",
+      external_reference: userId,
+    };
+
+    if (method === "mobile") {
+      bodyPayload.from = phone;
+      bodyPayload.operator = operator;
+    }
+
+    const endpoint = method === "card"
+      ? `${process.env.CAMPAY_BASE_URL}/cards/`  // adjust per CamPay docs
+      : `${process.env.CAMPAY_BASE_URL}/collect/`;
+
+    const response = await fetch(endpoint, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Token ${token}`,
+      },
+      body: JSON.stringify(bodyPayload),
+    });
 
     const data = await response.json();
 
     if (!response.ok) {
-      console.error("CamPay collect error:", data);
+      console.error("CamPay collect/card error:", data);
       return res.status(400).json(data);
     }
 
@@ -178,11 +291,13 @@ app.post("/campay/create-payment", async (req, res) => {
       reference: data.reference || null,
       status: data.status || "PENDING",
     });
+
   } catch (err) {
     console.error("CamPay create-payment error:", err.message);
     res.status(500).json({ error: "CamPay payment failed" });
   }
 });
+
 
 
 // ---------------------------------------------------------------------

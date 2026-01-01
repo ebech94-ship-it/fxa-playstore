@@ -1,24 +1,24 @@
-import React, { useEffect, useRef, useState } from "react";
 import {
-  View,
-  Text,
-  StyleSheet,
-  ScrollView,
-  Animated,
-  TouchableOpacity,
-  Modal,
-  TextInput,
-} from "react-native";
-import {
-  collection,
-  onSnapshot,
-  doc,
-  updateDoc,
   addDoc,
-  serverTimestamp,
+  collection,
+  doc,
   increment,
-  getDoc,
+  onSnapshot,
+  runTransaction,
+  serverTimestamp,
+  updateDoc,
 } from "firebase/firestore";
+import { useEffect, useRef, useState } from "react";
+import {
+  Animated,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { db } from "../../../firebaseConfig";
 
 // -------------------------
@@ -114,35 +114,51 @@ useEffect(() => {
   // APPROVE PAYOUT
   // -------------------------
   const markPaid = async () => {
-    if (!selected) return;
+  if (!selected) return;
 
-    // Deduct balance from user
-    const userRef = doc(db, "users", selected.uid);
-    const userSnap = await getDoc(userRef);
+  const payoutId = selected.id;
+  const userId = selected.uid;
+  const amount = Number(selected.amount);
 
-    if (userSnap.exists()) {
-      await updateDoc(userRef, {
-        balance: increment(-Math.abs(selected.amount)),
-      });
+  await runTransaction(db, async (tx) => {
+    const payoutRef = doc(db, "payouts", payoutId);
+    const payoutSnap = await tx.get(payoutRef);
+
+    // 🔒 Guard: already processed
+    if (!payoutSnap.exists()) {
+      throw new Error("Payout already processed");
     }
 
-    // Update payout
-    await updateDoc(doc(db, "payouts", selected.id), {
+    const data = payoutSnap.data();
+    if (data?.status !== "pending") {
+      throw new Error("Payout is not pending");
+    }
+
+    // Deduct balance
+    const userRef = doc(db, "users", userId);
+    tx.update(userRef, {
+      "accounts.real.balance": increment(-Math.abs(amount)),
+    });
+
+    // Mark payout paid
+    tx.update(payoutRef, {
       status: "paid",
       paidAt: serverTimestamp(),
     });
+  });
 
-    // Notify user
-    await addDoc(collection(db, "notifications"), {
-      uid: selected.uid,
-      title: "Payout Approved",
-      message: `Your payout of ${selected.amount} FRS has been approved.`,
-      createdAt: serverTimestamp(),
-      read: false,
-    });
+  // Notify user (outside transaction)
+  await addDoc(collection(db, "notifications"), {
+    uid: selected.uid,
+    title: "Payout Approved",
+    message: `Your payout of ${selected.amount} FRS has been approved.`,
+    createdAt: serverTimestamp(),
+    read: false,
+  });
 
-    setModalVisible(false);
-  };
+  setModalVisible(false);
+};
+
 
   // -------------------------
   // REJECT PAYOUT
@@ -153,7 +169,7 @@ useEffect(() => {
     await updateDoc(doc(db, "payouts", selected.id), {
       status: "rejected",
       rejectedAt: serverTimestamp(),
-      reason: rejectReason,
+      reason: rejectReason || "Rejected by admin",
     });
 
     // Notify user

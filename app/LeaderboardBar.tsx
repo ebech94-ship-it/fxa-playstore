@@ -3,6 +3,7 @@ import { getAuth } from "firebase/auth";
 import { collection, doc, onSnapshot } from "firebase/firestore";
 import { useContext, useEffect, useState } from "react";
 import { Alert, Image, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import CountryFlag from "react-native-country-flag";
 import Animated, { FadeIn, FadeOut, Layout } from "react-native-reanimated";
 import { db } from "../firebaseConfig";
 import { ProfileContext } from "./ProfileContext";
@@ -17,6 +18,23 @@ type LeaderboardMode = "preview" | "idle" | "live";
 
 type LeaderboardBarProps = {
   tournamentId?: string; // null → preview mode
+    username?: string;
+  countryCode?: string;
+};
+type PlayerRowProps = {
+  username: string;
+  countryCode: string;
+};
+
+ const PlayerRow = ({ username, countryCode }: PlayerRowProps) => {
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center" }}>
+      <CountryFlag isoCode={countryCode} size={18} />
+      <Text style={{ marginLeft: 6, color: "#fff", fontWeight: "600" }}>
+        {username}
+      </Text>
+    </View>
+  );
 };
 
 const PREVIEW_PLAYERS: Player[] = [
@@ -179,7 +197,11 @@ setPlayers(list);
               />
 
               <View style={styles.info}>
-                <Text style={styles.name}>{p.username || "Player"}</Text>
+                <PlayerRow
+  username={p.username || "Player"}
+  countryCode={(p as any).countryCode || "CM"} // default Cameroon
+/>
+
                 <Text style={styles.balance}>{p.balance ?? 0}T</Text>
               </View>
 

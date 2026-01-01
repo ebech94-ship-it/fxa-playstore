@@ -10,8 +10,10 @@ import {
 
 
 import { useRouter } from "expo-router";
+import { getAuth } from "firebase/auth";
 import { useEffect, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   Image,
   Modal,
@@ -141,7 +143,7 @@ if (method === "Visa" || method === "MasterCard") {
   // PREFILL amount into modal form
   setFormData((prev) => ({
     ...prev,
-    amount: amount,   // auto-insert amount typed on main page
+   amount: amount || "0",   // auto-insert amount typed on main page
     fullName: currentUser?.displayName || "",
     phone: prev.phone,     // keep old
     code: "",
@@ -156,57 +158,55 @@ if (method === "Visa" || method === "MasterCard") {
 };
 
 
-  // -------------------------
-  // Deposit (create payment)
-  // -------------------------
- const handleCampayPayment = async (form: any) => {
+ // -------------------------
+// Deposit (create payment)
+// -------------------------
+const handleCampayPayment = async (form: any) => {
   if (!currentUser?.uid) return;
+
+  const auth = getAuth();
+  const token = await auth.currentUser?.getIdToken(); // 🔹 This is correct
+
+  console.log("👶 STEP 3 TOKEN:", token); // just to verify in console
+
   try {
-    const res = await fetch(`${API_BASE}/create-payment`, {
+    const res = await fetch(`${API_BASE}/campay/create-payment`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-     body: JSON.stringify({
-  userId: currentUser.uid,
-  amount: Number(form.amount),
-  currency: selectedCurrency,
-
-  method:
-    activeMethod === "MTN" || activeMethod === "Orange"
-      ? "mobile"
-      : "card",
-
-  operator: activeMethod, // MTN, Orange, Visa, MasterCard
-
-  phone: activeMethod === "MTN" || activeMethod === "Orange"
-    ? form.phone
-    : undefined,
-}),
-
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${token}`, // 🔹 must be 'Bearer <token>'
+      },
+      body: JSON.stringify({
+      userId: currentUser.uid,
+        amount: Number(form.amount),
+        method: activeMethod === "MTN" || activeMethod === "Orange" ? "mobile" : "card",
+        operator: activeMethod, // only needed for mobile
+        phone: activeMethod === "MTN" || activeMethod === "Orange" ? form.phone : undefined,
+      }),
     });
 
+    const text = await res.text();
+    console.log("📦 BACKEND RESPONSE:", text); // raw response
 
-
-    const data = await res.json();
+    const data = JSON.parse(text);
 
     if (!res.ok) {
-      Alert.alert("Payment Error", data.error || "Failed");
+      alert("Payment Error: " + (data.error || "Failed"));
       return;
     }
 
-   Alert.alert(
-  "Payment Processing",
-  "Please confirm the payment on your phone.\n\nYour wallet will be updated once the payment is confirmed."
-);
+    alert("Payment request sent! Confirm on your phone.");
 
-  } catch  {
-    Alert.alert("Network Error", "Server unreachable");
-  } finally {
-  
+  } catch (err) {
+    alert("Network error: Server unreachable");
+    console.error(err);
   }
 };
 
+
 const IS_CAMPAY_SANDBOX = true;
-  // -------------------------
+// -------------------------
+
   // Withdrawal (request)
   // -------------------------
   const handleWithdrawal = async () => {
@@ -241,15 +241,18 @@ const IS_CAMPAY_SANDBOX = true;
         // create withdrawal request doc
         const withdrawalRef = collection(db, "withdrawals");
         await tx.set(doc(withdrawalRef), {
-          userId: uid,
-          amount: numericAmount,
-          fee,
-          netAmount: net,
-          currency: selectedCurrency,
-          status: "pending",
-          createdAt: serverTimestamp(),
-          type: "withdrawal",
-        });
+  userId: uid,
+  amount: numericAmount,
+  fee,
+  netAmount: net,
+  currency: selectedCurrency,
+  method: activeMethod,
+  destination: formData.phone || formData.walletAddress || null,
+  status: "pending",
+  createdAt: serverTimestamp(),
+  type: "withdrawal",
+});
+
 
         // deduct user's wallet balance immediately (consider 'hold' semantics in future)
         // using transaction ensures atomicity with the withdrawal doc
@@ -321,6 +324,19 @@ const isValidCameroonPhone = (phone: string, operator: string) => {
 // Submit form depending on deposit/withdraw
 const submitForm = async () => {
   console.log("Submitting form:", formData);
+  const auth = getAuth();
+const user = auth.currentUser;
+
+
+if (!activeMethod) {
+  Alert.alert("Select Payment Method", "Please choose a payment method.");
+  return;
+}
+
+if (!user) {
+  Alert.alert("Not logged in", "Please log in again.");
+  return;
+}
 
   const numericAmount = Number(formData.amount);
   if (!formData.amount || isNaN(numericAmount) || numericAmount <= 0) {
@@ -502,10 +518,14 @@ if (IS_CAMPAY_SANDBOX && numericAmount > 10) {
             {/* Visa / MasterCard Form */}
             {(activeMethod === "Visa" || activeMethod === "MasterCard") && (
               <>
-                <TextInput placeholder="Full Name" value={formData.fullName} onChangeText={v => handleChange("fullName", v)} style={styles.modalInput} placeholderTextColor="#888" />
-                <TextInput placeholder="Card Number" value={formData.cardNumber} onChangeText={v => handleChange("cardNumber", v)} style={styles.modalInput} keyboardType="numeric" placeholderTextColor="#888" />
-                <TextInput placeholder="Expiry Date (MM/YY)" value={formData.expiry} onChangeText={v => handleChange("expiry", v)} style={styles.modalInput} placeholderTextColor="#888" />
-                <TextInput placeholder="CVV" value={formData.cvv} onChangeText={v => handleChange("cvv", v)} style={styles.modalInput} keyboardType="numeric" placeholderTextColor="#888" />
+                <TextInput placeholder="Full Name" value={formData.fullName} onChangeText={v => 
+                handleChange("fullName", v)} style={styles.modalInput} placeholderTextColor="#888" />
+                <TextInput placeholder="Card Number" value={formData.cardNumber} onChangeText={v =>
+                 handleChange("cardNumber", v)} style={styles.modalInput} keyboardType="numeric" placeholderTextColor="#888" />
+                <TextInput placeholder="Expiry Date (MM/YY)" value={formData.expiry} onChangeText={v => 
+                handleChange("expiry", v)} style={styles.modalInput} placeholderTextColor="#888" />
+                <TextInput placeholder="CVV" value={formData.cvv} onChangeText={v => 
+                handleChange("cvv", v)} style={styles.modalInput} keyboardType="numeric" placeholderTextColor="#888" />
                <View style={styles.modalInput}>
   <Text style={{ color: "#fff" }}>
     Amount: {formData.amount} {selectedCurrency}
@@ -525,21 +545,32 @@ if (IS_CAMPAY_SANDBOX && numericAmount > 10) {
   </Text>
 </View>
 
-                <TextInput placeholder="Transaction Note (Optional)" value={formData.note} onChangeText={v => handleChange("note", v)} style={styles.modalInput} placeholderTextColor="#888" />
+                <TextInput placeholder="Transaction Note (Optional)" value={formData.note} 
+                onChangeText={v => handleChange("note", v)} style={styles.modalInput} placeholderTextColor="#888" />
               </>
             )}
 
             {/* Modal buttons */}
             <View style={styles.modalButtons}>
-              <TouchableOpacity style={[styles.modalButton, { backgroundColor: "#FF6B6B" }]} onPress={() => setModalVisible(false)}>
+              <TouchableOpacity style={[styles.modalButton, { backgroundColor: "#FF6B6B" }]}
+               onPress={() => setModalVisible(false)}>
                 <Text style={styles.modalButtonText}>Cancel</Text>
               </TouchableOpacity>
              <TouchableOpacity
-  disabled={loading} style={[styles.modalButton,
+  disabled={loading}
+  style={[ styles.modalButton,
     { backgroundColor: loading ? "#999" : "#6a5acd" },
-  ]} onPress={submitForm}> <Text style={styles.modalButtonText}> 
-  {loading ? "Processing..." : "Submit"}
-  </Text>
+  ]}
+  onPress={submitForm}
+>
+  <View style={{ flexDirection: "row", alignItems: "center" }}>
+    {loading && ( <ActivityIndicator  color="#fff"  size="small"  style={{ marginRight: 8 }}
+      />
+    )}
+    <Text style={styles.modalButtonText}>
+      {loading ? "Processing..." : "Submit"}
+    </Text>
+  </View>
 </TouchableOpacity>
 
             </View>

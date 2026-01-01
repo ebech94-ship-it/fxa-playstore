@@ -42,6 +42,8 @@ export type ChartViewHandle = {
 const ChartView = forwardRef<ChartViewHandle, ChartViewProps>(
   ({ symbol = "BECH/USD" }, ref) => {
     const webRef = useRef<WebView>(null);
+const iframeRef = useRef<HTMLIFrameElement | null>(null);
+
     const latestPriceRef = useRef(0);
     const lastLayoutRef = useRef({ w: 0, h: 0 });
     const webReadyRef = useRef(false);
@@ -51,18 +53,29 @@ const ChartView = forwardRef<ChartViewHandle, ChartViewProps>(
       getCurrentPrice: () => latestPriceRef.current,
 
       onTrade: (type, amount, price, id, profit = 0, expire = 0) => {
-        webRef.current?.injectJavaScript(`
-          window.handleRNMessage && window.handleRNMessage({
-            type: "${type.toUpperCase()}",
-            amount: ${amount},
-            price: ${price},
-            id: "${id}",
-            profit: ${profit},
-            expire: ${expire}
-          });
-          true;
-        `);
-      },
+  const payload = {
+    type: type.toUpperCase(),
+    amount,
+    price,
+    id,
+    profit,
+    expire,
+  };
+
+  // 📱 ANDROID / IOS
+  webRef.current?.injectJavaScript(`
+    window.handleRNMessage && window.handleRNMessage(${JSON.stringify(payload)});
+    true;
+  `);
+
+  // 🌐 WEB (iframe)
+ iframeRef.current?.contentWindow?.postMessage(
+  payload,   // ✅ OBJECT, NOT STRING
+  "*"
+);
+
+},
+
 
       removeMarker: (id: string) => {
         webRef.current?.injectJavaScript(`
@@ -144,7 +157,7 @@ html,body{margin:0;height:100%;background:#0b1220;overflow:hidden}
   let markers=[];
   let priceLines={};
 
-  let wickCompression=1;
+  let wickCompression= 0.30;
   let useHeikinAshi=false;
   let rawBars=[], haBars=[];
 
@@ -218,25 +231,67 @@ if (!candleTime) return;
     if(priceLines[msg.id]){series.removePriceLine(priceLines[msg.id]);delete priceLines[msg.id];}
 
     markers.push({
-      time: candleTime,
-      position:"price",
-      price:entry,
-      color:t==="BUY"?"#22c55e":"#ef4444",
-      shape:t==="BUY"?"arrowUp":"arrowDown",
-      text:t+" $"+msg.amount,
-      id:msg.id
-    });
+  time: candleTime,
+  position: t === "BUY" ? "belowBar" : "aboveBar",
+  color: t === "BUY" ? "#22c55e" : "#ef4444",
+  shape: t === "BUY" ? "arrowUp" : "arrowDown",
+  text: t + " $" + msg.amount,
+  id: msg.id
+});
+
 
     priceLines[msg.id]=series.createPriceLine({price:entry,color:t==="BUY"?"#22c55e":"#ef4444",lineWidth:2,axisLabelVisible:true,title:t+" ENTRY"});
     series.setMarkers(markers);
 
-    const timer=setInterval(()=>{
-      const r=Math.max(0,Math.ceil((exp-Date.now())/1000));
-      const m=markers.find(x=>x.id===msg.id);
-      if(m){m.text=t+" $"+msg.amount+" | "+r+"s";series.setMarkers(markers);}
-      if(r<=0){clearInterval(timer);if(priceLines[msg.id]){series.removePriceLine(priceLines[msg.id]);delete priceLines[msg.id];}}
-    },1000);
+    const timer = setInterval(() => {
+  const r = Math.max(0, Math.ceil((exp - Date.now()) / 1000));
+  const m = markers.find(x => x.id === msg.id);
+
+  // ⏳ update countdown text
+  if (m) {
+    m.text = t + " $" + msg.amount + " | " + r + "s";
+    series.setMarkers(markers);
+  }
+
+  // 🧹 when expired → remove marker + price line
+  if (r <= 0) {
+    clearInterval(timer);
+
+    // remove marker
+    markers = markers.filter(m => m.id !== msg.id);
+    series.setMarkers(markers);
+
+    // remove price line
+    if (priceLines[msg.id]) {
+      series.removePriceLine(priceLines[msg.id]);
+      delete priceLines[msg.id];
+    }
+  }
+}, 1000);
+
   };
+
+
+/// ✅ ADD THIS BLOCK RIGHT HERE (IMPORTANT)
+window.addEventListener("message", e => {
+  if (!e.data) return;
+
+  // if message is string (older RN / web cases)
+  if (typeof e.data === "string") {
+    try {
+      const parsed = JSON.parse(e.data);
+      window.handleRNMessage && window.handleRNMessage(parsed);
+    } catch {
+      return;
+    }
+  }
+
+  // if message is already an object (your current setup)
+  if (typeof e.data === "object") {
+    window.handleRNMessage && window.handleRNMessage(e.data);
+  }
+});
+/// ✅ END ADDITION
 
   window.removeMarkerById=id=>{
     markers=markers.filter(m=>m.id!==id);
@@ -286,8 +341,15 @@ if (!candleTime) return;
     }, []);
 
     if (Platform.OS === "web") {
-      return <iframe srcDoc={tradingViewHTML} style={{ width: "100%", height: "100%", border: "none" }} />;
-    }
+  return (
+    <iframe
+      ref={iframeRef}
+      srcDoc={tradingViewHTML}
+      style={{ width: "100%", height: "100%", border: "none" }}
+    />
+  );
+}
+
 
     return (
       <View style={styles.container} onLayout={onLayout}>

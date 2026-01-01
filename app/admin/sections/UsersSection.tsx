@@ -1,27 +1,27 @@
 // app/admin/sections/UsersSection.tsx
-import React, { useEffect, useRef, useState, useCallback } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  TouchableOpacity,
-  Modal,
-  TextInput,
-  ScrollView,
-  Animated,
-} from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import {
   collection,
   doc,
-  onSnapshot,
-  query,
-  orderBy,
-  updateDoc,
-  deleteDoc,
   getFirestore,
+  onSnapshot,
+  orderBy,
+  query,
+  runTransaction,
+  updateDoc,
 } from "firebase/firestore";
+import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  Animated,
+  FlatList,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import { app } from "../../../firebaseConfig";
 
 const db = getFirestore(app);
@@ -32,6 +32,7 @@ interface AdminUser {
   email: string;
   balance: number;
   frozen: boolean;
+   deleted?: boolean; 
   joinedTournaments?: any[];
   createdAt?: any;
 }
@@ -47,8 +48,6 @@ const UsersSection = () => {
   const [editBalance, setEditBalance] = useState("");
   const [balanceMode, setBalanceMode] = useState<"add" | "subtract">("add");
   const [loadingAction, setLoadingAction] = useState(false);
-
-console.log(loadingAction);
 
   // -------------------------------
   // GLOW ANIMATION HEADER
@@ -89,27 +88,35 @@ console.log(loadingAction);
   // FETCH USERS REAL-TIME
   // -------------------------------
   useEffect(() => {
-    const q = query(collection(db, "users"), orderBy("createdAt", "desc"));
+  const q = query(collection(db, "users"), orderBy("createdAt", "desc"));
 
-    const unsub = onSnapshot(q, (snap) => {
-      const list: AdminUser[] = [];
-      snap.forEach((docSnap) => {
-        const data = docSnap.data();
-        list.push({
-          id: docSnap.id,
-          email: data.email || "No email",
-          balance: data.balance || 0,
-          frozen: data.frozen || false,
-          joinedTournaments: data.joinedTournaments || [],
-          createdAt: data.createdAt,
-        });
+  const unsub = onSnapshot(q, (snap) => {
+    const list: AdminUser[] = [];
+
+    snap.forEach((docSnap) => {
+      const data = docSnap.data();
+
+      // ✅ FILTER SOFT-DELETED USERS
+      if (data.deleted) return;
+
+      list.push({
+        id: docSnap.id,
+        email: data.email || "No email",
+        balance: data.balance || 0,
+        frozen: data.frozen || false,
+        joinedTournaments: data.joinedTournaments || [],
+        createdAt: data.createdAt,
+        deleted: data.deleted,
       });
-      setUsers(list);
-      setFilteredUsers(list);
     });
 
-    return unsub;
-  }, []);
+    setUsers(list);
+    setFilteredUsers(list);
+  });
+
+  return unsub;
+}, []);
+
 
   // -------------------------------
   // SEARCH BAR
@@ -152,28 +159,38 @@ console.log(loadingAction);
   // -------------------------------
   // UPDATE BALANCE (+ OR -)
   // -------------------------------
-  const handleBalanceUpdate = async () => {
-    if (!selected || !editBalance.trim()) return;
+  
 
-    const amount = parseFloat(editBalance);
-    if (isNaN(amount)) return;
+const handleBalanceUpdate = async () => {
+  if (!selected || !editBalance.trim()) return;
 
-    setLoadingAction(true);
-    try {
-      const newBalance =
-        balanceMode === "add"
-          ? selected.balance + amount
-          : selected.balance - amount;
+  const amount = parseFloat(editBalance);
+  if (isNaN(amount) || amount <= 0) return;
 
-      await updateDoc(doc(db, "users", selected.id), {
-        balance: newBalance < 0 ? 0 : newBalance,
+  setLoadingAction(true);
+
+  try {
+    const userRef = doc(db, "users", selected.id);
+
+    await runTransaction(db, async (t) => {
+      const snap = await t.get(userRef);
+      if (!snap.exists()) return;
+
+      const current = snap.data().balance || 0;
+      const updated =
+        balanceMode === "add" ? current + amount : current - amount;
+
+      t.update(userRef, {
+        balance: Math.max(0, updated),
       });
-    } catch (e) {
-      console.log("BALANCE ERROR:", e);
-    }
-    setLoadingAction(false);
-    setEditBalance("");
-  };
+    });
+  } catch (e) {
+    console.log("BALANCE ERROR:", e);
+  }
+
+  setLoadingAction(false);
+  setEditBalance("");
+};
 
   // -------------------------------
   // RESET PASSWORD (YOUR BACKEND)
@@ -201,11 +218,16 @@ console.log(loadingAction);
   // -------------------------------
   const deleteUserAccount = async () => {
     if (!selected) return;
-
+if (selected.deleted) return;
     setLoadingAction(true);
 
+
     try {
-      await deleteDoc(doc(db, "users", selected.id));
+      await updateDoc(doc(db, "users", selected.id), {
+  deleted: true,
+  deletedAt: new Date(),
+});
+
       setModalVisible(false);
     } catch (e) {
       console.log("DELETE USER ERR:", e);
@@ -301,43 +323,75 @@ console.log(loadingAction);
                   onChangeText={setEditBalance}
                 />
 
-                <TouchableOpacity
-                  onPress={handleBalanceUpdate}
-                  style={styles.actionBtn}
-                >
-                  <Text style={styles.btnText}>
-                    {balanceMode === "add" ? "Add Funds" : "Subtract Funds"}
-                  </Text>
-                </TouchableOpacity>
+               <TouchableOpacity
+  onPress={handleBalanceUpdate}
+  disabled={loadingAction}
+  style={[
+    styles.actionBtn,
+    loadingAction && { opacity: 0.6 },
+  ]}
+>
+  <Text style={styles.btnText}>
+    {loadingAction
+      ? "Processing..."
+      : balanceMode === "add"
+      ? "Add Funds"
+      : "Subtract Funds"}
+  </Text>
+</TouchableOpacity>
+
 
                 {/* FREEZE */}
                 <TouchableOpacity
-                  onPress={toggleFreeze}
-                  style={[
-                    styles.actionBtn,
-                    { backgroundColor: selected.frozen ? "#c62828" : "#0066cc" },
-                  ]}
-                >
-                  <Text style={styles.btnText}>
-                    {selected.frozen ? "Unfreeze User" : "Freeze User"}
-                  </Text>
-                </TouchableOpacity>
+  onPress={toggleFreeze}
+  disabled={loadingAction}
+  style={[
+    styles.actionBtn,
+    { backgroundColor: selected.frozen ? "#c62828" : "#0066cc" },
+    loadingAction && { opacity: 0.6 },
+  ]}
+>
+  <Text style={styles.btnText}>
+    {loadingAction
+      ? "Updating..."
+      : selected.frozen
+      ? "Unfreeze User"
+      : "Freeze User"}
+  </Text>
+</TouchableOpacity>
+
 
                 {/* RESET PASSWORD */}
                 <TouchableOpacity
-                  onPress={resetPassword}
-                  style={[styles.actionBtn, { backgroundColor: "#8800cc" }]}
-                >
-                  <Text style={styles.btnText}>Reset Password</Text>
-                </TouchableOpacity>
+  onPress={resetPassword}
+  disabled={loadingAction}
+  style={[
+    styles.actionBtn,
+    { backgroundColor: "#8800cc" },
+    loadingAction && { opacity: 0.6 },
+  ]}
+>
+  <Text style={styles.btnText}>
+    {loadingAction ? "Sending..." : "Reset Password"}
+  </Text>
+</TouchableOpacity>
+
 
                 {/* DELETE USER */}
                 <TouchableOpacity
-                  onPress={deleteUserAccount}
-                  style={[styles.actionBtn, { backgroundColor: "#cc0000" }]}
-                >
-                  <Text style={styles.btnText}>Delete User</Text>
-                </TouchableOpacity>
+  onPress={deleteUserAccount}
+  disabled={loadingAction}
+  style={[
+    styles.actionBtn,
+    { backgroundColor: "#cc0000" },
+    loadingAction && { opacity: 0.6 },
+  ]}
+>
+  <Text style={styles.btnText}>
+    {loadingAction ? "Deleting..." : "Delete User"}
+  </Text>
+</TouchableOpacity>
+
 
                 {/* CLOSE */}
                 <TouchableOpacity

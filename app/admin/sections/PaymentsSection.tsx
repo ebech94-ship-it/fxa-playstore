@@ -2,12 +2,14 @@
 import {
   addDoc,
   collection,
-  deleteDoc,
   doc,
+  getDocs,
   increment,
   onSnapshot,
+  query,
+  runTransaction,
   serverTimestamp,
-  updateDoc,
+  where,
 } from "firebase/firestore";
 import React, { useEffect, useRef, useState } from "react";
 import {
@@ -25,15 +27,33 @@ import {
 } from "react-native";
 import { db } from "../../../firebaseConfig"; // adjust if your path differs
 
+type FirestoreTimestamp =
+  | number
+  | string
+  | { seconds: number; nanoseconds?: number };
+
 type PaymentDoc = {
   id?: string;
   uid?: string;
   username?: string;
   amount?: number;
   method?: string;
-  screenshot?: string; // URL (optional)
-  date?: string | number;
+  screenshot?: string;
+  date?: FirestoreTimestamp;
   meta?: Record<string, any>;
+};
+const toMillis = (date?: any): number => {
+  if (!date) return 0;
+
+  // already millis
+  if (typeof date === "number") return date;
+
+  // Firestore Timestamp
+  if (date?.seconds) return date.seconds * 1000;
+
+  // string fallback
+  const parsed = Number(date);
+  return isNaN(parsed) ? 0 : parsed;
 };
 
 const PaymentsSection: React.FC = () => {
@@ -68,75 +88,113 @@ const PaymentsSection: React.FC = () => {
       const list: PaymentDoc[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
       // sort newest first if date exists
       list.sort((a, b) => {
-        const da = a.date ? Number(a.date) : 0;
-        const dbv = b.date ? Number(b.date) : 0;
-        return dbv - da;
-      });
+  return toMillis(b.date) - toMillis(a.date);
+});
+
       setPayments(list);
     });
     return () => unsub();
   }, []);
 
+
   // Approve flow: add to approvedPayments, update user balance, delete pending, notify
-  const approvePayment = async (p: PaymentDoc) => {
-    if (!p?.id) return;
-    setLoading(true);
-    try {
-      // add approved record
-      await addDoc(collection(db, "approvedPayments"), {
+ const approvePayment = async (p: PaymentDoc) => {
+  if (!p?.id) return;
+  setLoading(true);
+
+  try {
+    const paymentId = p.id; // 🔒 narrowed once
+
+await runTransaction(db, async (tx) => {
+  const pendingRef = doc(db, "pendingPayments", paymentId);
+
+      const pendingSnap = await tx.get(pendingRef);
+
+      // 🔒 Guard: already handled
+      if (!pendingSnap.exists()) {
+        throw new Error("Payment already processed.");
+      }
+
+      // 🔒 Guard: double approval
+      const approvedQuery = query(
+        collection(db, "approvedPayments"),
+        where("originalId", "==", p.id)
+      );
+      const approvedSnap = await getDocs(approvedQuery);
+
+      if (!approvedSnap.empty) {
+        throw new Error("Payment already approved.");
+      }
+
+      // 1️⃣ Write approved record
+      const approvedRef = doc(collection(db, "approvedPayments"));
+      tx.set(approvedRef, {
         uid: p.uid ?? null,
         username: p.username ?? null,
-        amount: p.amount ?? 0,
+        amount: Number(p.amount ?? 0),
         method: p.method ?? null,
         screenshot: p.screenshot ?? null,
         originalId: p.id,
         approvedAt: serverTimestamp(),
-        adminNote: `Approved by admin`,
+        adminNote: "Approved by admin",
       });
 
-      // update user balance if uid exists
+      // 2️⃣ Credit user balance
       if (p.uid) {
         const userRef = doc(db, "users", p.uid);
-        // use increment to avoid race conditions
-        await updateDoc(userRef, {
-          balance: increment(Number(p.amount ?? 0)),
+        tx.update(userRef, {
+          "accounts.real.balance": increment(Number(p.amount ?? 0)),
           lastCreditedAt: serverTimestamp(),
         });
       }
 
-      // optional: add a notification doc for the user
-      if (p.uid) {
-        await addDoc(collection(db, "notifications"), {
-          uid: p.uid,
-          title: "Payment Approved",
-          message: `Your payment of ${p.amount} via ${p.method} was approved.`,
-          createdAt: serverTimestamp(),
-          read: false,
-        });
-      }
+      // 3️⃣ Remove pending payment
+      tx.delete(pendingRef);
+    });
 
-      // finally delete pending
-      await deleteDoc(doc(db, "pendingPayments", p.id));
-      Alert.alert("Success", `Payment approved — ${p.amount} moved to user.`);
-      setModalVisible(false);
-      setSelected(null);
-    } catch (err: any) {
-      console.error("approvePayment error", err);
-      Alert.alert("Error", err?.message ?? "Could not approve payment");
-    } finally {
-      setLoading(false);
+    // 4️⃣ Notify user (outside transaction)
+    if (p.uid) {
+      await addDoc(collection(db, "notifications"), {
+        uid: p.uid,
+        title: "Payment Approved",
+        message: `Your payment of ${p.amount} via ${p.method} was approved.`,
+        createdAt: serverTimestamp(),
+        read: false,
+      });
     }
-  };
+
+    Alert.alert("Success", `Payment approved — ${p.amount} credited.`);
+    setModalVisible(false);
+    setSelected(null);
+  } catch (err: any) {
+    Alert.alert("Error", err.message || "Approval failed");
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   // Reject flow: move to rejectedPayments with optional reason, delete pending
-  const rejectPayment = async (p: PaymentDoc, reason?: string) => {
-    if (!p?.id) return;
-    setLoading(true);
-    try {
-      await addDoc(collection(db, "rejectedPayments"), {
+ const rejectPayment = async (p: PaymentDoc, reason?: string) => {
+  if (!p?.id) return;
+  setLoading(true);
+
+  try {
+    await runTransaction(db, async (tx) => {
+      const pendingRef = doc(db, "pendingPayments", p.id!);
+      const pendingSnap = await tx.get(pendingRef);
+
+      // 🔒 Guard
+      if (!pendingSnap.exists()) {
+        throw new Error("Payment already processed.");
+      }
+
+      // 1️⃣ Write rejected record
+      const rejectedRef = doc(collection(db, "rejectedPayments"));
+      tx.set(rejectedRef, {
         uid: p.uid ?? null,
         username: p.username ?? null,
-        amount: p.amount ?? 0,
+        amount: Number(p.amount ?? 0),
         method: p.method ?? null,
         screenshot: p.screenshot ?? null,
         originalId: p.id,
@@ -144,29 +202,34 @@ const PaymentsSection: React.FC = () => {
         reason: reason ?? "Rejected by admin",
       });
 
-      // notify user if uid
-      if (p.uid) {
-        await addDoc(collection(db, "notifications"), {
-          uid: p.uid,
-          title: "Payment Rejected",
-          message: `Your payment of ${p.amount} was rejected. Reason: ${reason ?? "See admin"}`,
-          createdAt: serverTimestamp(),
-          read: false,
-        });
-      }
+      // 2️⃣ Delete pending payment
+      tx.delete(pendingRef);
+    });
 
-      await deleteDoc(doc(db, "pendingPayments", p.id));
-      Alert.alert("Rejected", `Payment rejected and moved to rejectedPayments.`);
-      setRejectModalVisible(false);
-      setModalVisible(false);
-      setSelected(null);
-    } catch (err: any) {
-      console.error("rejectPayment error", err);
-      Alert.alert("Error", err?.message ?? "Could not reject payment");
-    } finally {
-      setLoading(false);
+    // 3️⃣ Notify user
+    if (p.uid) {
+      await addDoc(collection(db, "notifications"), {
+        uid: p.uid,
+        title: "Payment Rejected",
+        message: `Your payment of ${p.amount} was rejected. Reason: ${
+          reason ?? "See admin"
+        }`,
+        createdAt: serverTimestamp(),
+        read: false,
+      });
     }
-  };
+
+    Alert.alert("Rejected", "Payment rejected successfully.");
+    setRejectModalVisible(false);
+    setModalVisible(false);
+    setSelected(null);
+  } catch (err: any) {
+    Alert.alert("Error", err.message || "Rejection failed");
+  } finally {
+    setLoading(false);
+  }
+};
+
 
   // quick UI helper to open detail modal
   const openDetail = (p: PaymentDoc) => {
@@ -202,7 +265,7 @@ const PaymentsSection: React.FC = () => {
                 <View style={{ alignItems: "flex-end" }}>
                   <Text style={styles.amount}>${Number(p.amount ?? 0).toFixed(2)}</Text>
                   <Text style={styles.date}>
-                    {p.date ? new Date(Number(p.date)).toLocaleString() : "Unknown"}
+                   {p.date ? new Date(toMillis(p.date)).toLocaleString() : "Unknown"}
                   </Text>
                 </View>
               </View>

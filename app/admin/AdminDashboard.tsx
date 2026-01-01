@@ -23,6 +23,7 @@ import UsersSection from "./sections/UsersSection";
 const AdminDashboard = () => {
   const [active, setActive] = useState("Tournaments");
   const { width: screenWidth } = useWindowDimensions();
+const [exiting, setExiting] = useState(false);
 
   // 🔥 Responsive sidebar width
   const SIDEBAR_WIDTH =
@@ -136,22 +137,32 @@ const AdminDashboard = () => {
 
           {/* 🔥 Exit Admin */}
           <TouchableOpacity
-  style={styles.sidebarExit}
+  disabled={exiting}
+  style={[
+    styles.sidebarExit,
+    exiting && { opacity: 0.6 },
+  ]}
   onPress={async () => {
+    if (exiting) return;
+
+    setExiting(true);
     try {
       await AsyncStorage.removeItem("isAdmin");
 
-      router.dismissAll();   // 🔥 clear navigation stack
-      router.replace("/tradinglayout");  // 🔥 go to app root
-    } catch  {
+      router.dismissAll();
+      router.replace("/tradinglayout");
+    } catch {
       Alert.alert("Exit failed", "Please restart app");
+      setExiting(false);
     }
   }}
 >
+  <Ionicons name="exit-outline" size={22} color="#fff" />
+  <Text style={styles.sidebarExitText}>
+    {exiting ? "Exiting..." : "Exit Admin"}
+  </Text>
+</TouchableOpacity>
 
-            <Ionicons name="exit-outline" size={22} color="#fff" />
-            <Text style={styles.sidebarExitText}>Exit Admin</Text>
-          </TouchableOpacity>
         </ScrollView>
       </View>
 

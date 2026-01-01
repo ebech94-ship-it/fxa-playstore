@@ -56,6 +56,8 @@ type UserProfile = {
   useHeikinAshi: boolean;
   compressWicks: boolean;
   [key: string]: any;
+    userId?: string;
+
 };
 
 type ProfileProps = {
@@ -81,6 +83,7 @@ export default function ProfileScreen({
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [showDatePicker, setShowDatePicker] = useState(false);
+const DEFAULT_DOB = new Date(2000, 0, 1); // Jan 1, 2000
 
   
   const [avatarUploading, setAvatarUploading] = useState(false);
@@ -172,6 +175,7 @@ useEffect(() => {
 
   return () => unsub();
 }, [user]);
+
 useEffect(() => {
   if (!user) return;
 
@@ -557,6 +561,22 @@ const getStatusStyle = (status: string) => ({
         {activeSection === "profile" && (
           <ScrollView style={styles.section}>
             <Text style={styles.sectionTitle}>Profile</Text>
+            {profile.userId && (
+  <View style={{ marginBottom: 16 }}>
+    <Text style={{ color: "#aaa", fontSize: 12 }}>
+      User ID
+    </Text>
+    <Text
+      style={{
+        color: "#21e6c1",
+        fontSize: 16,
+        fontWeight: "bold",
+      }}
+    >
+      {profile.userId}
+    </Text>
+  </View>
+)}
            <TextInput
   style={styles.input}
   placeholder="Full Name"
@@ -625,9 +645,10 @@ const getStatusStyle = (status: string) => ({
   accessibilityLabel="Select Date of Birth"
   accessibilityHint="Opens date picker to select your birth date"
 >
-  <Text style={{ color: profile.dateOfBirth ? 'white' : '#ccc' }}>
-    {profile.dateOfBirth || "Date of Birth (DD-MM-YYYY)"}
-  </Text>
+ <Text style={{ color: profile.dateOfBirth ? "white" : "#ccc" }}>
+  {profile.dateOfBirth || "Select Date of Birth"}
+</Text>
+
 </TouchableOpacity>
 
 {submitted && errors.dateOfBirth && (
@@ -638,15 +659,16 @@ const getStatusStyle = (status: string) => ({
   <DateTimePicker
     value={
       profile.dateOfBirth
-        ? new Date(profile.dateOfBirth.split('-').reverse().join('-'))
-        : new Date()
+        ? new Date(profile.dateOfBirth.split("-").reverse().join("-"))
+        : DEFAULT_DOB
     }
     mode="date"
-    display="default"
+    display="calendar"
     onChange={handleDateChange}
     maximumDate={new Date()}
   />
 )}
+
 
 <TextInput
   style={styles.input}

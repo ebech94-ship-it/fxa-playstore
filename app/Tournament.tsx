@@ -3,40 +3,18 @@ import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import type { User } from "firebase/auth";
+import CountryFlag from "react-native-country-flag";
 import { verifyAdminAccess } from "./services/adminAccess";
-
 
 import { getAuth } from "firebase/auth";
 
 import {
-  arrayUnion,
-  collection,
-  doc,
-  getDoc,
-  limit,
-  onSnapshot,
-  orderBy,
-  query,
-  runTransaction,
-  serverTimestamp,
-  updateDoc,
+  arrayUnion, collection, doc, getDoc, limit, onSnapshot, orderBy, query, runTransaction, serverTimestamp
 } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  FlatList,
-  LayoutAnimation,
-  Modal,
-  Platform,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  UIManager,
-  View,
+  ActivityIndicator, Alert, FlatList, LayoutAnimation, Modal, Platform, Pressable, ScrollView, StyleSheet,
+  Text, TextInput, TouchableOpacity, UIManager, View,
 } from "react-native";
 import { db } from "../firebaseConfig";
 
@@ -81,6 +59,7 @@ type Tournament = {
 interface LeaderboardUser {
   id: string;
   username?: string;
+   countryCode?: string; 
   balance?: number;
   email?: string;
   [key: string]: any;
@@ -97,6 +76,24 @@ const getPrizeForRank = (
   );
 
   return entry ? Number(entry.amount) : null;
+};
+const NameWithFlag = ({
+  username,
+  countryCode,
+}: {
+  username: string;
+  countryCode?: string;
+}) => {
+  return (
+    <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+      {countryCode ? (
+        <CountryFlag isoCode={countryCode} size={16} />
+      ) : null}
+      <Text numberOfLines={1} style={{ color: "#fff" }}>
+        {username}
+      </Text>
+    </View>
+  );
 };
 
 export default function TournamentScreen({ currentUser }: TournamentScreenProps) {
@@ -258,7 +255,7 @@ snap.docs.forEach((d) => {
   useEffect(() => {
     if (selectedTournament) return; // stop if modal is open
 
-    const q = query(collection(db, "users"), orderBy("balance", "desc"), limit(30));
+    const q = query(collection(db, "users"), orderBy("accounts.tournament.balance", "desc"), limit(30));
     const unsub = onSnapshot(q, (snapshot) => {
       const list = snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
@@ -334,6 +331,7 @@ useEffect(() => {
 
   // ---------- REGISTER USER TO TOURNAMENT (calls backend to perform money ops + treasury) ----------
 const handleRegister = async (tournamentId: string) => {
+
   // 🚫 DOUBLE TAP GUARD
 if (loadingActions[tournamentId]?.register) return;
 
@@ -346,6 +344,17 @@ if (loadingActions[tournamentId]?.register) return;
   }
 
   const tour = tournaments.find((t) => t.id === tournamentId);
+ 
+if (!tour) {
+  Alert.alert("Error", "Tournament not found.");
+  return;
+}
+
+if (Date.now() > tour.endTime) {
+  Alert.alert("Closed", "This tournament has already ended.");
+  return;
+}
+
   if (!tour) {
     Alert.alert("Error", "Tournament not found.");
     return;
@@ -373,6 +382,9 @@ if (loadingActions[tournamentId]?.register) return;
 
     await runTransaction(db, async (transaction) => {
   const userSnap = await transaction.get(userDocRef);
+  
+const countryCode = userSnap.data()?.countryCode ?? null;
+
   const participantSnap = await transaction.get(participantRef);
 
   if (participantSnap.exists()) {
@@ -403,26 +415,33 @@ if (loadingActions[tournamentId]?.register) return;
   transaction.set(participantRef, {
     uid: user.uid,
     username,
+    countryCode,
     balance: finalStartingBalance,
     joinedAt: serverTimestamp(),
     rebuys: [],
   });
 
   // ✅ SINGLE USER UPDATE (VERY IMPORTANT)
-  transaction.set(
+  // ✅ NEW — supports MULTIPLE tournaments
+transaction.set(
   userDocRef,
   {
     walletBalance: entryFee > 0 ? walletBalance - entryFee : walletBalance,
     accounts: {
-      tournament: {
-        balance: finalStartingBalance,
-        initialBalance: finalStartingBalance,
-        activeTournament: tournamentId,
+      tournaments: {
+        [tournamentId]: {
+          balance: finalStartingBalance,
+          initialBalance: finalStartingBalance,
+          joinedAt: serverTimestamp(),
+          status: "active",
+        },
       },
+      activeTournamentId: tournamentId,
     },
   },
   { merge: true }
 );
+
 
 });
 
@@ -538,23 +557,33 @@ const handleRebuy = async (tournamentId: string) => {
     }
 
     // 🔁 ADD TO PLAYER BALANCE + TRACK REBUY
-const startingBalance = Number(tour.startingBalance);
-const currentBalance = Number(playerSnap.data()?.balance ?? 0);
-const newBalance =
-  currentBalance + (isNaN(startingBalance) ? 1000 : startingBalance);
+await runTransaction(db, async (tx) => {
+  const playerSnap = await tx.get(playerRef);
 
-await updateDoc(playerRef, {
-  balance: newBalance,
-  rebuys: arrayUnion({
-    at: Date.now(),
-    amount: isNaN(startingBalance) ? 1000 : startingBalance,
-    createdAt: serverTimestamp(),
-  }),
+  if (!playerSnap.exists()) {
+    throw new Error("PLAYER_NOT_FOUND");
+  }
+
+  const startingBalance = Number(tour.startingBalance);
+  const currentBalance = Number(playerSnap.data()?.balance ?? 0);
+  const rebuyAmount = isNaN(startingBalance) ? 1000 : startingBalance;
+
+  const newBalance = currentBalance + rebuyAmount;
+
+  tx.update(playerRef, {
+    balance: newBalance,
+    rebuys: arrayUnion({
+      at: Date.now(),
+      amount: rebuyAmount,
+      createdAt: serverTimestamp(),
+    }),
+  });
+
+  tx.update(doc(db, "users", currentUser.uid), {
+    [`accounts.tournaments.${tournamentId}.balance`]: newBalance,
+  });
 });
 
-await updateDoc(doc(db, "users", currentUser.uid), {
-  "accounts.tournament.balance": newBalance,
-});
 
     Alert.alert("Rebuy Successful", "You have re-entered the tournament!");
   } catch (error) {
@@ -713,27 +742,39 @@ const progress =
     if (idx === -1) return null;
     const me = list[idx];
     return (
-      <View style={styles.pinnedRow}>
-        <Text style={[styles.tableColSmall, styles.pinnedCol]}>You</Text>
-        <Text style={[styles.tableCol, styles.pinnedCol]} numberOfLines={1}>
-          {me.username || "You"}
-        </Text>
-        <Text style={[styles.tableCol, styles.pinnedCol, styles.balanceLightBlue]}>
-          {me.balance ?? 0}T
-        </Text>
-        <Text style={[styles.tableCol, styles.pinnedCol, styles.priceGreen]}>
-  {(() => {
-    if (!selectedTournament) return "-";
+  <View style={styles.pinnedRow}>
+    {/* "You" label */}
+    <Text style={[styles.tableColSmall, styles.pinnedCol]}>
+      You
+    </Text>
 
-    const rank = list.findIndex((p) => p.id === me.id) + 1;
-    const prize = getPrizeForRank(rank, selectedTournament);
+    {/* Name + Flag column */}
+    <View style={styles.tableCol}>
+      <NameWithFlag
+        username={me.username || "You"}
+        countryCode={me.countryCode}
+      />
+    </View>
 
-    return prize ? `$${prize}` : "-";
-  })()}
-</Text>
+    {/* Balance */}
+    <Text style={[styles.tableCol, styles.balanceLightBlue, styles.pinnedCol]}>
+      {me.balance ?? 0}T
+    </Text>
 
-      </View>
-    );
+    {/* Prize */}
+    <Text style={[styles.tableCol, styles.priceGreen, styles.pinnedCol]}>
+      {(() => {
+        if (!selectedTournament) return "-";
+
+        const rank = list.findIndex((p) => p.id === me.id) + 1;
+        const prize = getPrizeForRank(rank, selectedTournament);
+
+        return prize ? `$${prize}` : "-";
+      })()}
+    </Text>
+  </View>
+);
+
   };
 
   // table header for leaderboard
@@ -756,9 +797,13 @@ const progress =
             ]}
           >
             <Text style={[styles.tableColSmall]}>{i + 1}</Text>
-            <Text style={[styles.tableCol]} numberOfLines={1}>
-              {row.username || row.email || "Player"}
-            </Text>
+            <View style={styles.tableCol}>
+  <NameWithFlag
+    username={row.username || row.email || "Player"}
+    countryCode={row.countryCode}
+  />
+</View>
+
             <Text style={[styles.tableCol, styles.balanceLightBlue]}>{row.balance ?? 0}T</Text>
             
             <Text style={[styles.tableCol, styles.priceGreen]}>
@@ -921,27 +966,33 @@ const progress =
 {/* REGISTER BUTTON */}
 <View style={styles.buttonRow}>
   <TouchableOpacity
-    style={[
-      styles.registerBtn,
-      (loadingActions[selectedTournament.id]?.register ||
-        joinedMap[selectedTournament.id]) &&
-        styles.disabledBtn,
-    ]}
-    onPress={() => handleRegister(selectedTournament.id)}
-    disabled={
+  style={[
+    styles.registerBtn,
+    (modalStatus === "Past" ||
       loadingActions[selectedTournament.id]?.register ||
-      joinedMap[selectedTournament.id]
-    }
-  >
+      joinedMap[selectedTournament.id]) &&
+      styles.disabledBtn,
+  ]}
+  onPress={() => handleRegister(selectedTournament.id)}
+  disabled={
+    modalStatus === "Past" ||
+    loadingActions[selectedTournament.id]?.register ||
+    joinedMap[selectedTournament.id]
+  }
+>
+
     <Text style={styles.btnText}>
-      {joinedMap[selectedTournament.id]
-        ? "You're In"
-        : loadingActions[selectedTournament.id]?.register
-        ? "Processing..."
-        : modalFee === 0
-        ? "Register (Free)"
-        : `Register • ${modalFee} $`}
-    </Text>
+  {modalStatus === "Past"
+    ? "Closed"
+    : joinedMap[selectedTournament.id]
+    ? "You're In"
+    : loadingActions[selectedTournament.id]?.register
+    ? "Processing..."
+    : modalFee === 0
+    ? "Register (Free)"
+    : `Register • ${modalFee} $`}
+</Text>
+
   </TouchableOpacity>
 
 
