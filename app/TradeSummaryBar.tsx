@@ -3,18 +3,13 @@
 import { useEffect, useRef, useState } from "react";
 import {
   Animated,
-  Dimensions,
   PanResponder,
   ScrollView,
   StyleSheet,
   Text,
   View,
+  useWindowDimensions,
 } from "react-native";
-
-const { height } = Dimensions.get("window");
-
-const COLLAPSED_HEIGHT = 50;
-const EXPANDED_HEIGHT = height * 0.5;
 
 /* ===============================
    TYPES
@@ -36,13 +31,24 @@ export default function TradeSummaryBar({
   closedTrades: parentClosedTrades = [],
 }: TradeSummaryBarProps) {
   /* -------------------------------
+     DYNAMIC DIMENSIONS (FIX)
+  ------------------------------- */
+  const { height: screenHeight } = useWindowDimensions();
+
+  const COLLAPSED_HEIGHT = 50;
+  const EXPANDED_HEIGHT = Math.min(screenHeight * 0.7, 420);
+  const maxTranslateY = EXPANDED_HEIGHT - COLLAPSED_HEIGHT;
+
+  /* -------------------------------
      PANEL ANIMATION STATE
   ------------------------------- */
-  const translateY = useRef(
-    new Animated.Value(EXPANDED_HEIGHT - COLLAPSED_HEIGHT)
-  ).current;
+  const translateY = useRef(new Animated.Value(maxTranslateY)).current;
+  const lastY = useRef(maxTranslateY);
 
-  const lastY = useRef(EXPANDED_HEIGHT - COLLAPSED_HEIGHT);
+  useEffect(() => {
+    translateY.setValue(maxTranslateY);
+    lastY.current = maxTranslateY;
+  }, [maxTranslateY, translateY]);
 
   /* -------------------------------
      LOCAL MIRROR STATE (UI ONLY)
@@ -56,17 +62,18 @@ export default function TradeSummaryBar({
   const [tick, setTick] = useState(0);
 
   const formatTime = (timestamp: number) => {
-  const d = new Date(timestamp);
+    const d = new Date(timestamp);
 
-  return d.toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-  });
-};
+    return d.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+  };
+
   /* ===============================
      SYNC FROM PARENT (SOURCE OF TRUTH)
-     =============================== */
+  =============================== */
   useEffect(() => {
     setOpenTrades(parentOpenTrades);
     setClosedTrades(parentClosedTrades);
@@ -74,7 +81,7 @@ export default function TradeSummaryBar({
 
   /* ===============================
      COUNTDOWN TIMER
-     =============================== */
+  =============================== */
   useEffect(() => {
     const timer = setInterval(() => {
       setTick((t) => t + 1);
@@ -85,7 +92,7 @@ export default function TradeSummaryBar({
 
   /* ===============================
      SWIPE / DRAG LOGIC
-     =============================== */
+  =============================== */
   const panResponder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 10,
@@ -93,19 +100,16 @@ export default function TradeSummaryBar({
       onPanResponderMove: (_, g) => {
         const newY = Math.max(
           0,
-          Math.min(
-            EXPANDED_HEIGHT - COLLAPSED_HEIGHT,
-            lastY.current + g.dy
-          )
+          Math.min(maxTranslateY, lastY.current + g.dy)
         );
         translateY.setValue(newY);
       },
 
       onPanResponderRelease: (_, g) => {
-        const shouldExpand = g.dy < 0;
-        const toValue = shouldExpand
-          ? 0
-          : EXPANDED_HEIGHT - COLLAPSED_HEIGHT;
+        const shouldExpand =
+          g.vy < -0.5 || lastY.current + g.dy < maxTranslateY / 2;
+
+        const toValue = shouldExpand ? 0 : maxTranslateY;
 
         lastY.current = toValue;
 
@@ -117,24 +121,24 @@ export default function TradeSummaryBar({
     })
   ).current;
 
-const getRemainingTime = (expiryTime: number) => {
-  const now = Date.now();
-  const diff = expiryTime - now;
+  const getRemainingTime = (expiryTime: number) => {
+    const now = Date.now();
+    const diff = expiryTime - now;
 
-  if (diff <= 0) return "00:00";
+    if (diff <= 0) return "00:00";
 
-  const seconds = Math.floor(diff / 1000);
-  const mins = Math.floor(seconds / 60);
-  const secs = seconds % 60;
+    const seconds = Math.floor(diff / 1000);
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
 
-  return `${mins.toString().padStart(2, "0")}:${secs
-    .toString()
-    .padStart(2, "0")}`;
-};
+    return `${mins.toString().padStart(2, "0")}:${secs
+      .toString()
+      .padStart(2, "0")}`;
+  };
 
   /* ===============================
      RENDER
-     =============================== */
+  =============================== */
   return (
     <Animated.View
       style={[
@@ -153,51 +157,48 @@ const getRemainingTime = (expiryTime: number) => {
         {/* ================= OPEN TRADES ================= */}
         <Text style={styles.sectionTitle}>Open Trades</Text>
 
-       {openTrades.length === 0 ? (
-  <Text style={styles.emptyText}>No open trades</Text>
-) : (
-  openTrades.map((t, i) => {
-    const remaining = getRemainingTime(t.expiryTime);
+        {openTrades.length === 0 ? (
+          <Text style={styles.emptyText}>No open trades</Text>
+        ) : (
+          openTrades.map((t, i) => {
+            const remaining = getRemainingTime(t.expiryTime);
 
-    return (
-      <View key={t.id ?? i} style={styles.tradeRow}>
-        <Text style={styles.tradeText}>
-          Entry: {t.entryPrice.toFixed(2)} → Now:{" "}
-          <Text
-            style={{
-              color:
-                t.type === "buy"
-                  ? t.currentPrice >= t.entryPrice
-                    ? "#4caf50"
-                    : "#f44336"
-                  : t.currentPrice <= t.entryPrice
-                  ? "#4caf50"
-                  : "#f44336",
-            }}
-          >
-            {t.currentPrice.toFixed(2)}
-          </Text>
-        </Text>
+            return (
+              <View key={t.id ?? i} style={styles.tradeRow}>
+                <Text style={styles.tradeText}>
+                  Entry: {t.entryPrice.toFixed(2)} → Now:{" "}
+                  <Text
+                    style={{
+                      color:
+                        t.type === "buy"
+                          ? t.currentPrice >= t.entryPrice
+                            ? "#4caf50"
+                            : "#f44336"
+                          : t.currentPrice <= t.entryPrice
+                          ? "#4caf50"
+                          : "#f44336",
+                    }}
+                  >
+                    {t.currentPrice.toFixed(2)}
+                  </Text>
+                </Text>
 
-        {/* ⏱ COUNTDOWN */}
-        <Text
-          style={{
-            marginTop: 4,
-            fontSize: 12,
-            fontWeight: "600",
-            color: remaining === "00:00" ? "#f44336" : "#ffcc00",
-          }}
-        >
-          Expires in: {remaining}
-        </Text>
+                <Text
+                  style={{
+                    marginTop: 4,
+                    fontSize: 12,
+                    fontWeight: "600",
+                    color: remaining === "00:00" ? "#f44336" : "#ffcc00",
+                  }}
+                >
+                  Expires in: {remaining}
+                </Text>
 
-        {/* force re-render every second */}
-        <Text style={{ height: 0, opacity: 0 }}>{tick}</Text>
-      </View>
-    );
-  })
-)}
-
+                <Text style={{ height: 0, opacity: 0 }}>{tick}</Text>
+              </View>
+            );
+          })
+        )}
 
         {/* ================= CLOSED TRADES ================= */}
         <Text style={styles.sectionTitle}>Closed Trades</Text>
@@ -212,32 +213,31 @@ const getRemainingTime = (expiryTime: number) => {
                 : `-$${Number(t.amount).toFixed(2)}`;
 
             return (
-  <View
-    key={t.id ?? i}
-    style={[
-      styles.tradeRow,
-      {
-        backgroundColor:
-          t.result === "GAIN" ? "#1e4620" : "#5a1d1d",
-      },
-    ]}
-  >
-    <Text style={styles.tradeText}>
-      {(t.type ?? "buy").toUpperCase()} • {t.result} • {profit}
-    </Text>
+              <View
+                key={t.id ?? i}
+                style={[
+                  styles.tradeRow,
+                  {
+                    backgroundColor:
+                      t.result === "GAIN" ? "#1e4620" : "#5a1d1d",
+                  },
+                ]}
+              >
+                <Text style={styles.tradeText}>
+                  {(t.type ?? "buy").toUpperCase()} • {t.result} • {profit}
+                </Text>
 
-    <Text style={styles.tradeText}>
-      Open: {t.entryPrice?.toFixed(2)} → Close:{" "}
-      {t.closePrice?.toFixed(2)}
-    </Text>
+                <Text style={styles.tradeText}>
+                  Open: {t.entryPrice?.toFixed(2)} → Close:{" "}
+                  {t.closePrice?.toFixed(2)}
+                </Text>
 
-    <Text style={styles.timeText}>
-      Opened: {formatTime(t.openTime)} | Closed:{" "}
-      {formatTime(t.closeTime)}
-    </Text>
-  </View>
-);
-
+                <Text style={styles.timeText}>
+                  Opened: {formatTime(t.openTime)} | Closed:{" "}
+                  {formatTime(t.closeTime)}
+                </Text>
+              </View>
+            );
           })
         )}
       </ScrollView>
@@ -262,7 +262,7 @@ const styles = StyleSheet.create({
   },
 
   handle: {
-    height: COLLAPSED_HEIGHT,
+    height: 50,
     backgroundColor: "#333",
     justifyContent: "center",
     alignItems: "center",
