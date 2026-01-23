@@ -95,14 +95,16 @@ type AppContextType = {
 
   tournaments: PlayerTournament[];
 
-   
-
   // UI / trading
   activeAccount: AccountType;
   activeTournament: PlayerTournament | null;
 
   setActiveAccount: (a: AccountType) => void;
   setActiveTournament: (t: PlayerTournament | null) => void;
+
+   appReady: boolean;
+setAppReady: (value: boolean) => void;
+
 
   loading: boolean;
 
@@ -151,6 +153,10 @@ const AppContext = createContext<AppContextType>({
 
   setActiveAccount: () => {},
   setActiveTournament: () => {},
+
+  appReady: false,
+setAppReady: () => {},
+
 
   loading: true,
 
@@ -219,7 +225,10 @@ const balancesState = {
 
 
   const [loading, setLoading] = useState(true);
-  
+  const [appReady, setAppReady] = useState(false);
+
+
+
   // ✅ ADD FUNCTION RIGHT HERE ⬇⬇⬇
 const switchAccount = (account: AccountType) => {
   if (account.type === "tournament") {
@@ -476,9 +485,14 @@ useEffect(() => {
   return (
     <AppContext.Provider
   value={{
+    appReady,
+  setAppReady,
+
     authUser,
+  
     userDoc,
     accounts,
+  
     tournaments,
     activeAccount,
     activeTournament,

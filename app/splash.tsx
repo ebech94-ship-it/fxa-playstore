@@ -1,11 +1,17 @@
 // SplashScreen.js
-import { router } from "expo-router";
+
+import * as ExpoSplashScreen from "expo-splash-screen";
 import { useEffect, useRef, useState } from 'react';
 import { Animated, Image, StyleSheet, Text, View } from 'react-native';
+import { useApp } from "./AppContext";
+
+// 🔴 THIS WAS MISSING
+ExpoSplashScreen.preventAutoHideAsync();
 
 export default function SplashScreen() {
   const [progress] = useState(new Animated.Value(0));
   const glowAnim = useRef(new Animated.Value(0)).current;
+const { setAppReady } = useApp();
 
   // Animate the progress bar
   useEffect(() => {
@@ -13,10 +19,12 @@ export default function SplashScreen() {
       toValue: 1,
       duration: 10000,
       useNativeDriver: false,
-    }).start(() => {
-      router.replace("/welcome");
+    }).start(async () => {
+    await ExpoSplashScreen.hideAsync();
+      setAppReady(true);
+
     });
-  }, [progress]);
+  }, [progress, setAppReady]);
 
   // Glow animation for GodSpeed
   useEffect(() => {

@@ -9,6 +9,7 @@ import * as Linking from "expo-linking";
 import { Stack, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { useEffect, useRef } from "react";
+
 import "react-native-reanimated";
 
 import { AppProvider, useApp } from "./AppContext";
@@ -38,6 +39,8 @@ export default function RootLayout() {
   const router = useRouter();
   const handledRef = useRef(false);
   const routerRef = useRef(router);
+  
+
 
   /* ===============================
      DEEP LINK HANDLING
@@ -72,7 +75,7 @@ export default function RootLayout() {
   return (
     <AppProvider>
       <AuthGate />
-      <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
+<ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
         <Stack screenOptions={{ headerShown: false }}>
           <Stack.Screen name="index" />
           <Stack.Screen name="splash" />
