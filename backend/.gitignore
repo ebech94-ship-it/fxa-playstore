@@ -2,3 +2,4 @@ serviceAccountKey.json
 backend/node_modules
 .env
 thirdscreen.zip
+node_modules

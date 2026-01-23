@@ -4,6 +4,55 @@ module.exports = {
   /* ---------------------------------------------------
      1️⃣  DEPOSITS
   --------------------------------------------------- */
+  async processCampayDeposit(userId, amount, txRef) {
+  const userRef = db.collection("users").doc(userId);
+  const treasuryRef = db.collection("treasury").doc("main");
+  const txRefDoc = db.collection("transactions").doc(txRef);
+
+  await db.runTransaction(async (t) => {
+    // 1️⃣ Check if already processed
+    const txSnap = await t.get(txRefDoc);
+  if (txSnap.exists && txSnap.data().status === "COMPLETED") {
+  return;
+}
+if (txSnap.exists && txSnap.data().creditedAt) {
+  return;
+}
+
+
+    // 2️⃣ Credit user wallet
+    t.update(userRef, {
+      walletBalance: admin.firestore.FieldValue.increment(amount),
+      lastUpdated: admin.firestore.Timestamp.now(),
+    });
+
+    // 3️⃣ Credit treasury
+    t.set(
+      treasuryRef,
+      {
+        balance: admin.firestore.FieldValue.increment(amount),
+        lastUpdated: admin.firestore.Timestamp.now(),
+      },
+      { merge: true }
+    );
+
+    // 4️⃣ Save transaction USING SAME REF
+  // 4️⃣ Mark transaction as successful (do NOT overwrite)
+t.set(
+  txRefDoc,
+  {
+      status: "COMPLETED",
+    creditedAt: admin.firestore.Timestamp.now(),
+  },
+  { merge: true }
+);
+
+
+  });
+
+  console.log(`💰 Campay deposit processed safely: ${txRef}`);
+},
+
   async addDepositToUser(userId, amount) {
     const userRef = db.collection("users").doc(userId);
 
@@ -11,10 +60,9 @@ module.exports = {
       const snap = await t.get(userRef);
       if (!snap.exists) throw new Error("User not found");
 
-      const wallet = snap.data().walletBalance || 0;
-
+      
       t.update(userRef, {
-        walletBalance: wallet + amount,
+        walletBalance: admin.firestore.FieldValue.increment(amount),
         lastUpdated: admin.firestore.Timestamp.now(),
       });
 
@@ -23,7 +71,7 @@ module.exports = {
         userId,
         amount,
         type: "deposit",
-        status: "success",
+        status: "COMPLETED",
         createdAt: admin.firestore.Timestamp.now(),
       });
     });
@@ -35,13 +83,13 @@ module.exports = {
     const treasuryRef = db.collection("treasury").doc("main");
 
     await db.runTransaction(async (t) => {
-      const snap = await t.get(treasuryRef);
-      const balance = snap.data()?.balance || 0;
-
+     
+     
       t.set(
         treasuryRef,
         {
-          balance: balance + amount,
+        balance: admin.firestore.FieldValue.increment(amount),
+
           lastUpdated: admin.firestore.Timestamp.now(),
         },
         { merge: true }
@@ -66,13 +114,13 @@ module.exports = {
       if (!tournamentSnap.exists) throw new Error("Tournament not found");
 
       const wallet = userSnap.data().walletBalance || 0;
-      const pool = tournamentSnap.data().prizePool || 0;
+      
 
       if (wallet < amount) throw new Error("Insufficient balance");
 
-      t.update(userRef, { walletBalance: wallet - amount });
+      t.update(userRef, {   walletBalance: admin.firestore.FieldValue.increment(-amount),});
       t.update(tournamentRef, {
-        prizePool: pool + amount,
+         prizePool: admin.firestore.FieldValue.increment(amount),
         collectedFunds: admin.firestore.FieldValue.increment(amount), // 💰 real money
         lastUpdated: admin.firestore.Timestamp.now(),
       });
@@ -82,7 +130,7 @@ module.exports = {
         tournamentId,
         amount,
         type: "tournament_fee",
-        status: "success",
+        status: "COMPLETED",
         createdAt: admin.firestore.Timestamp.now(),
       });
     });
@@ -123,7 +171,7 @@ module.exports = {
 
     // 🔻 deduct fixed rebuy fee
     t.update(userRef, {
-      walletBalance: wallet - rebuyFee,
+      walletBalance: admin.firestore.FieldValue.increment(-rebuyFee),
     });
 
     // 🔺 top up tournament balance
@@ -152,7 +200,7 @@ t.update(userRef, {
       tournamentId,
       amount: rebuyFee,
       type: "rebuy",
-      status: "success",
+     status: "COMPLETED",
       createdAt: admin.firestore.Timestamp.now(),
     });
   });
@@ -183,8 +231,13 @@ t.update(userRef, {
       if (treasuryBalance < amount)
         throw new Error("Treasury does not have enough funds");
 
-      t.update(userRef, { walletBalance: wallet - amount });
-      t.update(treasuryRef, { balance: treasuryBalance - amount });
+      t.update(userRef, {
+  walletBalance: admin.firestore.FieldValue.increment(-amount),
+});
+t.update(treasuryRef, {
+  balance: admin.firestore.FieldValue.increment(-amount),
+});
+
 
       // ✅ log inside transaction
       t.set(db.collection("transactions").doc(), {
@@ -237,7 +290,7 @@ t.update(userRef, {
         tournamentId,
         amount,
         type: "tournament_funds_to_treasury",
-        status: "success",
+        status: "COMPLETED",
         createdAt: admin.firestore.Timestamp.now(),
       });
     });
@@ -355,7 +408,7 @@ t.update(userRef, {
 
     // ✅ Mark tournament completed
     t.update(tournamentRef, {
-      status: "completed",
+        status: "COMPLETED",
       paidOut: true,
       paidOutAt: admin.firestore.Timestamp.now(),
     });

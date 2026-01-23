@@ -10,6 +10,7 @@ import {
 } from "firebase/firestore";
 import { useEffect, useRef, useState } from "react";
 import {
+  ActivityIndicator,
   Animated,
   Modal,
   ScrollView,
@@ -21,9 +22,6 @@ import {
 } from "react-native";
 import { db } from "../../../firebaseConfig";
 
-// -------------------------
-// TYPES
-// -------------------------
 type PayoutStatus = "pending" | "paid" | "rejected";
 
 interface Payout {
@@ -35,168 +33,151 @@ interface Payout {
   wallet: string;
   status: PayoutStatus;
   createdAt?: any;
+  processing?: boolean;
 }
 
-// -------------------------
-// COMPONENT
-// -------------------------
 export default function PayoutsSection() {
   const [payouts, setPayouts] = useState<Payout[]>([]);
   const [filter, setFilter] =
     useState<"all" | "pending" | "paid" | "rejected">("all");
-
   const [selected, setSelected] = useState<Payout | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
-
   const [reasonModal, setReasonModal] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
+  const [busy, setBusy] = useState(false);
 
-  // -------------------------
-// GLOW ANIMATION (SAFE FIX)
-// -------------------------
-const glowAnim = useRef(new Animated.Value(0)).current;
-
-useEffect(() => {
-  const animation = Animated.loop(
+  // glow
+  const glowAnim = useRef(new Animated.Value(0)).current;
+  useEffect(() => {
+  Animated.loop(
     Animated.sequence([
       Animated.timing(glowAnim, {
         toValue: 1,
-        duration: 1500,
+        duration: 1200,
         useNativeDriver: false,
       }),
       Animated.timing(glowAnim, {
         toValue: 0,
-        duration: 1500,
+        duration: 1200,
         useNativeDriver: false,
       }),
     ])
-  );
+  ).start();
 
-  animation.start();
-
-  return () => animation.stop();
   // eslint-disable-next-line react-hooks/exhaustive-deps
 }, []);
 
-
   const glowColor = glowAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: ["rgba(0,200,255,0.4)", "rgba(255,0,120,0.4)"],
+    outputRange: ["rgba(30, 58, 66, 0.4)", "rgba(255,0,120,0.4)"],
   });
 
-  // -------------------------
-  // FETCH PAYOUTS
-  // -------------------------
+  // fetch payouts
   useEffect(() => {
     const ref = collection(db, "payouts");
-    const unsub = onSnapshot(ref, (snap) => {
-      let arr: Payout[] = [];
-      snap.forEach((d) => arr.push({ id: d.id, ...(d.data() as any) }));
-
-      // Sort: pending first → newest first
+    return onSnapshot(ref, (snap) => {
+      const arr: Payout[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
       arr.sort((a, b) => {
         if (a.status === "pending" && b.status !== "pending") return -1;
         if (a.status !== "pending" && b.status === "pending") return 1;
-
         return (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0);
       });
-
       setPayouts(arr);
     });
-
-    return () => unsub();
   }, []);
 
   const filtered =
     filter === "all" ? payouts : payouts.filter((p) => p.status === filter);
 
-  // -------------------------
-  // APPROVE PAYOUT
-  // -------------------------
+  // approve payout
   const markPaid = async () => {
-  if (!selected) return;
+    if (!selected || busy) return;
+    setBusy(true);
 
-  const payoutId = selected.id;
-  const userId = selected.uid;
-  const amount = Number(selected.amount);
+    try {
+      await runTransaction(db, async (tx) => {
+        const payoutRef = doc(db, "payouts", selected.id);
+        const payoutSnap = await tx.get(payoutRef);
+        if (!payoutSnap.exists()) throw new Error("Already processed");
 
-  await runTransaction(db, async (tx) => {
-    const payoutRef = doc(db, "payouts", payoutId);
-    const payoutSnap = await tx.get(payoutRef);
+        const data = payoutSnap.data();
+        if (data.status !== "pending") throw new Error("Not pending");
+        if (data.processing === true) throw new Error("Already in progress");
 
-    // 🔒 Guard: already processed
-    if (!payoutSnap.exists()) {
-      throw new Error("Payout already processed");
+        const treasuryRef = doc(db, "treasury", "main");
+        const treasurySnap = await tx.get(treasuryRef);
+        const treasuryBalance = treasurySnap.data()?.balance || 0;
+
+        if (treasuryBalance < selected.amount)
+          throw new Error("Treasury insufficient");
+
+        tx.update(payoutRef, { processing: true });
+
+        tx.update(doc(db, "users", selected.uid), {
+          "accounts.real.balance": increment(-Math.abs(selected.amount)),
+        });
+
+        tx.update(treasuryRef, {
+          balance: increment(-Math.abs(selected.amount)),
+        });
+
+        tx.update(payoutRef, {
+          status: "paid",
+          processing: false,
+          paidAt: serverTimestamp(),
+        });
+      });
+
+      await addDoc(collection(db, "notifications"), {
+        uid: selected.uid,
+        title: "Payout Approved",
+        message: `Your payout of ${selected.amount} FRS has been approved.`,
+        createdAt: serverTimestamp(),
+        read: false,
+      });
+
+      setModalVisible(false);
+    } catch (e: any) {
+      alert(e.message);
+    } finally {
+      setBusy(false);
     }
-
-    const data = payoutSnap.data();
-    if (data?.status !== "pending") {
-      throw new Error("Payout is not pending");
-    }
-
-    // Deduct balance
-    const userRef = doc(db, "users", userId);
-    tx.update(userRef, {
-      "accounts.real.balance": increment(-Math.abs(amount)),
-    });
-
-    // Mark payout paid
-    tx.update(payoutRef, {
-      status: "paid",
-      paidAt: serverTimestamp(),
-    });
-  });
-
-  // Notify user (outside transaction)
-  await addDoc(collection(db, "notifications"), {
-    uid: selected.uid,
-    title: "Payout Approved",
-    message: `Your payout of ${selected.amount} FRS has been approved.`,
-    createdAt: serverTimestamp(),
-    read: false,
-  });
-
-  setModalVisible(false);
-};
-
-
-  // -------------------------
-  // REJECT PAYOUT
-  // -------------------------
-  const rejectPayout = async () => {
-    if (!selected) return;
-
-    await updateDoc(doc(db, "payouts", selected.id), {
-      status: "rejected",
-      rejectedAt: serverTimestamp(),
-      reason: rejectReason || "Rejected by admin",
-    });
-
-    // Notify user
-    await addDoc(collection(db, "notifications"), {
-      uid: selected.uid,
-      title: "Payout Rejected",
-      message: rejectReason || "Your payout request was rejected.",
-      createdAt: serverTimestamp(),
-      read: false,
-    });
-
-    setRejectReason("");
-    setReasonModal(false);
-    setModalVisible(false);
   };
 
-  // -------------------------
-  // UI
-  // -------------------------
+  // reject payout
+  const rejectPayout = async () => {
+    if (!selected || busy) return;
+    setBusy(true);
+
+    try {
+      await updateDoc(doc(db, "payouts", selected.id), {
+        status: "rejected",
+        reason: rejectReason || "Rejected by admin",
+        rejectedAt: serverTimestamp(),
+      });
+
+      await addDoc(collection(db, "notifications"), {
+        uid: selected.uid,
+        title: "Payout Rejected",
+        message: rejectReason || "Your payout request was rejected.",
+        createdAt: serverTimestamp(),
+        read: false,
+      });
+
+      setRejectReason("");
+      setReasonModal(false);
+      setModalVisible(false);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <View style={styles.container}>
-      {/* Animated Header */}
       <Animated.View style={[styles.header, { shadowColor: glowColor }]}>
         <Text style={styles.headerText}>Payouts Management</Text>
       </Animated.View>
 
-      {/* FILTERS */}
       <View style={styles.filters}>
         {["all", "pending", "paid", "rejected"].map((f) => (
           <TouchableOpacity
@@ -209,8 +190,7 @@ useEffect(() => {
         ))}
       </View>
 
-      {/* LIST */}
-      <ScrollView showsVerticalScrollIndicator={false}>
+      <ScrollView>
         {filtered.map((p) => (
           <TouchableOpacity
             key={p.id}
@@ -222,7 +202,6 @@ useEffect(() => {
           >
             <Text style={styles.name}>{p.userName}</Text>
             <Text style={styles.amount}>Amount: {p.amount} FRS</Text>
-            <Text style={styles.method}>Method: {p.method}</Text>
             <Text style={[styles.status, styles[p.status]]}>
               {p.status.toUpperCase()}
             </Text>
@@ -230,68 +209,51 @@ useEffect(() => {
         ))}
       </ScrollView>
 
-      {/* DETAILS MODAL */}
-      <Modal transparent visible={modalVisible} animationType="fade">
+      <Modal transparent visible={modalVisible}>
         <View style={styles.modalWrap}>
           <View style={styles.modalBox}>
             {selected && (
               <>
                 <Text style={styles.modalTitle}>Payout Details</Text>
-
                 <Text style={styles.modalText}>User: {selected.userName}</Text>
                 <Text style={styles.modalText}>Amount: {selected.amount} FRS</Text>
-                <Text style={styles.modalText}>Method: {selected.method}</Text>
-                <Text style={styles.modalText}>Wallet: {selected.wallet}</Text>
 
                 <View style={styles.modalBtns}>
-                  <TouchableOpacity style={styles.approveBtn} onPress={markPaid}>
-                    <Text style={styles.btnText}>MARK AS PAID</Text>
+                  <TouchableOpacity
+                    style={styles.approveBtn}
+                    onPress={markPaid}
+                    disabled={busy}
+                  >
+                    {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>MARK PAID</Text>}
                   </TouchableOpacity>
 
                   <TouchableOpacity
                     style={styles.rejectBtn}
                     onPress={() => setReasonModal(true)}
+                    disabled={busy}
                   >
                     <Text style={styles.btnText}>REJECT</Text>
                   </TouchableOpacity>
                 </View>
-
-                <TouchableOpacity
-                  onPress={() => setModalVisible(false)}
-                  style={styles.closeBtn}
-                >
-                  <Text style={styles.closeText}>Close</Text>
-                </TouchableOpacity>
               </>
             )}
           </View>
         </View>
       </Modal>
 
-      {/* REJECT REASON MODAL */}
-      <Modal transparent visible={reasonModal} animationType="slide">
+      <Modal transparent visible={reasonModal}>
         <View style={styles.modalWrap}>
           <View style={styles.reasonBox}>
-            <Text style={styles.modalTitle}>Reject Reason</Text>
-
             <TextInput
-              placeholder="Enter detailed reason..."
+              placeholder="Reason..."
               placeholderTextColor="#777"
               value={rejectReason}
               onChangeText={setRejectReason}
               style={styles.input}
               multiline
             />
-
             <TouchableOpacity style={styles.rejectConfirmBtn} onPress={rejectPayout}>
-              <Text style={styles.btnText}>CONFIRM REJECTION</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={() => setReasonModal(false)}
-              style={styles.closeBtn}
-            >
-              <Text style={styles.closeText}>Cancel</Text>
+              <Text style={styles.btnText}>CONFIRM</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -300,142 +262,30 @@ useEffect(() => {
   );
 }
 
-// -------------------------
-// STYLES
-// -------------------------
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 12 },
-
-  header: {
-    padding: 18,
-    borderRadius: 14,
-    backgroundColor: "#141427",
-    shadowOpacity: 1,
-    shadowRadius: 25,
-    marginBottom: 14,
-  },
-
-  headerText: {
-    fontSize: 22,
-    color: "white",
-    fontWeight: "bold",
-    textAlign: "center",
-  },
-
-  filters: {
-    flexDirection: "row",
-    justifyContent: "space-around",
-    marginBottom: 12,
-  },
-
-  filterBtn: {
-    paddingVertical: 6,
-    paddingHorizontal: 12,
-    backgroundColor: "#2a2a3d",
-    borderRadius: 12,
-  },
-
+  header: { padding: 18, borderRadius: 14, backgroundColor: "#141427", marginBottom: 14 },
+  headerText: { fontSize: 22, color: "white", fontWeight: "bold", textAlign: "center" },
+  filters: { flexDirection: "row", justifyContent: "space-around", marginBottom: 12 },
+  filterBtn: { padding: 8, backgroundColor: "#2a2a3d", borderRadius: 12 },
   filterActive: { backgroundColor: "#6f00d6" },
-
   filterText: { color: "white", fontSize: 12 },
-
-  card: {
-    padding: 16,
-    backgroundColor: "#1a1a29",
-    borderRadius: 14,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: "rgba(255,255,255,0.05)",
-  },
-
-  name: { color: "white", fontSize: 16, fontWeight: "bold" },
-  amount: { color: "#ddd", marginTop: 4 },
-  method: { color: "#bbb", marginTop: 4 },
-
-  status: {
-    marginTop: 10,
-    fontWeight: "bold",
-    paddingVertical: 4,
-    paddingHorizontal: 10,
-    borderRadius: 8,
-    alignSelf: "flex-start",
-    overflow: "hidden",
-  },
-
-  pending: { backgroundColor: "#ffaa0055", color: "orange" },
-  paid: { backgroundColor: "#00ff8855", color: "#00ff88" },
-  rejected: { backgroundColor: "#ff004455", color: "#ff0044" },
-
-  modalWrap: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.65)",
-    justifyContent: "center",
-    padding: 20,
-  },
-
-  modalBox: {
-    backgroundColor: "#111",
-    padding: 20,
-    borderRadius: 14,
-  },
-
-  modalTitle: {
-    color: "white",
-    fontSize: 20,
-    marginBottom: 12,
-    fontWeight: "bold",
-    textAlign: "center",
-  },
-
-  modalText: { color: "#ddd", marginBottom: 8 },
-
-  modalBtns: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginTop: 16,
-  },
-
-  approveBtn: {
-    backgroundColor: "#00cc66",
-    padding: 12,
-    borderRadius: 10,
-    flex: 1,
-    marginRight: 8,
-  },
-
-  rejectBtn: {
-    backgroundColor: "#cc0033",
-    padding: 12,
-    borderRadius: 10,
-    flex: 1,
-    marginLeft: 8,
-  },
-
-  btnText: { textAlign: "center", color: "white", fontWeight: "bold" },
-
-  closeBtn: { marginTop: 14, padding: 8 },
-  closeText: { textAlign: "center", color: "#888" },
-
-  reasonBox: {
-    backgroundColor: "#111",
-    padding: 22,
-    borderRadius: 14,
-  },
-
-  input: {
-    backgroundColor: "#1d1d1d",
-    color: "white",
-    borderRadius: 10,
-    padding: 12,
-    minHeight: 90,
-    marginTop: 10,
-    textAlignVertical: "top",
-  },
-
-  rejectConfirmBtn: {
-    backgroundColor: "#ff0044",
-    padding: 12,
-    borderRadius: 10,
-    marginTop: 16,
-  },
+  card: { padding: 16, backgroundColor: "#1a1a29", borderRadius: 14, marginBottom: 12 },
+  name: { color: "white", fontWeight: "bold" },
+  amount: { color: "#ccc" },
+  status: { marginTop: 6, fontWeight: "bold" },
+  pending: { color: "orange" },
+  paid: { color: "#00ff88" },
+  rejected: { color: "#ff0044" },
+  modalWrap: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", padding: 20 },
+  modalBox: { backgroundColor: "#111", padding: 20, borderRadius: 14 },
+  modalTitle: { color: "white", fontSize: 18, marginBottom: 10 },
+  modalText: { color: "#ddd", marginBottom: 6 },
+  modalBtns: { flexDirection: "row", marginTop: 12 },
+  approveBtn: { flex: 1, backgroundColor: "#00cc66", padding: 12, borderRadius: 10, marginRight: 6 },
+  rejectBtn: { flex: 1, backgroundColor: "#cc0033", padding: 12, borderRadius: 10, marginLeft: 6 },
+  btnText: { textAlign: "center", color: "#fff", fontWeight: "bold" },
+  reasonBox: { backgroundColor: "#111", padding: 20, borderRadius: 14 },
+  input: { backgroundColor: "#1d1d1d", color: "white", borderRadius: 10, padding: 12 },
+  rejectConfirmBtn: { backgroundColor: "#ff0044", padding: 12, borderRadius: 10, marginTop: 12 },
 });

@@ -13,6 +13,7 @@ const firebaseConfig = {
   appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID!,
 };
 
+
 // ✅ Prevent re-initialization on fast refresh
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 

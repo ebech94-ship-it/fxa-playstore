@@ -2,7 +2,11 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import type { AccountType, TournamentAccount } from "../types/accounts";
+import type { AccountType } from "./AppContext"; // keep type imports separate if you want
+import { useApp } from "./AppContext";
+
+
+// AccountSwitcher.tsx
 
 import {
   ScrollView,
@@ -14,28 +18,68 @@ import {
 
 /* ================= TYPES ================= */
 
+
+
 type AccountSwitcherProps = {
   balances: {
     demo: number;
     real: number;
+    tournament?: number; 
   };
-  tournaments: TournamentAccount[]; 
+  tournamentBalances?: Record<string, number>;
+   
   activeAccount: AccountType;
+
+ 
+
   onSwitch: (account: AccountType) => void;
   onTopUp?: () => void;
   onDeposit?: () => void;
   onWithdraw?: () => void;
+   // ✅ Add tournamentMeta so AccountSwitcher can show real tournament names
+  tournamentMeta?: Record<
+    string,
+    { id: string; name: string; symbol: string }
+  >;
 };
+const formatTournamentStatus = (
+  status?: "upcoming" | "ongoing" | "finished"
+) => {
+  if (status === "ongoing") return "Ongoing";
+  if (status === "finished") return "Finished";
+  return "Upcoming";
+};
+
 
 /* ================= COMPONENT ================= */
 
 export default function AccountSwitcher({
   balances,
-  tournaments,
   activeAccount,
   onSwitch,
   onTopUp,
+  onDeposit,
+  onWithdraw,
+   tournamentMeta,
 }: AccountSwitcherProps) {
+
+  const { tournamentAccounts } = useApp(); // context only for tournaments
+
+  // convert context tournaments to UI-friendly shape
+const switcherTournaments = tournamentAccounts
+  .filter(t => t.status === "ongoing" || t.status === "upcoming")
+  .map(t => ({
+    id: t.tournamentId,
+    name: t.name,
+    status: formatTournamentStatus(t.status),
+    balance: Number(t.balance ?? 0),
+  }));
+
+
+
+
+
+
   const [expanded, setExpanded] = useState(false);
   const [showWarning, setShowWarning] = useState(false);
   const router = useRouter();
@@ -46,31 +90,72 @@ export default function AccountSwitcher({
 
   const getColor = (account: AccountType) => {
     if (account.type === "real") return "#facc15";
-    if (account.type === "tournament") return "#fb7185";
+    if (account.type === "tournament") return "#47f11dff";
     return "#60a5fa";
   };
 
-  const getActiveBalance = () => {
-    if (activeAccount.type === "demo") return balances.demo;
-    if (activeAccount.type === "real") return balances.real;
+ 
 
-    const t = tournaments.find(
-      (x) => x.id === activeAccount.tournamentId
-    );
-    return t?.balance ?? 0;
-  };
+ const handleSelect = (account: AccountType) => {
+ 
+  if (
+  account.type === "tournament" &&
+  activeAccount.type === "tournament" &&
+  account.tournamentId === activeAccount.tournamentId
+) {
+  setExpanded(false);
+  return;
+}
 
-  const handleSelect = (account: AccountType) => {
-    onSwitch(account);
-    setExpanded(false);
 
-    if (account.type === "real") {
-      setShowWarning(true);
-      setTimeout(() => setShowWarning(false), 4000);
-    }
-  };
+  onSwitch(account);
+  setExpanded(false);
+
+  if (account.type === "real") {
+    setShowWarning(true);
+    setTimeout(() => setShowWarning(false), 4000);
+  }
+};
+
 
   /* ================= RENDER ================= */
+const isTournamentLowBalance = () => {
+  if (activeAccount.type !== "tournament") return false;
+
+  const current = displayBalance; 
+
+
+  // find the active tournament from context
+  const t = tournamentAccounts.find(
+    (x) => x.tournamentId === activeAccount.tournamentId
+  );
+
+  const starting = Number(t?.initialBalance ?? 0);
+
+
+  if (!starting) return false;
+
+  return current <= starting * 0.5;
+};
+
+const displayBalance = (() => {
+  if (activeAccount.type === "demo") {
+    return balances.demo;
+  }
+
+  if (activeAccount.type === "real") {
+    return balances.real;
+  }
+
+  // tournament
+  const t = tournamentAccounts.find(
+    (x) => x.tournamentId === activeAccount.tournamentId
+  );
+
+  return Number(t?.balance ?? 0);
+})();
+
+
 
   return (
     <View style={styles.container}>
@@ -78,13 +163,26 @@ export default function AccountSwitcher({
       <TouchableOpacity onPress={toggleExpand} style={styles.iconRow}>
         <MaterialCommunityIcons name="bank" size={26} color="#fff" />
         <Text
-          style={[
-            styles.activeBalance,
-            { color: getColor(activeAccount) },
-          ]}
-        >
-          ${getActiveBalance().toFixed(2)}
-        </Text>
+  style={[ styles.activeBalance,
+    {color:
+        activeAccount.type === "tournament" && isTournamentLowBalance()
+          ? "#ff4d4f"
+          : getColor(activeAccount),
+    },
+    activeAccount.type === "tournament" &&
+      isTournamentLowBalance() && {
+        textShadowColor: "#ff0000",
+        textShadowOffset: { width: 0, height: 0 },
+        textShadowRadius: 8,
+      },
+  ]}
+>
+      {activeAccount.type === "real"
+    ? `XAF ${balances.real.toLocaleString()}`
+    : `$${displayBalance.toFixed(2)}`}
+
+</Text>
+
       </TouchableOpacity>
 
       {/* DROPDOWN */}
@@ -126,7 +224,7 @@ export default function AccountSwitcher({
             >
               <Text style={styles.cardTitle}>Real Account</Text>
               <Text style={[styles.balance, { color: "#facc15" }]}>
-                ${balances.real.toFixed(2)}
+                XAF {balances.real.toLocaleString()}
               </Text>
             </TouchableOpacity>
 
@@ -147,39 +245,84 @@ export default function AccountSwitcher({
             </View>
           </View>
 
+    
           {/* TOURNAMENTS */}
-          {tournaments.length > 0 && (
-            <>
-              <Text style={styles.sectionTitle}>Tournaments</Text>
+<>
+  <Text style={styles.sectionTitle}>  YOUR TOURNAMENTS</Text>
 
-              {tournaments.map((t) => {
-                const isActive =
-                  activeAccount.type === "tournament" &&
-                  activeAccount.tournamentId === t.id;
+  {switcherTournaments.length === 0 ? (
+    <View style={[styles.card, { opacity: 0.6 }]}>
+      <Text style={styles.cardTitle}>Tournament Account</Text>
+      <Text style={{ color: "#829ecfff", fontSize: 12, marginTop: 4 }}>
+        No joined tournaments
+      </Text>
+    </View>
+  ) : (
+   <View>
+  {switcherTournaments.map((t) => {
+    const isActive =
+      activeAccount.type === "tournament" &&
+      activeAccount.tournamentId === t.id;
 
-                return (
-                  <TouchableOpacity
-                    key={t.id}
-                    onPress={() =>
-                      handleSelect({
-                        type: "tournament",
-                        tournamentId: t.id,
-                      })
-                    }
-                    style={[
-                      styles.card,
-                      isActive && styles.activeCard,
-                    ]}
-                  >
-                    <Text style={styles.cardTitle}>{t.name}</Text>
-                    <Text style={{ color: "#fb7185", fontSize: 12 }}>
-                      ${t.balance.toFixed(2)} • {t.status.toUpperCase()}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
-            </>
-          )}
+    return (
+      <TouchableOpacity
+        key={t.id}
+        onPress={() =>
+          handleSelect({
+            type: "tournament",
+            tournamentId: t.id,
+          } as AccountType)
+        }
+        style={[
+          styles.card,
+          isActive && styles.activeCard,
+        ]}
+      >
+        <Text style={{ fontSize: 12 }}>
+          <Text
+            style={[
+              { fontWeight: "600" },
+              isActive && isTournamentLowBalance()
+                ? {
+                    color: "#e944f8ff",
+                    textShadowColor: "#ff0000",
+                    textShadowOffset: { width: 0, height: 0 },
+                    textShadowRadius: 6,
+                  }
+                : { color: "#27e90dff" },
+            ]}
+          >
+            {t.name}
+          </Text>
+
+          <Text
+            style={
+              isActive && isTournamentLowBalance()
+                ? {
+                    color: "green",
+                    textShadowColor: "#ff0000",
+                    textShadowOffset: { width: 0, height: 0 },
+                    textShadowRadius: 6,
+                  }
+                : { color: "#c915f7ff" }
+            }
+          >
+            {" • "}
+            $ {t.balance.toFixed(2)}
+
+            {" • "}
+            {t.status.toUpperCase()}
+          </Text>
+        </Text>
+      </TouchableOpacity>
+    );
+  })}
+</View>
+
+  )}
+</>
+
+ 
         </ScrollView>
       )}
 

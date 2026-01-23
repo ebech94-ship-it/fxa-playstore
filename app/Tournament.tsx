@@ -4,7 +4,7 @@ import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import type { User } from "firebase/auth";
 import CountryFlag from "react-native-country-flag";
-import { verifyAdminAccess } from "./services/adminAccess";
+import { verifyAdminAccess } from "../lib/adminAccess";
 
 import { getAuth } from "firebase/auth";
 
@@ -13,7 +13,7 @@ import {
 } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import {
-  ActivityIndicator, Alert, FlatList, LayoutAnimation, Modal, Platform, Pressable, ScrollView, StyleSheet,
+  Alert, FlatList, LayoutAnimation, Modal, Platform, Pressable, ScrollView, StyleSheet,
   Text, TextInput, TouchableOpacity, UIManager, View,
 } from "react-native";
 import { db } from "../firebaseConfig";
@@ -41,6 +41,7 @@ const formatTime = (ms: number) => {
 type TournamentScreenProps = {
   currentUser: User | null;
 };
+type TournamentStatus = "upcoming" | "ongoing" | "finished";
 
 type Tournament = {
   id: string;
@@ -64,6 +65,15 @@ interface LeaderboardUser {
   email?: string;
   [key: string]: any;
 }
+const getTournamentStatus = (
+  startTime: number,
+  endTime: number,
+  now: number
+): TournamentStatus => {
+  if (now < startTime) return "upcoming";
+  if (now <= endTime) return "ongoing";
+  return "finished";
+};
 
 const getPrizeForRank = (
   rank: number,
@@ -96,6 +106,38 @@ const NameWithFlag = ({
   );
 };
 
+const canUserRebuy = (
+  tournament: Tournament,
+  userId: string | undefined,
+  players: any[],
+  joinedMap: Record<string, boolean>,
+  now: number
+): boolean => {
+  if (!userId) return false;
+
+  const status = getTournamentStatus(
+    tournament.startTime,
+    tournament.endTime,
+    now
+  );
+
+  if (status !== "ongoing") return false;
+  if (!joinedMap[tournament.id]) return false;
+
+  const player = players.find((p) => p.id === userId);
+  if (!player) return false;
+
+  const starting = Number(
+  player.initialBalance ?? tournament.startingBalance ?? 0
+);
+
+const balance = Number(player.balance ?? starting);
+
+return balance <= starting * 0.5;
+
+};
+
+
 export default function TournamentScreen({ currentUser }: TournamentScreenProps) {
   const [selectedTournament, setSelectedTournament] = useState<Tournament | null>(null);
   const [leaderboard, setLeaderboard] = useState<LeaderboardUser[]>([]);
@@ -104,41 +146,14 @@ export default function TournamentScreen({ currentUser }: TournamentScreenProps)
     const { tournamentId } = useLocalSearchParams<{ tournamentId: string }>();
   // live players list for the currently selected tournament (used for counts / participant preview)
 const [players, setPlayers] = useState<any[]>([]);
-// 🔥 Live participant counts for each tournament
-const myPlayer = selectedTournament
-  ? players.find((p) => p.id === currentUser?.uid)
-  : null;
-
 
 const [tournamentCounts, setTournamentCounts] = useState<Record<string, number>>({});
 const [tournamentRebuys, setTournamentRebuys] = useState<Record<string, number>>({});
 
   const [viewTab, setViewTab] = useState("info"); // "info" | "leaderboard"
   const [adminModal, setAdminModal] = useState(false);
-  const modalFee = Number(selectedTournament?.entryFee ?? 0);
+
   const [joinedMap, setJoinedMap] = useState<Record<string, boolean>>({});
-const modalStatus = (() => {
-  if (!selectedTournament) return "Upcoming";
-  if (now < selectedTournament.startTime) return "Upcoming";
-  if (now <= selectedTournament.endTime) return "Ongoing";
-  return "Past";
-})();
-
-
-const modalRebuyFee = selectedTournament?.rebuyFee ?? modalFee;
-const startingBalance = Number(selectedTournament?.startingBalance ?? 0);
-
-const currentBalance =
-  typeof myPlayer?.balance === "number"
-    ? myPlayer.balance
-    : startingBalance;
-
-const canRebuy =
-  modalStatus === "Ongoing" &&
-  !!selectedTournament &&
-  !!joinedMap[selectedTournament.id] &&
-  currentBalance <= startingBalance * 0.5;
-
 
 
   const [adminCode, setAdminCode] = useState("");
@@ -313,6 +328,17 @@ useEffect(() => {
   return () => unsub();
 }, [selectedTournament?.id]);
 
+useEffect(() => {
+  if (!currentUser || !players.length || !selectedTournament) return;
+
+  const joined = players.some(p => p.id === currentUser.uid);
+
+  setJoinedMap(prev => ({
+    ...prev,
+    [selectedTournament.id]: joined,
+  }));
+}, [players, currentUser, selectedTournament]);
+
 
 
   // ---------- Helper: read user's wallet balance ----------
@@ -329,11 +355,11 @@ useEffect(() => {
     }
   };
 
-  // ---------- REGISTER USER TO TOURNAMENT (calls backend to perform money ops + treasury) ----------
-const handleRegister = async (tournamentId: string) => {
 
+// ---------- REGISTER USER TO TOURNAMENT ----------
+const handleRegister = async (tournamentId: string) => {
   // 🚫 DOUBLE TAP GUARD
-if (loadingActions[tournamentId]?.register) return;
+  if (loadingActions[tournamentId]?.register) return;
 
   const auth = getAuth();
   const user = auth.currentUser;
@@ -344,19 +370,13 @@ if (loadingActions[tournamentId]?.register) return;
   }
 
   const tour = tournaments.find((t) => t.id === tournamentId);
- 
-if (!tour) {
-  Alert.alert("Error", "Tournament not found.");
-  return;
-}
-
-if (Date.now() > tour.endTime) {
-  Alert.alert("Closed", "This tournament has already ended.");
-  return;
-}
-
   if (!tour) {
     Alert.alert("Error", "Tournament not found.");
+    return;
+  }
+
+  if (Date.now() > tour.endTime) {
+    Alert.alert("Closed", "This tournament has already ended.");
     return;
   }
 
@@ -366,12 +386,10 @@ if (Date.now() > tour.endTime) {
     return;
   }
 
- setLoadingFor(tournamentId, "register", true);
+  setLoadingFor(tournamentId, "register", true);
 
   try {
     const userDocRef = doc(db, "users", user.uid);
-
-    // ✅ MUST MATCH FIRESTORE RULES
     const participantRef = doc(
       db,
       "tournaments",
@@ -381,59 +399,71 @@ if (Date.now() > tour.endTime) {
     );
 
     await runTransaction(db, async (transaction) => {
-  const userSnap = await transaction.get(userDocRef);
-  
-const countryCode = userSnap.data()?.countryCode ?? null;
+      const userSnap = await transaction.get(userDocRef);
+      const participantSnap = await transaction.get(participantRef);
 
-  const participantSnap = await transaction.get(participantRef);
+      if (participantSnap.exists()) {
+        throw new Error("ALREADY_REGISTERED");
+      }
 
-  if (participantSnap.exists()) {
-    throw new Error("ALREADY_REGISTERED");
-  }
+      if (!userSnap.exists()) {
+        throw new Error("USER_NOT_FOUND");
+      }
 
-  if (!userSnap.exists()) {
-    throw new Error("USER_NOT_FOUND");
-  }
+      const username = userSnap.data()?.username ?? "Unknown";
+      const countryCode = userSnap.data()?.countryCode ?? null;
 
-  const username = userSnap.data()?.username ?? "Unknown";
+      const rawWallet = userSnap.data()?.walletBalance;
+      const walletBalance = Number(rawWallet ?? 0);
 
-  const rawWallet = userSnap.data()?.walletBalance;
-  const walletBalance = Number(rawWallet ?? 0);
+      if (isNaN(walletBalance)) {
+        throw new Error("INVALID_WALLET");
+      }
 
-  if (isNaN(walletBalance)) {
-    throw new Error("INVALID_WALLET");
-  }
+      if (entryFee > 0 && walletBalance < entryFee) {
+        throw new Error("INSUFFICIENT_FUNDS");
+      }
 
-  if (entryFee > 0 && walletBalance < entryFee) {
-    throw new Error("INSUFFICIENT_FUNDS");
-  }
+      const startingBalance = Number(tour.startingBalance);
+      const finalStartingBalance = isNaN(startingBalance)
+        ? 1000
+        : startingBalance;
 
-  const startingBalance = Number(tour.startingBalance);
-  const finalStartingBalance = isNaN(startingBalance) ? 1000 : startingBalance;
+      // ✅ CREATE PLAYER
+      transaction.set(participantRef, {
+        uid: user.uid,
+        username,
+        countryCode,
+        balance: finalStartingBalance,
+        initialBalance: finalStartingBalance,
 
-  // ✅ CREATE PARTICIPANT
-  transaction.set(participantRef, {
-    uid: user.uid,
-    username,
-    countryCode,
-    balance: finalStartingBalance,
-    joinedAt: serverTimestamp(),
-    rebuys: [],
-  });
+        joinedAt: serverTimestamp(),
+        rebuys: [],
+      });
 
-  // ✅ SINGLE USER UPDATE (VERY IMPORTANT)
-  // ✅ NEW — supports MULTIPLE tournaments
-transaction.set(
+      // ✅ UPDATE USER
+     transaction.set(
   userDocRef,
   {
-    walletBalance: entryFee > 0 ? walletBalance - entryFee : walletBalance,
+    walletBalance:
+      entryFee > 0 ? walletBalance - entryFee : walletBalance,
+
     accounts: {
       tournaments: {
         [tournamentId]: {
+          id: tournamentId,
+
+          // 🔥 THIS IS WHAT FIXES THE SWITCHER
+          name: tour.name || tour.title || "Tournament",
+          symbol: tour.symbol || "🏆",
+
           balance: finalStartingBalance,
           initialBalance: finalStartingBalance,
+
+          startTime: tour.startTime,
+          endTime: tour.endTime,
+
           joinedAt: serverTimestamp(),
-          status: "active",
         },
       },
       activeTournamentId: tournamentId,
@@ -442,44 +472,43 @@ transaction.set(
   { merge: true }
 );
 
+    });
 
-});
-
- // ✅✅✅ CLOSE runTransaction HERE
-
-Alert.alert("Success", "You have successfully registered!");
-// ✅ FORCE UI UPDATE IMMEDIATELY
-setJoinedMap((prev) => ({
-  ...prev,
-  [tournamentId]: true,
-}));
-
- } catch (err: any) {
-  console.error("REGISTRATION ERROR:", err);
-
-  if (err?.message === "ALREADY_REGISTERED") {
-    Alert.alert("Already Registered", "You are already registered.");
-
-  } else if (err?.message === "USER_NOT_FOUND") {
-    Alert.alert("Error", "User account not found.");
-
-  } else if (err?.message === "INSUFFICIENT_FUNDS") {
-    Alert.alert("Insufficient Funds", "Not enough balance.");
-
-  } else if (err?.message === "INVALID_WALLET") {
-    Alert.alert(
-      "Account Error",
-      "Your wallet data is invalid. Please contact support."
+    // ✅ VERIFY PLAYER EXISTS (IMPORTANT FOR UI)
+    const snap = await getDoc(
+      doc(db, "tournaments", tournamentId, "players", user.uid)
     );
 
-  } else {
-    Alert.alert("Error", "Registration failed. Try again.");
+    if (snap.exists()) {
+      setJoinedMap((prev) => ({
+        ...prev,
+        [tournamentId]: true,
+      }));
+    }
+
+    Alert.alert("Success", "You have successfully registered!");
+  } catch (err: any) {
+    console.error("REGISTRATION ERROR:", err);
+
+    if (err?.message === "ALREADY_REGISTERED") {
+      Alert.alert("Already Registered", "You are already registered.");
+    } else if (err?.message === "USER_NOT_FOUND") {
+      Alert.alert("Error", "User account not found.");
+    } else if (err?.message === "INSUFFICIENT_FUNDS") {
+      Alert.alert("Insufficient Funds", "Not enough balance.");
+    } else if (err?.message === "INVALID_WALLET") {
+      Alert.alert(
+        "Account Error",
+        "Your wallet data is invalid. Please contact support."
+      );
+    } else {
+      Alert.alert("Error", err?.message || "Registration failed.");
+    }
+  } finally {
+    setLoadingFor(tournamentId, "register", false);
   }
-} finally {
-  setLoadingFor(tournamentId, "register", false);
-}
-  
 };
+
 
 // ----------- REBUY ACTION (CLEAN + CORRECT + SAFE) -----------
 const handleRebuy = async (tournamentId: string) => {
@@ -614,13 +643,17 @@ await runTransaction(db, async (tx) => {
 
   // Tournament card
  const TournamentCard = ({ item }: { item: Tournament }) => {
-  const status =
-    now < item.startTime ? "Upcoming" : now <= item.endTime ? "Ongoing" : "Past";
-  const timeLeft = status === "Past" ? 0 : item.endTime - now;
+  const status = getTournamentStatus(
+  item.startTime,
+  item.endTime,
+  now
+);
+
+  const timeLeft = status === "finished"? 0 : item.endTime - now;
   const duration = item.endTime - item.startTime;
   
 const progress =
-  status === "Past" || duration <= 0
+  status === "finished" || duration <= 0
     ? 1
     : Math.max(0, Math.min((now - item.startTime) / duration, 1));
 
@@ -629,12 +662,22 @@ const progress =
   
   // color by status
   const tagStyle =
-    status === "Ongoing" ? styles.tagOngoing : status === "Upcoming" ? styles.tagUpcoming : styles.tagPast;
+    status === "ongoing" ? styles.tagOngoing : status === "upcoming" ? styles.tagUpcoming : styles.tagPast;
+ 
+const allowRebuy = canUserRebuy(
+  item,
+  currentUser?.uid,
+  players,
+  joinedMap,
+  now
+);
+
+
 
   return (
     <TouchableOpacity
       activeOpacity={0.95}
-      style={[styles.card, status === "Ongoing" && styles.cardGlow]}
+      style={[styles.card, status === "ongoing" && styles.cardGlow]}
       onPress={() => {
         setSelectedTournament(item);
         setViewTab("info");
@@ -648,7 +691,14 @@ const progress =
 
       {/* STATUS TAG */}
       <View style={[styles.tag, tagStyle]}>
-        <Text style={styles.tagText}>{status}</Text>
+       <Text style={styles.tagText}>
+  {status === "upcoming"
+    ? "Upcoming"
+    : status === "ongoing"
+    ? "Ongoing"
+    : "Past"}
+</Text>
+
       </View>
 
       {/* PROGRESS BAR */}
@@ -677,20 +727,20 @@ const progress =
 <TouchableOpacity
   style={[
     styles.actionBtn,
-    (status === "Past" ||
+    (status === "finished" ||
       loadingActions[item.id]?.register ||
       joinedMap[item.id]) &&
       styles.disabledBtn,
   ]}
   disabled={
-    status === "Past" ||
+    status === "finished" ||
     !!loadingActions[item.id]?.register ||
     !!joinedMap[item.id]
   }
   onPress={() => handleRegister(item.id)}
 >
   <Text style={styles.actionText}>
-    {status === "Past"
+    {status === "finished"
       ? "Closed"
       : joinedMap[item.id]
       ? "You're In"
@@ -705,16 +755,16 @@ const progress =
 <TouchableOpacity
   style={[
     styles.actionBtnAlt,
-    (status !== "Ongoing" ||
+    (status !== "ongoing" ||
  !joinedMap[item.id] ||
- !canRebuy ||
+ !allowRebuy ||
  loadingActions[item.id]?.rebuy) &&
  styles.disabledBtn,
   ]}
   disabled={
-  status !== "Ongoing" ||
+  status !== "ongoing" ||
   !joinedMap[item.id] ||
-  !canRebuy ||
+  !allowRebuy ||
   !!loadingActions[item.id]?.rebuy
 }
   onPress={() => handleRebuy(item.id)}
@@ -962,68 +1012,6 @@ const progress =
 ) : null}
 
 
-{/* REGISTER BUTTON */}
-{/* REGISTER BUTTON */}
-<View style={styles.buttonRow}>
-  <TouchableOpacity
-  style={[
-    styles.registerBtn,
-    (modalStatus === "Past" ||
-      loadingActions[selectedTournament.id]?.register ||
-      joinedMap[selectedTournament.id]) &&
-      styles.disabledBtn,
-  ]}
-  onPress={() => handleRegister(selectedTournament.id)}
-  disabled={
-    modalStatus === "Past" ||
-    loadingActions[selectedTournament.id]?.register ||
-    joinedMap[selectedTournament.id]
-  }
->
-
-    <Text style={styles.btnText}>
-  {modalStatus === "Past"
-    ? "Closed"
-    : joinedMap[selectedTournament.id]
-    ? "You're In"
-    : loadingActions[selectedTournament.id]?.register
-    ? "Processing..."
-    : modalFee === 0
-    ? "Register (Free)"
-    : `Register • ${modalFee} $`}
-</Text>
-
-  </TouchableOpacity>
-
-
-
-  {/* REBUY BUTTON */}
-  <TouchableOpacity
-  style={[
-    styles.rebuyBtn,
-    (!canRebuy || loadingActions[selectedTournament.id]?.rebuy) &&
-      styles.disabledBtn,
-  ]}
-  disabled={!canRebuy || !!loadingActions[selectedTournament.id]?.rebuy}
-  onPress={() => handleRebuy(selectedTournament.id)}
->
-
-    <Text style={styles.btnTextAlt}>
-      {loadingActions[selectedTournament.id]?.rebuy
-        ? "Processing..."
-        : modalRebuyFee === 0
-        ? "Rebuy (Free)"
-        : `Rebuy • ${modalRebuyFee} $`}
-    </Text>
-  </TouchableOpacity>
-</View>
-
-{(loadingActions[selectedTournament.id]?.register ||
-  loadingActions[selectedTournament.id]?.rebuy) && (
-  <View style={{ marginTop: 12, alignItems: "center" }}>
-    <ActivityIndicator size="small" color="#00ffff" />
-  </View>
-)}
 
 
                     </>
@@ -1071,7 +1059,7 @@ disabledBtn: { opacity: 0.45 },
   closeButton: { alignSelf: "flex-end", padding: 6 },
   modalTitle: { fontSize: 20, fontWeight: "900", color: "#fff" },
   modalMetaRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 8 },
-  modalPrize: { color: "#fff", fontWeight: "800" },
+  modalPrize: { color: "#47f11dff", fontWeight: "800" },
   modalInfo: { color: "#cbd5e1" },
   tabRow: { flexDirection: "row", marginTop: 12 },
   tabBtn: { flex: 1, padding: 8, borderRadius: 10, alignItems: "center", marginRight: 6, backgroundColor: "#121227" },
@@ -1094,7 +1082,7 @@ disabledBtn: { opacity: 0.45 },
   pinnedRow: { backgroundColor: "rgba(34,211,238,0.06)", padding: 10, borderRadius: 10, marginBottom: 8, flexDirection: "row", alignItems: "center" },
   pinnedCol: { color: "#fff", fontWeight: "900" },
   currentRowHighlight: { backgroundColor: "rgba(34,197,94,0.06)" },
-  balanceLightBlue: { color: "#7dd3fc", fontWeight: "700" }, priceGreen: { color: "#86efac", fontWeight: "700" },
+  balanceLightBlue: { color: "#1806b6ff", fontWeight: "700" }, priceGreen: { color: "#facc15", fontWeight: "700" },
 
   headerText: { color: "#cbd5e1", fontWeight: "900" },
   adminSection: { marginTop: 10, alignItems: "center", justifyContent: "center",  },

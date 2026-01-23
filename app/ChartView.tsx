@@ -42,7 +42,8 @@ export type ChartViewHandle = {
 const ChartView = forwardRef<ChartViewHandle, ChartViewProps>(
   ({ symbol = "BECH/USD" }, ref) => {
     const webRef = useRef<WebView>(null);
-const iframeRef = useRef<HTMLIFrameElement | null>(null);
+const iframeRef = useRef<any>(null);
+
 
     const latestPriceRef = useRef(0);
     const lastLayoutRef = useRef({ w: 0, h: 0 });
@@ -52,7 +53,7 @@ const iframeRef = useRef<HTMLIFrameElement | null>(null);
     useImperativeHandle(ref, () => ({
       getCurrentPrice: () => latestPriceRef.current,
 
-      onTrade: (type, amount, price, id, profit = 0, expire = 0) => {
+     onTrade: (type, amount, price, id, profit = 0, expire = 0) => {
   const payload = {
     type: type.toUpperCase(),
     amount,
@@ -63,18 +64,19 @@ const iframeRef = useRef<HTMLIFrameElement | null>(null);
   };
 
   // 📱 ANDROID / IOS
-  webRef.current?.injectJavaScript(`
-    window.handleRNMessage && window.handleRNMessage(${JSON.stringify(payload)});
-    true;
-  `);
+  if (Platform.OS !== "web") {
+    webRef.current?.injectJavaScript(`
+      window.handleRNMessage && window.handleRNMessage(${JSON.stringify(payload)});
+      true;
+    `);
+  }
 
-  // 🌐 WEB (iframe)
- iframeRef.current?.contentWindow?.postMessage(
-  payload,   // ✅ OBJECT, NOT STRING
-  "*"
-);
-
+  // 🌐 WEB ONLY
+  if (Platform.OS === "web") {
+    iframeRef.current?.contentWindow?.postMessage(payload, "*");
+  }
 },
+
 
 
       removeMarker: (id: string) => {
@@ -134,8 +136,9 @@ html,body{margin:0;height:100%;background:#0b1220;overflow:hidden}
   const chartEl = document.getElementById("chart");
 
   window.chart = createChart(chartEl, {
-    width: window.innerWidth,
-    height: window.innerHeight,
+  width: chartEl.clientWidth,
+  height: chartEl.clientHeight,
+
     layout: { background:{color:"#0b1220"}, textColor:"#d1d5db" },
     grid: {
       vertLines:{color:"rgba(255,255,255,0.04)"},
@@ -144,6 +147,15 @@ html,body{margin:0;height:100%;background:#0b1220;overflow:hidden}
     timeScale:{ timeVisible:true },
     crosshair:{ mode:1 }
   });
+function resizeChart() {
+  chart.applyOptions({
+    width: chartEl.clientWidth,
+    height: chartEl.clientHeight,
+  });
+}
+
+resizeChart();
+window.addEventListener("resize", resizeChart);
 
   const series = chart.addCandlestickSeries({
     upColor:"#22c55e",
@@ -161,11 +173,17 @@ html,body{margin:0;height:100%;background:#0b1220;overflow:hidden}
   let useHeikinAshi=false;
   let rawBars=[], haBars=[];
 
-  function sendToRN(p){
-    const m=JSON.stringify(p);
-    window.ReactNativeWebView?.postMessage(m);
-    if(window.parent!==window) window.parent.postMessage(m,"*");
+function sendToRN(p){
+  const m = JSON.stringify(p);
+
+  if (window.ReactNativeWebView) {
+    // 📱 Android / iOS
+    window.ReactNativeWebView.postMessage(m);
+  } else if (window.parent !== window) {
+    // 🌐 Web iframe
+    window.parent.postMessage(m, "*");
   }
+}
 
   function applyWickCompression(b){
     if(wickCompression===1) return b;
@@ -301,7 +319,10 @@ window.addEventListener("message", e => {
 
   seed();
   sendToRN({type:"READY"});
-  setInterval(tick,1000);
+  setTimeout(() => {
+  setInterval(tick, 1000);
+}, 300);
+
 })();
 </script>
 </body>
@@ -310,22 +331,32 @@ window.addEventListener("message", e => {
     /* ---------------- RN SIDE ---------------- */
 
     const onMessage = (e: any) => {
-      try {
-        const data = JSON.parse(e.nativeEvent.data);
-        if (data.type === "READY") webReadyRef.current = true;
-        if (data.type === "TICK") latestPriceRef.current = data.close;
-      } catch {}
-    };
+  try {
+    const raw = e.nativeEvent.data;
+    const data = typeof raw === "string" ? JSON.parse(raw) : raw;
 
-    const onLayout = (e: LayoutChangeEvent) => {
-      const { width, height } = e.nativeEvent.layout;
-      lastLayoutRef.current = { w: width, h: height };
-      if (!webReadyRef.current) return;
-      webRef.current?.injectJavaScript(`
+    if (data.type === "READY") webReadyRef.current = true;
+    if (data.type === "TICK") latestPriceRef.current = data.close;
+  } catch {}
+};
+      
+   const onLayout = (e: LayoutChangeEvent) => {
+  const { width, height } = e.nativeEvent.layout;
+
+  if (width === 0 || height === 0) return; // 🛑 guard
+
+  lastLayoutRef.current = { w: width, h: height };
+
+  setTimeout(() => {
+    webRef.current?.injectJavaScript(`
+      if (window.chart) {
         chart.applyOptions({ width: ${width}, height: ${height} });
-        true;
-      `);
-    };
+      }
+      true;
+    `);
+  }, 50);
+};
+
 
     useEffect(() => {
       if (Platform.OS !== "web") return;
@@ -364,6 +395,9 @@ window.addEventListener("message", e => {
           allowFileAccess
           allowUniversalAccessFromFileURLs
           allowsInlineMediaPlayback
+          androidLayerType="hardware"
+         renderToHardwareTextureAndroid
+
           style={styles.webview}
         />
       </View>
@@ -376,8 +410,9 @@ ChartView.displayName = "ChartView";
 /* ---------------- STYLES ---------------- */
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  webview: { flex: 1, backgroundColor: "#0b1220" },
+  container: { width: "100%", height: "100%" }, // ✅ FIXED
+  webview: { width: "100%", height: "100%", backgroundColor: "#0b1220" },
 });
+
 
 export default ChartView;

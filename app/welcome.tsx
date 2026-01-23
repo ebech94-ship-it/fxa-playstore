@@ -3,6 +3,7 @@ import { AntDesign, Ionicons } from "@expo/vector-icons";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
+import { makeRedirectUri } from "expo-auth-session";
 import * as Google from "expo-auth-session/providers/google";
 import * as Localization from "expo-localization";
 import { useRouter } from "expo-router";
@@ -24,8 +25,9 @@ import {
   Animated,
   ImageBackground,
   Keyboard,
+  KeyboardAvoidingView,
   Modal,
-
+  Platform,
   ScrollView,
   StyleSheet,
   Text,
@@ -70,12 +72,16 @@ const publicUserId = await generateUserId();
     // ✅ Now create user
     await setDoc(userRef, {
   uid,
-  userId: publicUserId,
-  name,
-   countryCode,
+ publicId: publicUserId,
+  // 🔑 STANDARD FIELDS
+  displayName: name,
   email,
+  countryCode,
   provider: auth.currentUser?.providerData[0]?.providerId || "password",
-  profileCompleted: true,
+   // 🔐 PROFILE & VERIFICATION
+  profileCompleted: false,
+  verified: false,
+  verifiedAt: null,
    referredBy: referredBy,
   createdAt: serverTimestamp(),
   accounts: {
@@ -138,13 +144,17 @@ const [showPicker, setShowPicker] = useState(false);
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
 
+
+
 // 🔐 GOOGLE LOGIN SETUP
 const [request, response, promptAsync] = Google.useAuthRequest({
   androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
   webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
   scopes: ["profile", "email"],
+  redirectUri: makeRedirectUri({
+    scheme: "forextournamentsarena", // must match app.json
+  }),
 });
-
 
 
   const [showSignupEmail, setShowSignupEmail] = useState(false);
@@ -355,7 +365,11 @@ useEffect(() => {
       if (password !== confirmPassword) return alert("Passwords do not match");
 
       setLoading(true);
-      const userCred = await createUserWithEmailAndPassword(auth, email, password);
+ const userCred = await createUserWithEmailAndPassword(
+  auth,
+  email.trim().toLowerCase(),
+  password
+);
 
 await createUserAccounts(
   userCred.user.uid,
@@ -406,13 +420,22 @@ const handleLogin = async () => {
 
 
   return (
-    <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
-      <ImageBackground
-        source={require("../assets/images/background.png")}
-        style={styles.bg}
-        resizeMode="cover"
+    <KeyboardAvoidingView
+  style={{ flex: 1 }}
+  behavior={Platform.OS === "ios" ? "padding" : undefined}
+>
+  <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+    <ImageBackground
+      source={require("../assets/images/background.png")}
+      style={styles.bg}
+      resizeMode="cover"
+    >
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{ flexGrow: 1 }}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
       >
-   
         <View style={styles.overlay}>
           <Text style={styles.title}>Welcome to Forex Tournaments Arena</Text>
           {inviteRef && (
@@ -507,7 +530,12 @@ const handleLogin = async () => {
         styles.button,
         { backgroundColor: "#DB4437", opacity: accepted ? 1 : 0.4 },
       ]}
-      onPress={() => accepted && request && promptAsync()}
+     onPress={() =>
+  accepted &&
+  request &&
+  promptAsync()
+}
+
       disabled={!accepted || !request}
     >
       {!request ? (
@@ -861,8 +889,10 @@ const handleLogin = async () => {
 
         </View>
 
-      </ImageBackground>
-    </TouchableWithoutFeedback>
+      </ScrollView>
+    </ImageBackground>
+  </TouchableWithoutFeedback>
+</KeyboardAvoidingView>
   );
 }
 

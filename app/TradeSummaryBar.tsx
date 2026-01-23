@@ -1,5 +1,4 @@
-// TradeSummaryBar.tsx — CLEAN / UI-ONLY / STABLE
-
+// TradeSummaryBar.tsx — CLASS 2 FRIENDLY / ACCOUNT-AWARE
 import { useEffect, useRef, useState } from "react";
 import {
   Animated,
@@ -11,59 +10,46 @@ import {
   useWindowDimensions,
 } from "react-native";
 
-/* ===============================
-   TYPES
-=============================== */
-
 interface TradeSummaryBarProps {
   openTrades?: any[];
   closedTrades?: any[];
   activeAccount: "real" | "demo" | "tournament";
+  tournamentInfo?: { id: string; name: string }[];
   onResizeChart?: () => void;
 }
-
-/* ===============================
-   COMPONENT
-=============================== */
 
 export default function TradeSummaryBar({
   openTrades: parentOpenTrades = [],
   closedTrades: parentClosedTrades = [],
+  activeAccount,
+  tournamentInfo = [],
 }: TradeSummaryBarProps) {
-  /* -------------------------------
-     DYNAMIC DIMENSIONS (FIX)
-  ------------------------------- */
   const { height: screenHeight } = useWindowDimensions();
-
   const COLLAPSED_HEIGHT = 50;
   const EXPANDED_HEIGHT = Math.min(screenHeight * 0.7, 420);
   const maxTranslateY = EXPANDED_HEIGHT - COLLAPSED_HEIGHT;
 
-  /* -------------------------------
-     PANEL ANIMATION STATE
-  ------------------------------- */
   const translateY = useRef(new Animated.Value(maxTranslateY)).current;
   const lastY = useRef(maxTranslateY);
+const MIN_VISIBLE_TOP = 10; // px – keep handle always reachable
 
-  useEffect(() => {
-    translateY.setValue(maxTranslateY);
-    lastY.current = maxTranslateY;
-  }, [maxTranslateY, translateY]);
+const minTranslateY = Math.max(
+  0,
+  screenHeight - EXPANDED_HEIGHT - MIN_VISIBLE_TOP
+);
 
-  /* -------------------------------
-     LOCAL MIRROR STATE (UI ONLY)
-  ------------------------------- */
+useEffect(() => {
+  translateY.setValue(maxTranslateY);
+  lastY.current = maxTranslateY;
+}, [maxTranslateY, minTranslateY, translateY]);
+
+
   const [openTrades, setOpenTrades] = useState<any[]>([]);
   const [closedTrades, setClosedTrades] = useState<any[]>([]);
-
-  /* -------------------------------
-     FORCE RE-RENDER FOR COUNTDOWN
-  ------------------------------- */
   const [tick, setTick] = useState(0);
 
   const formatTime = (timestamp: number) => {
     const d = new Date(timestamp);
-
     return d.toLocaleTimeString([], {
       hour: "2-digit",
       minute: "2-digit",
@@ -71,52 +57,29 @@ export default function TradeSummaryBar({
     });
   };
 
-  /* ===============================
-     SYNC FROM PARENT (SOURCE OF TRUTH)
-  =============================== */
   useEffect(() => {
     setOpenTrades(parentOpenTrades);
     setClosedTrades(parentClosedTrades);
   }, [parentOpenTrades, parentClosedTrades]);
 
-  /* ===============================
-     COUNTDOWN TIMER
-  =============================== */
   useEffect(() => {
-    const timer = setInterval(() => {
-      setTick((t) => t + 1);
-    }, 1000);
-
+    const timer = setInterval(() => setTick((t) => t + 1), 1000);
     return () => clearInterval(timer);
   }, []);
 
-  /* ===============================
-     SWIPE / DRAG LOGIC
-  =============================== */
   const panResponder = useRef(
     PanResponder.create({
       onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 10,
-
       onPanResponderMove: (_, g) => {
-        const newY = Math.max(
-          0,
-          Math.min(maxTranslateY, lastY.current + g.dy)
-        );
+const newY = Math.max(  minTranslateY,  Math.min(maxTranslateY, lastY.current + g.dy));
         translateY.setValue(newY);
       },
-
       onPanResponderRelease: (_, g) => {
-        const shouldExpand =
-          g.vy < -0.5 || lastY.current + g.dy < maxTranslateY / 2;
-
-        const toValue = shouldExpand ? 0 : maxTranslateY;
-
+const shouldExpand =  g.vy < -0.5 ||
+  lastY.current + g.dy < (minTranslateY + maxTranslateY) / 2;
+const toValue = shouldExpand ? minTranslateY : maxTranslateY;
         lastY.current = toValue;
-
-        Animated.spring(translateY, {
-          toValue,
-          useNativeDriver: true,
-        }).start();
+        Animated.spring(translateY, { toValue, useNativeDriver: true }).start();
       },
     })
   ).current;
@@ -124,27 +87,16 @@ export default function TradeSummaryBar({
   const getRemainingTime = (expiryTime: number) => {
     const now = Date.now();
     const diff = expiryTime - now;
-
     if (diff <= 0) return "00:00";
-
     const seconds = Math.floor(diff / 1000);
     const mins = Math.floor(seconds / 60);
     const secs = seconds % 60;
-
-    return `${mins.toString().padStart(2, "0")}:${secs
-      .toString()
-      .padStart(2, "0")}`;
+    return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`;
   };
 
-  /* ===============================
-     RENDER
-  =============================== */
   return (
     <Animated.View
-      style={[
-        styles.panel,
-        { height: EXPANDED_HEIGHT, transform: [{ translateY }] },
-      ]}
+      style={[styles.panel, { height: EXPANDED_HEIGHT, transform: [{ translateY }] }]}
       {...panResponder.panHandlers}
     >
       {/* HANDLE */}
@@ -154,17 +106,54 @@ export default function TradeSummaryBar({
       </View>
 
       <ScrollView style={styles.content}>
+        {/* ===== ACTIVE ACCOUNT HEADING ===== */}
+        <View style={styles.accountHeader}>
+          <Text
+            style={[
+              styles.accountText,
+              activeAccount === "demo"
+                ? { color: "#ff69b4" }
+                : activeAccount === "real"
+                ? { color: "#00bfff" }
+                : { color: "#ffd700" },
+            ]}
+          >
+            {activeAccount === "tournament"
+              ? tournamentInfo?.map((t: { id: string; name: string }) => t.name).join(", ") ??
+                "Tournament"
+              : `Active Account: ${activeAccount.toUpperCase()}`}
+          </Text>
+        </View>
+
         {/* ================= OPEN TRADES ================= */}
         <Text style={styles.sectionTitle}>Open Trades</Text>
-
         {openTrades.length === 0 ? (
           <Text style={styles.emptyText}>No open trades</Text>
         ) : (
           openTrades.map((t, i) => {
             const remaining = getRemainingTime(t.expiryTime);
-
             return (
               <View key={t.id ?? i} style={styles.tradeRow}>
+                {/* ===== ACCOUNT LABEL PER TRADE ===== */}
+                <Text
+                  style={{
+                    fontSize: 12,
+                    color:
+                      t.accountType === "demo"
+                        ? "#ff69b4"
+                        : t.accountType === "real"
+                        ? "#00bfff"
+                        : "#ffd700",
+                    fontWeight: "600",
+                    marginBottom: 4,
+                  }}
+                >
+                  {t.accountType === "tournament"
+    ? t.tournamentName ?? "Tournament"
+    : t.accountType?.toUpperCase()}
+                </Text>
+
+                {/* ===== TRADE INFO ===== */}
                 <Text style={styles.tradeText}>
                   Entry: {t.entryPrice.toFixed(2)} → Now:{" "}
                   <Text
@@ -182,7 +171,6 @@ export default function TradeSummaryBar({
                     {t.currentPrice.toFixed(2)}
                   </Text>
                 </Text>
-
                 <Text
                   style={{
                     marginTop: 4,
@@ -202,7 +190,6 @@ export default function TradeSummaryBar({
 
         {/* ================= CLOSED TRADES ================= */}
         <Text style={styles.sectionTitle}>Closed Trades</Text>
-
         {closedTrades.length === 0 ? (
           <Text style={styles.emptyText}>No closed trades</Text>
         ) : (
@@ -217,24 +204,35 @@ export default function TradeSummaryBar({
                 key={t.id ?? i}
                 style={[
                   styles.tradeRow,
-                  {
-                    backgroundColor:
-                      t.result === "GAIN" ? "#1e4620" : "#5a1d1d",
-                  },
+                  { backgroundColor: t.result === "GAIN" ? "#1e4620" : "#5a1d1d" },
                 ]}
               >
+                {/* ===== ACCOUNT LABEL PER TRADE ===== */}
+                <Text
+                  style={{
+                    fontSize: 12,
+                    color:
+                      t.accountType === "demo"
+                        ? "#ff69b4"
+                        : t.accountType === "real"
+                        ? "#00bfff"
+                        : "#ffd700",
+                    fontWeight: "600",
+                    marginBottom: 4,
+                  }}
+                >
+                  {t.accountType?.toUpperCase()}
+                </Text>
+
+                {/* ===== TRADE INFO ===== */}
                 <Text style={styles.tradeText}>
                   {(t.type ?? "buy").toUpperCase()} • {t.result} • {profit}
                 </Text>
-
                 <Text style={styles.tradeText}>
-                  Open: {t.entryPrice?.toFixed(2)} → Close:{" "}
-                  {t.closePrice?.toFixed(2)}
+                  Open: {t.entryPrice?.toFixed(2)} → Close: {t.closePrice?.toFixed(2)}
                 </Text>
-
                 <Text style={styles.timeText}>
-                  Opened: {formatTime(t.openTime)} | Closed:{" "}
-                  {formatTime(t.closeTime)}
+                  Opened: {formatTime(t.openTime)} | Closed: {formatTime(t.closeTime)}
                 </Text>
               </View>
             );
@@ -244,10 +242,6 @@ export default function TradeSummaryBar({
     </Animated.View>
   );
 }
-
-/* ===============================
-   STYLES
-=============================== */
 
 const styles = StyleSheet.create({
   panel: {
@@ -260,56 +254,20 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 12,
     overflow: "hidden",
   },
-
   handle: {
     height: 50,
     backgroundColor: "#333",
     justifyContent: "center",
     alignItems: "center",
   },
-
-  handleLine: {
-    width: 40,
-    height: 2,
-    borderRadius: 2,
-    backgroundColor: "#888",
-    marginBottom: 3,
-  },
-
-  handleText: {
-    color: "white",
-    fontWeight: "600",
-  },
-
-  content: {
-    flex: 1,
-    padding: 10,
-  },
-
-  sectionTitle: {
-    color: "#ccc",
-    fontSize: 14,
-    marginVertical: 6,
-  },
-
-  tradeRow: {
-    marginVertical: 6,
-    padding: 10,
-    borderRadius: 8,
-    backgroundColor: "#2a2a2a",
-  },
-
-  tradeText: {
-    color: "white",
-    fontSize: 13,
-  },
-
-  timeText: {
-    color: "#ccc",
-    fontSize: 12,
-  },
-
-  emptyText: {
-    color: "#777",
-  },
+  handleLine: { width: 40, height: 2, borderRadius: 2, backgroundColor: "#888", marginBottom: 3 },
+  handleText: { color: "white", fontWeight: "600" },
+  content: { flex: 1, padding: 10 },
+  sectionTitle: { color: "#ccc", fontSize: 14, marginVertical: 6 },
+  tradeRow: { marginVertical: 6, padding: 10, borderRadius: 8, backgroundColor: "#2a2a2a" },
+  tradeText: { color: "white", fontSize: 13 },
+  timeText: { color: "#ccc", fontSize: 12 },
+  emptyText: { color: "#777" },
+  accountHeader: { paddingVertical: 6, paddingHorizontal: 10, backgroundColor: "#222", borderBottomWidth: 1, borderBottomColor: "#444" },
+  accountText: { fontSize: 14, fontWeight: "700" },
 });

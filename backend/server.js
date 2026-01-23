@@ -1,24 +1,73 @@
+console.log("🔥🔥🔥 ACTIVE SERVER.JS LOADED 🔥🔥🔥");
+
 require("dotenv").config();
 
 const express = require("express");
 const cors = require("cors");
-const { testCampay } = require("./campay");
+
 const { getCampayToken } = require("./campayAuth");
 const admin = require("firebase-admin");
+const { Buffer } = require("buffer"); 
 
 // If your Node version < 18, uncomment next two lines
 // const fetch = require("node-fetch");
 // global.fetch = fetch;
 
 const app = express();
+function verifySignature(req) {
+  const secret = process.env.CAMPAY_WEBHOOK_SECRET;
+  if (!secret) return true; // CamPay hasn't given secret yet
+
+  const signature =
+    req.headers["x-campay-signature"] ||
+    req.headers["x-signature"];
+
+  if (!signature) return false;
+
+  const crypto = require("crypto");
+
+  const expected = crypto
+    .createHmac("sha256", secret)
+    .update(req.rawBody) // ✅ MUST be raw body
+    .digest("hex");
+
+  return crypto.timingSafeEqual(
+    Buffer.from(signature),
+    Buffer.from(expected)
+  );
+}
+
 
 // ---------------------------------------------------------------------
 // CORS + JSON
 // ---------------------------------------------------------------------
-app.use(express.json());
-app.use(cors());
-app.get("/api/test/campay", testCampay);
+app.use(
+  express.json({
+    verify: (req, res, buf) => {
+      req.rawBody = buf;
+    },
+  })
+);
 
+app.use(cors());
+app.options("*", cors());
+// Middleware to verify Firebase ID token
+const authenticate = async (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return res.status(401).json({ error: "No Firebase token provided" });
+  }
+
+  const idToken = authHeader.split(" ")[1];
+  try {
+    const decodedToken = await admin.auth().verifyIdToken(idToken);
+    req.user = decodedToken; // attach decoded user info to request
+    next();
+  } catch (err) {
+    console.error("Firebase auth error:", err.message);
+    return res.status(401).json({ error: "Invalid Firebase token" });
+  }
+};
 
 // ---------------------------------------------------------------------
 // HEALTH CHECK ROUTE (CamPay reachability depends on server being up)
@@ -26,9 +75,10 @@ app.get("/api/test/campay", testCampay);
 app.get("/health", (req, res) => {
   res.send("Backend running");
 });
-app.get("/webhook/campay", (req, res) => {
-  res.status(200).send("Campay webhook endpoint is live");
-});
+const { initiateCampayPayment } = require("./campay");
+
+app.post("/api/campay/initiate", initiateCampayPayment);
+
 
 // ---------------------------------------------------------------------
 // INVITE ROUTE
@@ -67,32 +117,6 @@ app.get("/api/treasury/balances", async (req, res) => {
     res.status(500).json({ success: false, error: err.message });
   }
 });
-
-
-// ---------------------------------------------------------------------
-// ⚠️ ADMIN / TEST ONLY — REMOVE IN PRODUCTION
-// ---------------------------------------------------------------------
-
-app.post("/deposit", authenticate, async (req, res) => {
-  try {
-    // only admin allowed
-    if (!req.user.admin) {
-      return res.status(403).json({ error: "Forbidden" });
-    }
-
-    const { userId, amount } = req.body;
-    if (!userId || !amount)
-      return res.status(400).json({ error: "Missing fields" });
-
-    await treasury.addDepositToUser(userId, amount);
-    await treasury.addDepositToTreasury(amount);
-
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
 
 // ---------------------------------------------------------------------
 // TOURNAMENTS HANDLING
@@ -134,7 +158,7 @@ app.post("/tournament/register", authenticate, async (req, res) => {
       // 🔻 Deduct entry fee
       if (entryFee > 0) {
         t.update(userRef, {
-          walletBalance: user.walletBalance - entryFee,
+          walletBalance: admin.firestore.FieldValue.increment(-entryFee),
         });
 
         t.update(tournamentRef, {
@@ -160,7 +184,7 @@ app.post("/tournament/register", authenticate, async (req, res) => {
     [`accounts.tournaments.${tournamentId}`]: {
       balance: startingBalance,
       initialBalance: startingBalance,
-      status: "active",
+      status: "ongoing",
       joinedAt: admin.firestore.FieldValue.serverTimestamp(),
     },
   },
@@ -215,36 +239,31 @@ const { tournamentId, amount } = req.body;
 });
 
 
-// Middleware to verify Firebase ID token
-const authenticate = async (req, res, next) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return res.status(401).json({ error: "No Firebase token provided" });
-  }
 
-  const idToken = authHeader.split(" ")[1];
-  try {
-    const decodedToken = await admin.auth().verifyIdToken(idToken);
-    req.user = decodedToken; // attach decoded user info to request
-    next();
-  } catch (err) {
-    console.error("Firebase auth error:", err.message);
-    return res.status(401).json({ error: "Invalid Firebase token" });
-  }
-};
 // ---------------------------------------------------------------------
 // TOURNAMENT SETTLEMENT
 // ---------------------------------------------------------------------
 app.post("/campay/create-payment", authenticate, async (req, res) => {
+ 
   try {
-    const { amount, phone, operator, method } = req.body;
+    const { amount, phone, operator, method,currency } = req.body;
+     // ✅ ADD THIS BLOCK
+    if (!amount || Number(amount) <= 0) {
+      return res.status(400).json({ error: "Invalid amount" });
+    }
+    if (method === "mobile" && !/^2376\d{8}$/.test(phone)) {
+      return res.status(400).json({ error: "Invalid phone format" });
+    }
+const amountNum = Number(amount);
+
+if (!Number.isInteger(amountNum) || amountNum < 1000 || amountNum > 500000) {
+  return res.status(400).json({ error: "Invalid deposit amount" });
+}
 
     // Use the userId from verified Firebase token (safer!)
     const userId = req.user.uid;
 
-    if (!amount || !method) {
-      return res.status(400).json({ error: "Missing fields" });
-    }
+    
 
     // Mobile money validation
     if (method === "mobile" && (!phone || !operator)) {
@@ -252,22 +271,38 @@ app.post("/campay/create-payment", authenticate, async (req, res) => {
     }
 
     const token = await getCampayToken();
+    const txId = `DEP_${userId}_${Date.now()}`;
 
     const bodyPayload = {
       amount: Number(amount),
-      currency: "XAF",
+      currency: currency || "XAF",
       description: "Forex Tournament Deposit",
-      external_reference: userId,
+      external_reference: txId,
+       metadata: { userId },
     };
 
     if (method === "mobile") {
       bodyPayload.from = phone;
       bodyPayload.operator = operator;
     }
+await db.collection("transactions").doc(txId).set({
+  reference: txId,
+  userId,
+  amount: Number(amount),
+  currency: currency || "XAF",
+  status: "PENDING",
+  createdAt: admin.firestore.Timestamp.now(),
+});
 
-    const endpoint = method === "card"
-      ? `${process.env.CAMPAY_BASE_URL}/cards/`  // adjust per CamPay docs
-      : `${process.env.CAMPAY_BASE_URL}/collect/`;
+  /* 🚫 CARD PAYMENTS DISABLED */
+if (method === "card") {
+  return res
+    .status(400)
+    .json({ error: "Card payments not enabled" });
+}
+
+/* 📞 MOBILE MONEY ONLY */
+const endpoint = `${process.env.CAMPAY_BASE_URL}/collect/`;
 
     const response = await fetch(endpoint, {
       method: "POST",
@@ -303,7 +338,15 @@ app.post("/campay/create-payment", authenticate, async (req, res) => {
 // ---------------------------------------------------------------------
 // CAMPAY WEBHOOK (CALLBACK URL)
 // ---------------------------------------------------------------------
+
+
 app.post("/webhook/campay", async (req, res) => {
+
+
+if (!verifySignature(req)) {
+    console.error("❌ Invalid CamPay webhook signature");
+    return res.status(401).json({ error: "Invalid signature" });
+  }
   try {
     console.log("📩 CamPay webhook received:", req.body);
 
@@ -313,41 +356,65 @@ app.post("/webhook/campay", async (req, res) => {
       amount,
       currency,
       operator,
-      external_reference, // this is userId
+       metadata,
     } = req.body;
+    
+const userId = metadata?.userId;
 
-    if (!reference || !status || !amount || !external_reference) {
+    if (!reference || !status || !amount || !userId) {
       return res.status(400).json({ error: "Invalid webhook payload" });
     }
 
     const txRef = String(reference);
-    const txDoc = db.collection("campay_transactions").doc(txRef);
+    const txDoc = db.collection("transactions").doc(txRef);
     const txSnap = await txDoc.get();
 
+if (!txSnap.exists) {
+  return res.status(404).json({ error: "Unknown transaction reference" });
+}
+
+
     // ⛔ Already processed
-    if (txSnap.exists) {
-      console.log("⚠️ Duplicate CamPay webhook ignored:", txRef);
-      return res.status(200).json({ success: true });
-    }
+  if (txSnap.exists && txSnap.data().creditedAt) {
+  console.log("⚠️ Duplicate CamPay webhook ignored:", txRef);
+  return res.status(200).json({ success: true });
+}
+const successStates = ["SUCCESS", "SUCCESSFUL", "COMPLETED"];
+const failureStates = ["FAILED", "CANCELLED", "EXPIRED"];
+
+if (![...successStates, ...failureStates].includes(status)) {
+  console.warn("⚠️ Unknown CamPay status:", status);
+  return res.status(200).json({ ignored: true });
+}
+
+
 
     // Save transaction record
-    await txDoc.set({
-      reference: txRef,
-      userId: external_reference,
-      amount: Number(amount),
-      currency: currency || "XAF",
-      operator: operator || null,
-      status,
-      createdAt: new Date(),
-    });
+    await txDoc.set(
+  {
+    reference: txRef,
+    userId,
+    amount: Number(amount),
+    currency: currency || "XAF",
+    operator: operator || null,
+    status: successStates.includes(status) ? "COMPLETED" : status,
+    rawStatus: req.body,
+    updatedAt: admin.firestore.Timestamp.now(),
+  },
+  { merge: true }
+);
+
 
     // Credit ONLY on success
-    if (status === "SUCCESSFUL") {
-      await treasury.addDepositToUser(
-        external_reference,
-        Number(amount)
-      );
-      await treasury.addDepositToTreasury(Number(amount));
+
+
+if (successStates.includes(status)) {
+   await treasury.processCampayDeposit(
+  userId,
+  Number(amount),
+  txRef
+);
+
 
       console.log("💰 CamPay deposit credited:", txRef);
     }

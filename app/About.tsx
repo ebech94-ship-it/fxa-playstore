@@ -1,6 +1,5 @@
 // AboutContactScreen.js
-import React from "react";
-import {  Text, StyleSheet, Linking, TouchableOpacity, ScrollView } from "react-native";
+import { Linking, ScrollView, StyleSheet, Text, TouchableOpacity } from "react-native";
 
 export default function AboutScreen() {
   const email = "ebech94@gmail.com"; // <-- replace with your email
@@ -13,7 +12,7 @@ export default function AboutScreen() {
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.title}>About FX Arena</Text>
       <Text style={styles.text}>
-        FX Arena is developed by <Text style={styles.bold}>GodSpeed (GS)</Text>, powered by{" "}
+        FX Arena is developed by <Text style={styles.bold}>GodSpeed (GS) Technologies</Text>, powered by{" "}
         <Text style={styles.bold}>BECHEM Lab</Text>. Our mission is to provide a fun, educational, 
   and competitive trading experience through synthetic markets, helping traders strengthen 
   their market psychology—understanding when it’s the right time to buy and when to sell.

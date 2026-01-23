@@ -3,15 +3,12 @@ import {
   addDoc,
   collection,
   doc,
-  getDocs,
   increment,
   onSnapshot,
-  query,
   runTransaction,
-  serverTimestamp,
-  where,
+  serverTimestamp
 } from "firebase/firestore";
-import React, { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -25,12 +22,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { db } from "../../../firebaseConfig"; // adjust if your path differs
-
-type FirestoreTimestamp =
-  | number
-  | string
-  | { seconds: number; nanoseconds?: number };
+import { db } from "../../../firebaseConfig";
 
 type PaymentDoc = {
   id?: string;
@@ -39,334 +31,190 @@ type PaymentDoc = {
   amount?: number;
   method?: string;
   screenshot?: string;
-  date?: FirestoreTimestamp;
-  meta?: Record<string, any>;
-};
-const toMillis = (date?: any): number => {
-  if (!date) return 0;
-
-  // already millis
-  if (typeof date === "number") return date;
-
-  // Firestore Timestamp
-  if (date?.seconds) return date.seconds * 1000;
-
-  // string fallback
-  const parsed = Number(date);
-  return isNaN(parsed) ? 0 : parsed;
+  date?: any;
+  processing?: boolean;
 };
 
-const PaymentsSection: React.FC = () => {
+const PaymentsSection = () => {
   const [payments, setPayments] = useState<PaymentDoc[]>([]);
   const [selected, setSelected] = useState<PaymentDoc | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [loading, setLoading] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
-  const [rejectModalVisible, setRejectModalVisible] = useState(false);
+  const [rejectModal, setRejectModal] = useState(false);
 
-  // nice glow animation for header
-  const glowAnim = useRef(new Animated.Value(0)).current;
+  const glow = useRef(new Animated.Value(0)).current;
+   // 🔁 Glow animation (runs once)
   useEffect(() => {
-    const loop = Animated.loop(
+    Animated.loop(
       Animated.sequence([
-        Animated.timing(glowAnim, { toValue: 1, duration: 1300, useNativeDriver: false }),
-        Animated.timing(glowAnim, { toValue: 0, duration: 1300, useNativeDriver: false }),
+        Animated.timing(glow, {
+          toValue: 1,
+          duration: 1200,
+          useNativeDriver: false,
+        }),
+        Animated.timing(glow, {
+          toValue: 0,
+          duration: 1200,
+          useNativeDriver: false,
+        }),
       ])
-    );
-    loop.start();
-    return () => loop.stop();
-  }, [glowAnim]);
-  const glowColor = glowAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ["rgba(130,0,255,0.35)", "rgba(0,180,255,0.35)"],
-  });
-
-  // subscribe to pendingPayments collection
-  useEffect(() => {
-    const ref = collection(db, "pendingPayments");
-    const unsub = onSnapshot(ref, (snap) => {
-      const list: PaymentDoc[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
-      // sort newest first if date exists
-      list.sort((a, b) => {
-  return toMillis(b.date) - toMillis(a.date);
-});
-
-      setPayments(list);
-    });
-    return () => unsub();
+    ).start();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    const ref = collection(db, "pendingPayments");
+    return onSnapshot(ref, (snap) => {
+      setPayments(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })));
+    });
+  }, []);
 
-  // Approve flow: add to approvedPayments, update user balance, delete pending, notify
- const approvePayment = async (p: PaymentDoc) => {
-  if (!p?.id) return;
-  setLoading(true);
+  const approve = async () => {
+    if (!selected || loading) return;
+    setLoading(true);
 
-  try {
-    const paymentId = p.id; // 🔒 narrowed once
+    try {
+      await runTransaction(db, async (tx) => {
+        const pendingRef = doc(db, "pendingPayments", selected.id!);
+        const snap = await tx.get(pendingRef);
+        if (!snap.exists()) throw new Error("Already processed");
 
-await runTransaction(db, async (tx) => {
-  const pendingRef = doc(db, "pendingPayments", paymentId);
-
-      const pendingSnap = await tx.get(pendingRef);
-
-      // 🔒 Guard: already handled
-      if (!pendingSnap.exists()) {
-        throw new Error("Payment already processed.");
-      }
-
-      // 🔒 Guard: double approval
-      const approvedQuery = query(
-        collection(db, "approvedPayments"),
-        where("originalId", "==", p.id)
-      );
-      const approvedSnap = await getDocs(approvedQuery);
-
-      if (!approvedSnap.empty) {
-        throw new Error("Payment already approved.");
-      }
-
-      // 1️⃣ Write approved record
-      const approvedRef = doc(collection(db, "approvedPayments"));
-      tx.set(approvedRef, {
-        uid: p.uid ?? null,
-        username: p.username ?? null,
-        amount: Number(p.amount ?? 0),
-        method: p.method ?? null,
-        screenshot: p.screenshot ?? null,
-        originalId: p.id,
-        approvedAt: serverTimestamp(),
-        adminNote: "Approved by admin",
-      });
-
-      // 2️⃣ Credit user balance
-      if (p.uid) {
-        const userRef = doc(db, "users", p.uid);
-        tx.update(userRef, {
-          "accounts.real.balance": increment(Number(p.amount ?? 0)),
-          lastCreditedAt: serverTimestamp(),
+        tx.set(doc(collection(db, "approvedPayments")), {
+          ...selected,
+          originalId: selected.id,
+          approvedAt: serverTimestamp(),
         });
-      }
 
-      // 3️⃣ Remove pending payment
-      tx.delete(pendingRef);
-    });
+        if (selected.uid) {
+          tx.update(doc(db, "users", selected.uid), {
+            "accounts.real.balance": increment(Number(selected.amount)),
+          });
+        }
 
-    // 4️⃣ Notify user (outside transaction)
-    if (p.uid) {
+        tx.delete(pendingRef);
+      });
+
       await addDoc(collection(db, "notifications"), {
-        uid: p.uid,
+        uid: selected.uid,
         title: "Payment Approved",
-        message: `Your payment of ${p.amount} via ${p.method} was approved.`,
+        message: `Your payment of ${selected.amount} was approved.`,
         createdAt: serverTimestamp(),
         read: false,
       });
+
+      setModalVisible(false);
+    } catch (e: any) {
+      Alert.alert("Error", e.message);
+    } finally {
+      setLoading(false);
     }
+  };
 
-    Alert.alert("Success", `Payment approved — ${p.amount} credited.`);
-    setModalVisible(false);
-    setSelected(null);
-  } catch (err: any) {
-    Alert.alert("Error", err.message || "Approval failed");
-  } finally {
-    setLoading(false);
-  }
-};
+  const reject = async () => {
+    if (!selected || loading) return;
+    setLoading(true);
 
-
-  // Reject flow: move to rejectedPayments with optional reason, delete pending
- const rejectPayment = async (p: PaymentDoc, reason?: string) => {
-  if (!p?.id) return;
-  setLoading(true);
-
-  try {
-    await runTransaction(db, async (tx) => {
-      const pendingRef = doc(db, "pendingPayments", p.id!);
-      const pendingSnap = await tx.get(pendingRef);
-
-      // 🔒 Guard
-      if (!pendingSnap.exists()) {
-        throw new Error("Payment already processed.");
-      }
-
-      // 1️⃣ Write rejected record
-      const rejectedRef = doc(collection(db, "rejectedPayments"));
-      tx.set(rejectedRef, {
-        uid: p.uid ?? null,
-        username: p.username ?? null,
-        amount: Number(p.amount ?? 0),
-        method: p.method ?? null,
-        screenshot: p.screenshot ?? null,
-        originalId: p.id,
-        rejectedAt: serverTimestamp(),
-        reason: reason ?? "Rejected by admin",
+    try {
+      await runTransaction(db, async (tx) => {
+        tx.set(doc(collection(db, "rejectedPayments")), {
+          ...selected,
+          originalId: selected.id,
+          reason: rejectReason || "Rejected by admin",
+          rejectedAt: serverTimestamp(),
+        });
+        tx.delete(doc(db, "pendingPayments", selected.id!));
       });
 
-      // 2️⃣ Delete pending payment
-      tx.delete(pendingRef);
-    });
-
-    // 3️⃣ Notify user
-    if (p.uid) {
       await addDoc(collection(db, "notifications"), {
-        uid: p.uid,
+        uid: selected.uid,
         title: "Payment Rejected",
-        message: `Your payment of ${p.amount} was rejected. Reason: ${
-          reason ?? "See admin"
-        }`,
+        message: rejectReason || "Payment rejected",
         createdAt: serverTimestamp(),
         read: false,
       });
+
+      setRejectModal(false);
+      setModalVisible(false);
+    } finally {
+      setLoading(false);
     }
-
-    Alert.alert("Rejected", "Payment rejected successfully.");
-    setRejectModalVisible(false);
-    setModalVisible(false);
-    setSelected(null);
-  } catch (err: any) {
-    Alert.alert("Error", err.message || "Rejection failed");
-  } finally {
-    setLoading(false);
-  }
-};
-
-
-  // quick UI helper to open detail modal
-  const openDetail = (p: PaymentDoc) => {
-    setSelected(p);
-    setModalVisible(true);
   };
 
   return (
     <View style={styles.container}>
-      <Animated.Text style={[styles.header, { shadowColor: glowColor }]}>
-        💳 Payments & Approvals
+      <Animated.Text style={styles.header}>💳 Payments Approval</Animated.Text>
+
+      <ScrollView contentContainerStyle={{ flexGrow: 1 }}>
+  {payments.length === 0 ? (
+    <View style={styles.emptyWrap}>
+      <Animated.Text
+        style={[
+          styles.emptyText,
+          {
+            opacity: glow.interpolate({
+              inputRange: [0, 1],
+              outputRange: [0.4, 1],
+            }),
+          },
+        ]}
+      >
+        No pending payments
       </Animated.Text>
+    </View>
+  ) : (
+    payments.map((p) => (
+      <TouchableOpacity
+        key={p.id}
+        style={styles.card}
+        onPress={() => {
+          setSelected(p);
+          setModalVisible(true);
+        }}
+      >
+        <Text style={styles.username}>{p.username}</Text>
+        <Text style={styles.amount}>${p.amount}</Text>
+      </TouchableOpacity>
+    ))
+  )}
+</ScrollView>
 
-      <ScrollView showsVerticalScrollIndicator={false} style={{ marginTop: 14 }}>
-        {payments.length === 0 ? (
-          <View style={styles.emptyWrap}>
-            <Text style={styles.empty}>No pending payments</Text>
-          </View>
-        ) : (
-          payments.map((p) => (
-            <TouchableOpacity
-              key={p.id}
-              style={styles.card}
-              onPress={() => openDetail(p)}
-              activeOpacity={0.95}
-            >
-              <View style={styles.cardRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.username}>{p.username ?? "Unknown"}</Text>
-                  <Text style={styles.method}>{p.method ?? "—"}</Text>
-                </View>
 
-                <View style={{ alignItems: "flex-end" }}>
-                  <Text style={styles.amount}>${Number(p.amount ?? 0).toFixed(2)}</Text>
-                  <Text style={styles.date}>
-                   {p.date ? new Date(toMillis(p.date)).toLocaleString() : "Unknown"}
-                  </Text>
-                </View>
-              </View>
-            </TouchableOpacity>
-          ))
-        )}
-      </ScrollView>
+      <Modal visible={modalVisible} transparent>
+        <View style={styles.overlay}>
+          <View style={styles.box}>
+            <Text style={styles.title}>Payment Details</Text>
+            <Text style={styles.text}>User: {selected?.username}</Text>
+            <Text style={styles.text}>Amount: ${selected?.amount}</Text>
 
-      {/* DETAILS MODAL */}
-      <Modal visible={modalVisible} transparent animationType="slide">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalBox}>
-            <Text style={styles.modalHeader}>Payment Details</Text>
-
-            {!selected ? (
-              <Text style={styles.modalText}>No selection</Text>
-            ) : (
-              <>
-                <Text style={styles.modalText}>User: {selected.username ?? "—"}</Text>
-                <Text style={styles.modalText}>UID: {selected.uid ?? "—"}</Text>
-                <Text style={styles.modalText}>Amount: ${Number(selected.amount ?? 0).toFixed(2)}</Text>
-                <Text style={styles.modalText}>Method: {selected.method ?? "—"}</Text>
-
-                {selected.screenshot ? (
-                  <Image source={{ uri: selected.screenshot }} style={styles.screenshot} />
-                ) : (
-                  <Text style={styles.noImage}>No screenshot uploaded</Text>
-                )}
-
-                <View style={{ marginTop: 12 }}>
-                  <TouchableOpacity
-                    style={[styles.approveBtn, { opacity: loading ? 0.8 : 1 }]}
-                    onPress={() =>
-                      Alert.alert(
-                        "Approve Payment",
-                        `Approve ${selected?.amount} to ${selected?.username}?`,
-                        [
-                          { text: "Cancel", style: "cancel" },
-                          {
-                            text: "Approve",
-                            onPress: () => approvePayment(selected),
-                          },
-                        ]
-                      )
-                    }
-                    disabled={loading}
-                  >
-                    {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.approveText}>Approve</Text>}
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    style={styles.rejectBtn}
-                    onPress={() => setRejectModalVisible(true)}
-                    disabled={loading}
-                  >
-                    <Text style={styles.rejectText}>Reject</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity style={styles.closeBtn} onPress={() => { setModalVisible(false); setSelected(null); }}>
-                    <Text style={styles.closeText}>Close</Text>
-                  </TouchableOpacity>
-                </View>
-              </>
+            {selected?.screenshot && (
+              <Image source={{ uri: selected.screenshot }} style={styles.image} />
             )}
+
+            <TouchableOpacity style={styles.approve} onPress={approve} disabled={loading}>
+              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btn}>Approve</Text>}
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.reject} onPress={() => setRejectModal(true)}>
+              <Text style={styles.btn}>Reject</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
-      {/* REJECT REASON MODAL */}
-      <Modal visible={rejectModalVisible} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalBox}>
-            <Text style={styles.modalHeader}>Reject Payment</Text>
-            <Text style={styles.modalText}>Reason (optional):</Text>
+      <Modal visible={rejectModal} transparent>
+        <View style={styles.overlay}>
+          <View style={styles.box}>
             <TextInput
               value={rejectReason}
               onChangeText={setRejectReason}
-              placeholder="e.g. invalid screenshot / mismatch"
-              placeholderTextColor="#888"
-              style={styles.rejectInput}
-              multiline
+              placeholder="Reason"
+              placeholderTextColor="#777"
+              style={styles.input}
             />
-
-            <View style={{ marginTop: 10 }}>
-              <TouchableOpacity
-                style={[styles.rejectBtn, { marginBottom: 8 }]}
-                onPress={() => {
-                  if (!selected) return;
-                  rejectPayment(selected, rejectReason || "Rejected by admin");
-                }}
-              >
-                <Text style={styles.rejectText}>Confirm Reject</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.closeBtn}
-                onPress={() => setRejectModalVisible(false)}
-              >
-                <Text style={styles.closeText}>Cancel</Text>
-              </TouchableOpacity>
-            </View>
+            <TouchableOpacity style={styles.reject} onPress={reject}>
+              <Text style={styles.btn}>Confirm Reject</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -378,92 +226,29 @@ export default PaymentsSection;
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 16, backgroundColor: "#07070a" },
+  header: { color: "#fff", fontSize: 22, fontWeight: "800", textAlign: "center", marginBottom: 12 },
+  card: { backgroundColor: "#111", padding: 14, borderRadius: 12, marginBottom: 10 },
+  username: { color: "#fff", fontWeight: "700" },
+  amount: { color: "#7cf" },
+  overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "center", padding: 20 },
+  box: { backgroundColor: "#0b0c10", padding: 18, borderRadius: 14 },
+  title: { color: "#fff", fontSize: 18, fontWeight: "800", marginBottom: 10 },
+  text: { color: "#ddd", marginBottom: 6 },
+  image: { width: "100%", height: 200, borderRadius: 10, marginVertical: 8 },
+  approve: { backgroundColor: "#19a974", padding: 12, borderRadius: 10, marginTop: 10 },
+  reject: { backgroundColor: "#b00020", padding: 12, borderRadius: 10, marginTop: 10 },
+  btn: { color: "#fff", fontWeight: "800", textAlign: "center" },
+  input: { backgroundColor: "#111", color: "#fff", borderRadius: 8, padding: 10 },
+emptyWrap: {
+  flex: 1,
+  alignItems: "center",
+  justifyContent: "center",
+  paddingTop: 40,
+},
+emptyText: {
+  color: "#6b7280",
+  fontSize: 14,
+  fontWeight: "600",
+},
 
-  header: {
-    color: "#fff",
-    fontSize: 24,
-    fontWeight: "800",
-    marginBottom: 12,
-    textAlign: "center",
-  },
-
-  emptyWrap: { padding: 40, alignItems: "center" },
-  empty: { color: "#777", fontSize: 15 },
-
-  card: {
-    backgroundColor: "#0f1116",
-    padding: 14,
-    borderRadius: 12,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: "#1b1e2a",
-  },
-
-  cardRow: { flexDirection: "row", alignItems: "center" },
-
-  username: { color: "#fff", fontWeight: "700", fontSize: 16 },
-  method: { color: "#aaa", fontSize: 13, marginTop: 3 },
-
-  amount: { color: "#7cf", fontWeight: "800", fontSize: 16 },
-  date: { color: "#666", fontSize: 11 },
-
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.75)",
-    justifyContent: "center",
-    padding: 20,
-  },
-
-  modalBox: {
-    backgroundColor: "#0b0c10",
-    padding: 18,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: "#222",
-  },
-
-  modalHeader: { color: "#fff", fontSize: 20, fontWeight: "800", marginBottom: 8 },
-  modalText: { color: "#ddd", fontSize: 14, marginBottom: 6 },
-
-  screenshot: { width: "100%", height: 200, borderRadius: 10, marginTop: 8 },
-
-  noImage: { color: "#777", marginVertical: 8 },
-
-  approveBtn: {
-    backgroundColor: "#19a974",
-    padding: 12,
-    borderRadius: 10,
-    alignItems: "center",
-    marginTop: 6,
-  },
-  approveText: { color: "#fff", fontWeight: "800", fontSize: 16 },
-
-  rejectBtn: {
-    backgroundColor: "#b00020",
-    padding: 12,
-    borderRadius: 10,
-    alignItems: "center",
-    marginTop: 10,
-  },
-  rejectText: { color: "#fff", fontWeight: "700" },
-
-  closeBtn: {
-    backgroundColor: "#222",
-    padding: 10,
-    borderRadius: 10,
-    marginTop: 12,
-    alignItems: "center",
-  },
-  closeText: { color: "#ddd" },
-
-  closeTextAlt: { color: "#999" },
-
-  rejectInput: {
-    backgroundColor: "#111",
-    color: "#fff",
-    padding: 10,
-    borderRadius: 8,
-    minHeight: 60,
-    marginTop: 8,
-  },
 });

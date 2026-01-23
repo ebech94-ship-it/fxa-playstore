@@ -430,6 +430,7 @@ const endTime = startTime + durationNum * 60 * 1000;
     status: computeStatus(startTime, endTime),
     rules: formRules || "",
     onRegisterInfo: formOnRegisterInfo || "",
+    type: "tournament",
   };
 try {
   let tournamentId = selectedTournament?.id;

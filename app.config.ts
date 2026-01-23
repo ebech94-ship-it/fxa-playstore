@@ -39,7 +39,7 @@ export default {
       [
         "expo-splash-screen",
         {
-          image: "./assets/images/me.png",
+          image: "./assets/images/myicon.png",
           imageWidth: 200,
           resizeMode: "contain",
           backgroundColor: "#ffffff",
@@ -57,6 +57,13 @@ export default {
       typedRoutes: true,
       reactCompiler: true,
     },
+
+    updates: {
+  url: "https://u.expo.dev/9aeadda0-8d0b-4833-9971-158baac2d2ad",
+},
+runtimeVersion: {
+  policy: "appVersion",
+},
 
     extra: {
       apiBaseUrl: process.env.EXPO_PUBLIC_API_BASE_URL,

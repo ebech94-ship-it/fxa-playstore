@@ -1,5 +1,6 @@
 import { Ionicons } from "@expo/vector-icons";
-import DateTimePicker from "@react-native-community/datetimepicker";
+
+import { useApp } from "@/app/AppContext";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import { deleteUser, getAuth } from "firebase/auth";
@@ -15,7 +16,7 @@ import {
   updateDoc,
   where,
 } from "firebase/firestore";
-import { getDownloadURL, ref, uploadBytes } from "firebase/storage";
+
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -29,7 +30,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { db, storage } from "../firebaseConfig";
+import { db } from "../firebaseConfig";
 
 /* ---------------- TYPES ---------------- */
 type ProfileErrors = {
@@ -39,25 +40,20 @@ type ProfileErrors = {
   phone?: string;
   country?: string;
   dateOfBirth?: string;
-  loginCode?: string;
+ 
   confirmLegal?: string;
 };
-
-type UserProfile = {
-  avatarUrl: string;
+type ProfileForm = {
+  displayName: string;
+  username: string;
   email: string;
-  displayName?: string;
-  username?: string;
-  phone?: string;
-  country?: string;
-  dateOfBirth?: string;
-  loginCode?: string;
-  profileVerified?: boolean;
+  phone: string;
+  country: string;
+  dateOfBirth: string;
+
+  avatarUrl: string;
   useHeikinAshi: boolean;
   compressWicks: boolean;
-  [key: string]: any;
-    userId?: string;
-
 };
 
 type ProfileProps = {
@@ -82,8 +78,6 @@ export default function ProfileScreen({
   const [darkMode, setDarkMode] = useState(false);
   const [soundEnabled, setSoundEnabled] = useState(true);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
-  const [showDatePicker, setShowDatePicker] = useState(false);
-const DEFAULT_DOB = new Date(2000, 0, 1); // Jan 1, 2000
 
   
   const [avatarUploading, setAvatarUploading] = useState(false);
@@ -99,50 +93,49 @@ const [sendingSupport, setSendingSupport] = useState(false);
 const [userThread, setUserThread] = useState<any | null>(null);
 const [messages, setMessages] = useState<any[]>([]);
 
-const [balance, setBalance] = useState<number>(0);
+
 const [deposits, setDeposits] = useState<any[]>([]);
 const [withdrawals, setWithdrawals] = useState<any[]>([]);
 
+const [profileLocked, setProfileLocked] = useState(false);
 
-  const [profile, setProfile] = useState<UserProfile>({
+
+  const [form, setForm] = useState<ProfileForm>({
+
     displayName: "",
     username: "",
     email: "",
     phone: "",
     country: "",
     dateOfBirth: "",
-    loginCode: "",
+    
     avatarUrl: "",
     useHeikinAshi,
     compressWicks,
   });
 
   const [saving, setSaving] = useState(false);
-  // Load user profile from Firestore
+
+
+const { profile: appProfile,  setProfile, setProfileSubmitted, profile, profileLoaded, balances } = useApp();
+
+
 useEffect(() => {
-  if (!user) return;
+  if (!appProfile || submitted) return;
 
-  const userRef = doc(db, "users", user.uid);
+  setForm((p) => ({
+    ...p,
+    displayName: appProfile.displayName ?? "",
+    username: appProfile.username ?? "",
+    
+    phone: appProfile.phone ?? "",
+    country: appProfile.country ?? "",
+    dateOfBirth: appProfile.dateOfBirth ?? "",
+    avatarUrl: appProfile.avatarUrl ?? "",
+  }));
+}, [appProfile, submitted]);
 
-  const unsubscribe = onSnapshot(userRef, (snap) => {
-    if (snap.exists()) {
-      const data = snap.data();
 
-      // Update entire profile (including avatar)
-      setProfile((prev) => ({
-  ...prev,
-  ...Object.fromEntries(
-    Object.entries(data).filter(
-      ([_, v]) => v !== undefined && v !== null && v !== ""
-    )
-  ),
-}));
-
-    }
-  });
-
-  return () => unsubscribe();
-}, [user]); // ✅ ESLint happy, no unused vars
 
 useEffect(() => {
   if (!user) return;
@@ -162,19 +155,6 @@ useEffect(() => {
   return () => unsub();
 }, [user]);
 
-useEffect(() => {
-  if (!user) return;
-
-  const userRef = doc(db, "users", user.uid);
-
-  const unsub = onSnapshot(userRef, (snap) => {
-    if (snap.exists()) {
-      setBalance(snap.data()?.balance || 0);
-    }
-  });
-
-  return () => unsub();
-}, [user]);
 
 useEffect(() => {
   if (!user) return;
@@ -192,6 +172,7 @@ useEffect(() => {
 
   return () => unsub();
 }, [user]);
+
 useEffect(() => {
   if (!user) return;
 
@@ -228,15 +209,6 @@ useEffect(() => {
   return () => unsub();
 }, [userThread]);
 
-// ---------- Date Picker Handler ----------
-const handleDateChange = (event: any, selectedDate?: Date) => {
-  setShowDatePicker(false);
-  if (selectedDate) {
-    const formatted = `${selectedDate.getDate().toString().padStart(2,'0')}-${(selectedDate.getMonth()+1).toString().padStart(2,'0')}-${selectedDate.getFullYear()}`;
-    setProfile((p) => ({ ...p, dateOfBirth: formatted }));
-  }
-};
-
 // ---------- Updated Avatar Picker ----------
 const pickAvatar = async () => {
   try {
@@ -246,46 +218,87 @@ const pickAvatar = async () => {
       aspect: [1, 1],
       quality: 0.8,
     });
+
     if (result.canceled) return;
 
     const uri = result.assets[0].uri;
 
-    // Preview locally
-    setProfile((p) => ({ ...p, avatarUrl: uri }));
+    // ✅ Instant local preview
+    setForm((p) => ({ ...p, avatarUrl: uri }));
 
-    // Upload with loader
     setAvatarUploading(true);
-    const uploadedUrl = await uploadAvatarAsync(uri, user!.uid);
-    setProfile((p) => ({ ...p, avatarUrl: uploadedUrl }));
-  } catch (err) {
-    console.error(err);
-    Alert.alert("Error", "Could not upload avatar.");
+
+    // 🔥 Upload to Cloudinary
+    const uploadedUrl = await uploadAvatarToCloudinary(uri);
+
+    // ✅ Replace preview with real URL
+    setForm((p) => ({ ...p, avatarUrl: uploadedUrl }));
+  } catch (error) {
+    console.error(error);
+    Alert.alert("Upload failed", "Could not upload avatar");
   } finally {
     setAvatarUploading(false);
   }
 };
 
+
+
 const validateProfile = () => {
   const newErrors: ProfileErrors = {};
 
-  if (!profile.displayName) newErrors.displayName = "Full Name is required";
-  if (!profile.username) newErrors.username = "Username is required";
-  if (!profile.phone) newErrors.phone = "Phone number is required";
-  if (!profile.country) newErrors.country = "Country is required";
-  if (!profile.dateOfBirth) newErrors.dateOfBirth = "Date of Birth is required";
-  if (!confirmLegal) newErrors.confirmLegal = "You must confirm the legal statement";
+  if (!form.displayName)
+    newErrors.displayName = "Full Name is required";
+
+  if (!form.username)
+    newErrors.username = "Username is required";
+
+  if (!form.phone)
+    newErrors.phone = "Phone number is required";
+
+  if (!form.country)
+    newErrors.country = "Country is required";
+
+  if (!form.dateOfBirth) {
+    newErrors.dateOfBirth = "Date of Birth is required";
+  } else if (!/^\d{2}-\d{2}-\d{4}$/.test(form.dateOfBirth)) {
+    newErrors.dateOfBirth = "Use format DD-MM-YYYY";
+  }
+
+  if (!confirmLegal)
+    newErrors.confirmLegal = "You must confirm the legal statement";
 
   setErrors(newErrors);
-
   return Object.keys(newErrors).length === 0;
 };
 
-const uploadAvatarAsync = async (localUri: string, userId: string) => {
-  const response = await fetch(localUri);
-  const blob = await response.blob();
-  const fileRef = ref(storage, `avatars/${userId}_${Date.now()}.jpg`);
-  await uploadBytes(fileRef, blob);
-  return await getDownloadURL(fileRef);
+
+const uploadAvatarToCloudinary = async (uri: string) => {
+  const data = new FormData();
+
+  data.append("file", {
+    uri,
+    type: "image/jpeg",
+    name: "avatar.jpg",
+  } as any);
+
+  data.append("upload_preset", "avatar_upload");
+
+  const res = await fetch(
+    "https://api.cloudinary.com/v1_1/devp5mty0/image/upload",
+    {
+      method: "POST",
+      body: data,
+    }
+  );
+
+  const json = await res.json();
+
+  if (!json.secure_url) {
+    console.log("Cloudinary error:", json);
+    throw new Error("Cloudinary upload failed");
+  }
+
+  return json.secure_url;
 };
 
 // Save profile
@@ -301,35 +314,73 @@ const saveProfile = async () => {
 
   setSaving(true);
   try {
-    let avatarUrl = profile.avatarUrl;
+    let avatarUrl = form.avatarUrl;
+    
 
-    // Only upload if it's a local file
-    if (avatarUrl && avatarUrl.startsWith("file://")) {
-      avatarUrl = await uploadAvatarAsync(avatarUrl, user.uid);
-    }
+    const payload = {
+  
+  displayName: form.displayName,
+  username: form.username,
+  phone: form.phone,
+  country: form.country,
+  dateOfBirth: form.dateOfBirth,
+  avatarUrl,
+  profileCompleted: true,
+  verified: true, // ✅ AUTO VERIFIED (SERVER TRUTH)
+};
 
-    const userRef = doc(db, "users", user.uid);
 
-    await updateDoc(userRef, {
-      ...profile,
-      avatarUrl, // save remote URL in Firestore
-      updatedAt: serverTimestamp(),
-      profileVerified: true,
-    });
+    await updateDoc(doc(db, "users", user.uid), payload);
 
-    // Update local state with remote URL
-    setProfile((p) => ({ ...p, avatarUrl }));
+// 🔥 UPDATE APP CONTEXT IMMEDIATELY
+setProfile((prev) => ({
+  ...(prev ?? {}),
+  displayName: form.displayName,
+  username: form.username,
+ 
+  phone: form.phone,
+  country: form.country,
+  dateOfBirth: form.dateOfBirth,
+  avatarUrl: avatarUrl,
+   verified: true,
+  profileCompleted: true,
+}));
 
-    Alert.alert("Success", "Profile updated successfully!");
+
+Alert.alert("Success", "Profile updated successfully!");
+
     setActiveSection(null);
-  } catch (err) {
-    console.error("Save error:", err);
-    Alert.alert("Error", "Could not save profile.");
+
+    setProfileLocked(true);
+    setProfileSubmitted(true);
+
+
+// optional: small delay to feel "settled"
+
+
+
+} catch (err) {
+  console.error("Save error:", err);
+
+  let message = "Network or server error. Please try again.";
+
+  if (err instanceof Error) {
+    if (err.message.includes("permission")) {
+      message = "You do not have permission to update this profile.";
+    }
+  }
+
+  Alert.alert("Save Failed", message);
+
   } finally {
     setSaving(false);
   }
 };
-
+useEffect(() => {
+  if (profile?.profileCompleted === true) {
+    setProfileLocked(true);
+  }
+}, [profile?.profileCompleted]);
 
   
 // Toggle Dark Mode
@@ -452,7 +503,20 @@ const getStatusStyle = (status: string) => ({
   fontWeight: "bold" as const,
   fontSize: 13,
 });
-
+if (!profileLoaded) {
+  return (
+    <View
+      style={{
+        flex: 1,
+        justifyContent: "center",
+        alignItems: "center",
+        backgroundColor: "#16213e",
+      }}
+    >
+      <ActivityIndicator size="large" color="#21e6c1" />
+    </View>
+  );
+}
 
   return (
     <View style={styles.modalContainer}>
@@ -476,9 +540,9 @@ const getStatusStyle = (status: string) => ({
     >
       <ActivityIndicator size="large" color="#21e6c1" />
     </View>
-  ) : profile.avatarUrl ? (
+  ) : form.avatarUrl ? (
     <Image
-      source={{ uri: profile.avatarUrl }}
+      source={{ uri: form.avatarUrl }}
       style={{ width: 100, height: 100, borderRadius: 50, marginBottom: 8 }}
       accessible
       accessibilityLabel="User avatar"
@@ -561,10 +625,10 @@ const getStatusStyle = (status: string) => ({
         {activeSection === "profile" && (
           <ScrollView style={styles.section}>
             <Text style={styles.sectionTitle}>Profile</Text>
-            {profile.userId && (
+            {user?.uid && (
   <View style={{ marginBottom: 16 }}>
     <Text style={{ color: "#aaa", fontSize: 12 }}>
-      User ID
+       FX Arena ID
     </Text>
     <Text
       style={{
@@ -573,116 +637,102 @@ const getStatusStyle = (status: string) => ({
         fontWeight: "bold",
       }}
     >
-      {profile.userId}
+       {profile?.publicId ?? "Not assigned"}
+
     </Text>
   </View>
 )}
-           <TextInput
-  style={styles.input}
+         <TextInput
+  style={[
+    styles.input,
+    profileLocked && { opacity: 0.6 },
+  ]}
+  editable={!profileLocked}
   placeholder="Full Name"
   placeholderTextColor="#ccc"
-  value={profile.displayName}
+  value={form.displayName}
   onChangeText={(t) =>
-    setProfile((p: any) => ({ ...p, displayName: t }))
+    setForm((p: ProfileForm) => ({ ...p, displayName: t }))
   }
 />
 {submitted && errors.displayName && (
   <Text style={styles.errorText}>{errors.displayName}</Text>
 )}
-            <TextInput
+
+<TextInput
   style={styles.input}
   placeholder="Username"
   placeholderTextColor="#ccc"
-  value={profile.username}
+  value={form.username}
   onChangeText={(t) =>
-    setProfile((p: any) => ({ ...p, username: t }))
+    setForm((p: any) => ({ ...p, username: t }))
   }
 />
 {submitted && errors.username && (
   <Text style={styles.errorText}>{errors.username}</Text>
 )}
-            <TextInput
-              style={styles.input}
-              placeholder="Email"
-              placeholderTextColor="#ccc"  
-                onChangeText={(text) => setProfile((p) => ({ ...p, email: text }))}
-              value={profile.email}
-            />
-          <TextInput
-  style={styles.input}
-  placeholder="Phone"
+
+<TextInput
+  style={[styles.input, { opacity: 0.6 }]}
+  editable={false}
+  placeholder="Email"
   placeholderTextColor="#ccc"
-  value={profile.phone}
-  onChangeText={(t) =>
-    setProfile((p: any) => ({ ...p, phone: t }))
-  }
-/>
-
-{submitted && errors.phone && (
-  <Text style={styles.errorText}>{errors.phone}</Text>
-)}
-
-
-            <TextInput
-  style={styles.input}
-  placeholder="Country"
-  placeholderTextColor="#ccc"
-  value={profile.country}
-  onChangeText={(t) =>
-    setProfile((p: any) => ({ ...p, country: t }))
-  }
-/>
-
-{submitted && errors.country && (
-  <Text style={styles.errorText}>{errors.country}</Text>
-)}
-
-
-    <TouchableOpacity
-  onPress={() => setShowDatePicker(true)}
-  style={styles.input}
-  accessible
-  accessibilityLabel="Select Date of Birth"
-  accessibilityHint="Opens date picker to select your birth date"
->
- <Text style={{ color: profile.dateOfBirth ? "white" : "#ccc" }}>
-  {profile.dateOfBirth || "Select Date of Birth"}
-</Text>
-
-</TouchableOpacity>
-
-{submitted && errors.dateOfBirth && (
-  <Text style={styles.errorText}>{errors.dateOfBirth}</Text>
-)}
-
-{showDatePicker && (
-  <DateTimePicker
-    value={
-      profile.dateOfBirth
-        ? new Date(profile.dateOfBirth.split("-").reverse().join("-"))
-        : DEFAULT_DOB
-    }
-    mode="date"
-    display="calendar"
-    onChange={handleDateChange}
-    maximumDate={new Date()}
-  />
-)}
+  value={user?.email ?? ""}
+ />
 
 
 <TextInput
   style={styles.input}
-  placeholder="Login Code"
+  placeholder="Phone"
   placeholderTextColor="#ccc"
-  secureTextEntry
-  value={profile.loginCode}
+  value={form.phone}
   onChangeText={(t) =>
-    setProfile((p: any) => ({ ...p, loginCode: t }))
+    setForm((p: any) => ({ ...p, phone: t }))
   }
 />
+{submitted && errors.phone && (
+  <Text style={styles.errorText}>{errors.phone}</Text>
+)}
 
-{submitted && errors.loginCode && (
-  <Text style={styles.errorText}>{errors.loginCode}</Text>
+<TextInput
+  style={[
+    styles.input,
+    profileLocked && { opacity: 0.6 },
+  ]}
+  editable={!profileLocked}
+  placeholder="Country"
+  placeholderTextColor="#ccc"
+  value={form.country}
+  onChangeText={(t) =>
+    setForm((p: any) => ({ ...p, country: t }))
+  }
+/>
+{submitted && errors.country && (
+  <Text style={styles.errorText}>{errors.country}</Text>
+)}
+
+<TextInput
+  style={[
+    styles.input,
+    profileLocked && { opacity: 0.6 },
+  ]}
+  editable={!profileLocked}
+  placeholder="Date of Birth (DD-MM-YYYY)"
+  placeholderTextColor="#ccc"
+  keyboardType="numeric"
+  value={form.dateOfBirth}
+  onChangeText={(text) => {
+    const cleaned = text.replace(/[^0-9-]/g, "");
+    setForm((p: ProfileForm) => ({ ...p, dateOfBirth: cleaned }));
+  }}
+/>
+
+<Text style={{ color: "#aaa", fontSize: 12, marginBottom: 6 }}>
+  Format: DD-MM-YYYY (e.g. 25-08-2001)
+</Text>
+
+{submitted && errors.dateOfBirth && (
+  <Text style={styles.errorText}>{errors.dateOfBirth}</Text>
 )}
 
 <View style={{ flexDirection: "row", alignItems: "center", marginTop: 20 }}>
@@ -699,7 +749,9 @@ const getStatusStyle = (status: string) => ({
       backgroundColor: confirmLegal ? "#21e6c1" : "transparent",
     }}
   >
-    {confirmLegal && <Text style={{ color: "#16213e", fontWeight: "bold" }}>✓</Text>}
+    {confirmLegal && (
+      <Text style={{ color: "#16213e", fontWeight: "bold" }}>✓</Text>
+    )}
   </TouchableOpacity>
 
   <Text style={{ color: "white", flex: 1 }}>
@@ -708,19 +760,19 @@ const getStatusStyle = (status: string) => ({
 </View>
 
 {errors.confirmLegal && (
-  <Text style={{ color: "red", marginTop: 4 }}>{errors.confirmLegal}</Text>
+  <Text style={{ color: "red", marginTop: 4 }}>
+    {errors.confirmLegal}
+  </Text>
 )}
 
-           <TouchableOpacity
+<TouchableOpacity
   onPress={saveProfile}
-  disabled={!confirmLegal || saving} 
+  disabled={!confirmLegal || saving}
   style={[
     styles.sendButton,
     {
-      backgroundColor: !confirmLegal
-        ? "#084b92ff" // disabled color
-        : "#21e6c1", // active color
-      opacity: !confirmLegal ? 0.5 : 1, // fade when disabled
+      backgroundColor: !confirmLegal ? "#084b92ff" : "#21e6c1",
+      opacity: !confirmLegal ? 0.5 : 1,
     },
   ]}
 >
@@ -731,13 +783,13 @@ const getStatusStyle = (status: string) => ({
   )}
 </TouchableOpacity>
 
+<TouchableOpacity
+  style={styles.backButton}
+  onPress={() => setActiveSection(null)}
+>
+  <Text style={styles.backText}>Back</Text>
+</TouchableOpacity>
 
-            <TouchableOpacity
-              style={styles.backButton}
-              onPress={() => setActiveSection(null)}
-            >
-              <Text style={styles.backText}>Back</Text>
-            </TouchableOpacity>
           </ScrollView>
         )}
 
@@ -747,8 +799,8 @@ const getStatusStyle = (status: string) => ({
     <Text style={styles.sectionTitle}>Account Balance</Text>
 
     <Text style={styles.balance}>
-      $ {balance.toFixed(2)}
-    </Text>
+  XAF {(balances?.real ?? 0).toLocaleString()}
+</Text>
 
     {/* -------- DEPOSITS -------- */}
     <Text style={styles.subTitle}>Deposit History</Text>

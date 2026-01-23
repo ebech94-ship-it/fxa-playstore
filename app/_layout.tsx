@@ -1,80 +1,86 @@
-import { auth } from "@/firebaseConfig"; // ✅ FIX
 import { useColorScheme } from "@/hooks/use-color-scheme";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import {
-    DarkTheme,
-    DefaultTheme,
-    ThemeProvider,
+  DarkTheme,
+  DefaultTheme,
+  ThemeProvider,
 } from "@react-navigation/native";
 import * as Linking from "expo-linking";
 import { Stack, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { onAuthStateChanged } from "firebase/auth";
 import { useEffect, useRef } from "react";
 import "react-native-reanimated";
+
+import { AppProvider, useApp } from "./AppContext";
+
+/* ===============================
+   AUTH GATE (OUTSIDE)
+   =============================== */
+function AuthGate() {
+  const { authUser, loading } = useApp();
+  const router = useRouter();
+
+  useEffect(() => {
+  if (loading) return;
+
+  if (authUser) {
+    router.replace("/tradinglayout");
+  } else {
+    router.replace("/welcome");
+  }
+}, [authUser, loading, router]);
+
+  return null;
+}
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   const router = useRouter();
-  const handledRef = useRef(false); // 🔐 deep link guard
-
-const routerRef = useRef(router);
+  const handledRef = useRef(false);
+  const routerRef = useRef(router);
 
   /* ===============================
-     1️⃣ AUTH STATE LISTENER (GLOBAL)
+     DEEP LINK HANDLING
      =============================== */
   useEffect(() => {
-  const unsub = onAuthStateChanged(auth, async (user) => {
-    if (user) {
-      await AsyncStorage.setItem("isLoggedIn", "true");
-      routerRef.current.replace("/tradinglayout");
-    }
-  });
+    const handleLink = async (url: string) => {
+      if (handledRef.current) return;
 
-  return unsub;
-}, []);
-// ✅ no router dependency needed
+      const parsed = Linking.parse(url);
+      const ref = parsed.queryParams?.ref;
 
-  /* ===============================
-     2️⃣ DEEP LINK HANDLING
-     =============================== */
- useEffect(() => {
-  const handleLink = async (url: string) => {
-    if (handledRef.current) return;
+      if (parsed.scheme !== "forextournamentsarena") return;
 
-    const parsed = Linking.parse(url);
-    const ref = parsed.queryParams?.ref;
+      if (ref) {
+        handledRef.current = true;
+        await AsyncStorage.setItem("inviteRef", String(ref));
+        routerRef.current.replace("/welcome");
+      }
+    };
 
-    if (parsed.scheme !== "forextournamentsarena") return;
+    Linking.getInitialURL().then((url) => {
+      if (url) handleLink(url);
+    });
 
-    if (ref) {
-      handledRef.current = true;
-      await AsyncStorage.setItem("inviteRef", String(ref));
-      routerRef.current.replace("/welcome");
-    }
-  };
+    const sub = Linking.addEventListener("url", ({ url }) => {
+      handleLink(url);
+    });
 
-  Linking.getInitialURL().then((url) => {
-    if (url) handleLink(url);
-  });
-
-  const sub = Linking.addEventListener("url", ({ url }) => {
-    handleLink(url);
-  });
-
-  return () => sub.remove();
-}, []);
- // ✅ safe
+    return () => sub.remove();
+  }, []);
 
   return (
-    <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
-      <Stack screenOptions={{ headerShown: false }}>
-        <Stack.Screen name="index" />
-        <Stack.Screen name="splash" />
-        <Stack.Screen name="welcome" />
-        <Stack.Screen name="tradinglayout" />
-      </Stack>
-      <StatusBar style="auto" />
-    </ThemeProvider>
+    <AppProvider>
+      <AuthGate />
+      <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="index" />
+          <Stack.Screen name="splash" />
+          <Stack.Screen name="welcome" />
+          <Stack.Screen name="tradinglayout" />
+        </Stack>
+        <StatusBar style="auto" />
+      </ThemeProvider>
+    </AppProvider>
   );
 }
