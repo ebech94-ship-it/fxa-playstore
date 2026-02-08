@@ -58,7 +58,8 @@ const { setAppReady } = useApp();
     <View style={styles.container}>
       <View style={styles.topContent}>
         <Text style={styles.title}>FX ARENA</Text>
-        <Text style={styles.subtitle}>MASTERING MARKET PSYCHOLOGY</Text>
+        <Text style={styles.subtitle}>MASTERING MARKET 
+        PSYCHOLOGY</Text>
 
         <Image
           source={require('../assets/images/splashscreen.png')}
@@ -77,7 +78,7 @@ const { setAppReady } = useApp();
         <Text style={styles.powered}>
           Powered by{' '}
           <Animated.Text style={[styles.glow, { color: glowColor }]}>
-            GodSpeed (GS)
+            GodSpeed (GS) Tech.
           </Animated.Text>
         </Text>
       </View>

@@ -7,9 +7,11 @@ import CountryFlag from "react-native-country-flag";
 import { verifyAdminAccess } from "../lib/adminAccess";
 
 import { getAuth } from "firebase/auth";
+import { useApp } from "./AppContext"; // <-- add this at the top
+
 
 import {
-  arrayUnion, collection, doc, getDoc, limit, onSnapshot, orderBy, query, runTransaction, serverTimestamp
+  collection, doc, getDoc, limit, onSnapshot, orderBy, query, runTransaction, serverTimestamp
 } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import {
@@ -106,36 +108,6 @@ const NameWithFlag = ({
   );
 };
 
-const canUserRebuy = (
-  tournament: Tournament,
-  userId: string | undefined,
-  players: any[],
-  joinedMap: Record<string, boolean>,
-  now: number
-): boolean => {
-  if (!userId) return false;
-
-  const status = getTournamentStatus(
-    tournament.startTime,
-    tournament.endTime,
-    now
-  );
-
-  if (status !== "ongoing") return false;
-  if (!joinedMap[tournament.id]) return false;
-
-  const player = players.find((p) => p.id === userId);
-  if (!player) return false;
-
-  const starting = Number(
-  player.initialBalance ?? tournament.startingBalance ?? 0
-);
-
-const balance = Number(player.balance ?? starting);
-
-return balance <= starting * 0.5;
-
-};
 
 
 export default function TournamentScreen({ currentUser }: TournamentScreenProps) {
@@ -149,6 +121,7 @@ const [players, setPlayers] = useState<any[]>([]);
 
 const [tournamentCounts, setTournamentCounts] = useState<Record<string, number>>({});
 const [tournamentRebuys, setTournamentRebuys] = useState<Record<string, number>>({});
+
 
   const [viewTab, setViewTab] = useState("info"); // "info" | "leaderboard"
   const [adminModal, setAdminModal] = useState(false);
@@ -165,6 +138,10 @@ const [tournamentRebuys, setTournamentRebuys] = useState<Record<string, number>>
 const [loadingActions, setLoadingActions] = useState<
   Record<string, LoadingState>
 >({});
+// If you already have a context like useApp() that provides tournamentAccounts:
+const { activeAccount, rebuyUnlockedMap,   isAdmin, adminLoaded, tournamentAccounts, profile } = useApp(); // or replace with your actual context
+
+
 
   const router = useRouter();
 
@@ -358,6 +335,15 @@ useEffect(() => {
 
 // ---------- REGISTER USER TO TOURNAMENT ----------
 const handleRegister = async (tournamentId: string) => {
+ // 🔒 PREVIEW MODE BLOCK
+  if (profile?.preview) {
+    Alert.alert(
+      "Preview Mode",
+      "Tournament registration is disabled in preview mode."
+    );
+    return;
+  }
+
   // 🚫 DOUBLE TAP GUARD
   if (loadingActions[tournamentId]?.register) return;
 
@@ -415,7 +401,7 @@ const handleRegister = async (tournamentId: string) => {
 
       const rawWallet = userSnap.data()?.walletBalance;
       const walletBalance = Number(rawWallet ?? 0);
-
+  
       if (isNaN(walletBalance)) {
         throw new Error("INVALID_WALLET");
       }
@@ -441,36 +427,30 @@ const handleRegister = async (tournamentId: string) => {
         rebuys: [],
       });
 
-      // ✅ UPDATE USER
-     transaction.set(
+    const prevTournaments = userSnap.data()?.accounts?.tournaments ?? {};
+
+transaction.set(
   userDocRef,
   {
-    walletBalance:
-      entryFee > 0 ? walletBalance - entryFee : walletBalance,
-
+    walletBalance: entryFee > 0 ? walletBalance - entryFee : walletBalance,
     accounts: {
       tournaments: {
+        ...prevTournaments,
         [tournamentId]: {
-          id: tournamentId,
-
-          // 🔥 THIS IS WHAT FIXES THE SWITCHER
           name: tour.name || tour.title || "Tournament",
           symbol: tour.symbol || "🏆",
-
           balance: finalStartingBalance,
           initialBalance: finalStartingBalance,
-
           startTime: tour.startTime,
           endTime: tour.endTime,
-
           joinedAt: serverTimestamp(),
         },
       },
-      activeTournamentId: tournamentId,
     },
   },
   { merge: true }
 );
+
 
     });
 
@@ -509,8 +489,7 @@ const handleRegister = async (tournamentId: string) => {
   }
 };
 
-
-// ----------- REBUY ACTION (CLEAN + CORRECT + SAFE) -----------
+// ----------- REBUY ACTION (CLEAN + BACKEND-MATCHED) -----------
 const handleRebuy = async (tournamentId: string) => {
   // 🚫 DOUBLE TAP GUARD
   if (loadingActions[tournamentId]?.rebuy) return;
@@ -532,36 +511,28 @@ const handleRebuy = async (tournamentId: string) => {
     return;
   }
 
-  const rebuyCost = Number(tour.rebuyFee ?? tour.entryFee ?? 0);
+  const rebuyCost = Number(tour.rebuyFee ?? 0);
 
-  // 🔥 TURN LOADING ON (ONLY ONCE)
+  // 🔥 TURN LOADING ON
   setLoadingFor(tournamentId, "rebuy", true);
 
   try {
-    const playerRef = doc(
-      db,
-      `tournaments/${tournamentId}/players`,
-      currentUser.uid
-    );
-
+    // check if user is registered
+    const playerRef = doc(db, `tournaments/${tournamentId}/players`, currentUser.uid);
     const playerSnap = await getDoc(playerRef);
-
     if (!playerSnap.exists()) {
       Alert.alert("Not Registered", "Register before performing a rebuy.");
       return;
     }
 
+    // check wallet
     const wallet = await getUserWalletBalance(currentUser.uid);
-
     if (wallet < rebuyCost) {
-      Alert.alert(
-        "Insufficient Funds",
-        `Wallet: ${wallet} — Required: ${rebuyCost}`
-      );
+      Alert.alert("Insufficient Funds", `Wallet: ${wallet} — Required: ${rebuyCost}`);
       return;
     }
 
-    // 🌐 CALL BACKEND (TREASURY LOGIC)
+    // 🌐 CALL BACKEND
     const response = await fetch(
       "https://forexapp2-backend.onrender.com/tournament-rebuy",
       {
@@ -578,48 +549,19 @@ const handleRebuy = async (tournamentId: string) => {
     const result = await response.json().catch(() => null);
 
     if (!response.ok || result?.success === false) {
-      Alert.alert(
-        "Rebuy Failed",
-        result?.message || "Server rejected the rebuy."
-      );
+      Alert.alert("Rebuy Failed", result?.message || "Server rejected the rebuy.");
       return;
     }
 
-    // 🔁 ADD TO PLAYER BALANCE + TRACK REBUY
-await runTransaction(db, async (tx) => {
-  const playerSnap = await tx.get(playerRef);
-
-  if (!playerSnap.exists()) {
-    throw new Error("PLAYER_NOT_FOUND");
-  }
-
-  const startingBalance = Number(tour.startingBalance);
-  const currentBalance = Number(playerSnap.data()?.balance ?? 0);
-  const rebuyAmount = isNaN(startingBalance) ? 1000 : startingBalance;
-
-  const newBalance = currentBalance + rebuyAmount;
-
-  tx.update(playerRef, {
-    balance: newBalance,
-    rebuys: arrayUnion({
-      at: Date.now(),
-      amount: rebuyAmount,
-      createdAt: serverTimestamp(),
-    }),
-  });
-
-  tx.update(doc(db, "users", currentUser.uid), {
-    [`accounts.tournaments.${tournamentId}.balance`]: newBalance,
-  });
-});
-
-
+    // ✅ SUCCESS
     Alert.alert("Rebuy Successful", "You have re-entered the tournament!");
+
+    // Firestore listeners will auto-update balance & rebuys
   } catch (error) {
     console.error("REBUY ERROR:", error);
     Alert.alert("Error", "Could not complete rebuy. Try again.");
   } finally {
-    // ✅ SINGLE SOURCE OF TRUTH
+    // ✅ TURN OFF LOADING
     setLoadingFor(tournamentId, "rebuy", false);
   }
 };
@@ -640,7 +582,45 @@ await runTransaction(db, async (tx) => {
 
   return `${sec} second${sec > 1 ? "s" : ""}`;
 };
+// New helper: formats milliseconds to human-readable like 2d 3h 15m
+const formatCountdown = (ms: number) => {
+  if (ms <= 0) return "0s";
 
+  let seconds = Math.floor(ms / 1000);
+  const days = Math.floor(seconds / (3600 * 24));
+  seconds %= 3600 * 24;
+  const hours = Math.floor(seconds / 3600);
+  seconds %= 3600;
+  const minutes = Math.floor(seconds / 60);
+  seconds %= 60;
+
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  if (minutes > 0) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
+};
+const formatFullDate = (ms: number) => {
+  const date = new Date(ms);
+
+  // Day with ordinal (1st, 2nd, 3rd, etc.)
+  const day = date.getDate();
+  const ordinal = day + 
+    (day % 10 === 1 && day !== 11 ? "st" :
+     day % 10 === 2 && day !== 12 ? "nd" :
+     day % 10 === 3 && day !== 13 ? "rd" : "th");
+
+  // Month full name
+  const month = date.toLocaleString("en-US", { month: "long" });
+
+  // Year
+  const year = date.getFullYear();
+
+  // Hours & minutes (24h format)
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+
+  return `${ordinal} ${month} ${year}, ${hours}:${minutes}`;
+};
   // Tournament card
  const TournamentCard = ({ item }: { item: Tournament }) => {
   const status = getTournamentStatus(
@@ -649,7 +629,6 @@ await runTransaction(db, async (tx) => {
   now
 );
 
-  const timeLeft = status === "finished"? 0 : item.endTime - now;
   const duration = item.endTime - item.startTime;
   
 const progress =
@@ -659,20 +638,35 @@ const progress =
 
  const durationText = formatDuration(duration);
   const rebuyFee = item.rebuyFee ?? item.entryFee ?? 0;
+    // Step 4: Rebuy logic
+const tAccount = tournamentAccounts.find(
+  t => t.tournamentId === item.id
+);
+
+const allowRebuy =
+  !!tAccount &&
+  tAccount.joined &&
+  tAccount.status === "ongoing" &&
+  rebuyUnlockedMap[item.id] === true;
+
+
+  // Step 5: Active tournament highlight
+  const isActiveTournament =
+  activeAccount.type === "tournament" && activeAccount.tournamentId === item.id;
   
   // color by status
   const tagStyle =
     status === "ongoing" ? styles.tagOngoing : status === "upcoming" ? styles.tagUpcoming : styles.tagPast;
  
-const allowRebuy = canUserRebuy(
-  item,
-  currentUser?.uid,
-  players,
-  joinedMap,
-  now
-);
-
-
+if (!adminLoaded) {
+  return (
+    <View style={styles.container}>
+      <Text style={{ color: "#fff", textAlign: "center" }}>
+        Loading…
+      </Text>
+    </View>
+  );
+}
 
   return (
     <TouchableOpacity
@@ -685,7 +679,10 @@ const allowRebuy = canUserRebuy(
     >
 
       {/* STRONG BOLD TITLE */}
-      <Text style={styles.cardBigTitle}>{item.name}</Text>
+     <Text style={[styles.cardBigTitle, { color: isActiveTournament ? "#22c55e" : "rgba(236, 220, 220, 1)" }]}>
+  {item.name}
+</Text>
+
 
 <Text style={styles.metaText}>Duration: {durationText}</Text>
 
@@ -716,7 +713,13 @@ const allowRebuy = canUserRebuy(
 
       {/* LIVE STATS */}
       <View style={styles.cardStatsRow}>
-      <Text style={styles.cardDetail}>⏰ Ends in {formatTime(timeLeft)}</Text>
+      <Text style={styles.cardDetail}>
+  {status === "upcoming"
+    ? `⏳ Starts in ${formatCountdown(item.startTime - now)} (${formatFullDate(item.startTime)})`
+    : status === "ongoing"
+    ? `⏰ Ends in ${formatCountdown(item.endTime - now)} (${formatFullDate(item.endTime)})`
+    : `🏁 Finished on ${formatFullDate(item.endTime)}`}
+</Text>
         <Text style={styles.cardDetail}>👥 {tournamentCounts[item.id] ?? 0} Joined</Text>
         <Text style={styles.cardDetail}>♻️ {tournamentRebuys[item.id] ?? 0} Rebuys</Text>
    <Text style={styles.cardDetail}>🏅 Winners: {item.payoutStructure?.length ?? 0}</Text>
@@ -884,18 +887,21 @@ const allowRebuy = canUserRebuy(
       />
 
       {/* admin button */}
-      <View style={styles.adminSection}>
-        <TouchableOpacity onPress={() => setAdminModal(true)} activeOpacity={0.8}>
-          <LinearGradient
-            colors={["#7c3aed", "#0ea5e9"]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 0 }}
-            style={styles.adminButton}
-          >
-            <Text style={styles.adminButtonText}>👑 Administrator Access</Text>
-          </LinearGradient>
-        </TouchableOpacity>
-      </View>
+            {isAdmin && (
+  <View style={styles.adminSection}>
+    <TouchableOpacity onPress={() => setAdminModal(true)} activeOpacity={0.8}>
+      <LinearGradient
+        colors={["#7c3aed", "#0ea5e9"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
+        style={styles.adminButton}
+      >
+        <Text style={styles.adminButtonText}>👑 Administrator Access</Text>
+      </LinearGradient>
+    </TouchableOpacity>
+  </View>
+)}
+
 
       {/* admin modal */}
       <Modal visible={adminModal} transparent animationType="fade">

@@ -1,7 +1,10 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 import { getAuth } from "firebase/auth";
+import { useApp } from "./AppContext";
+
 import {
+  addDoc,
   collection,
   doc,
   runTransaction,
@@ -67,6 +70,7 @@ export default function DepositWithdraw() {
   const [activeMethod, setActiveMethod] = useState("");
   const [modalVisible, setModalVisible] = useState(false);
   const [loading, setLoading] = useState(false);
+const { appSettings, profile } = useApp();
 
   /* -------------------- Form State -------------------- */
   const [formData, setFormData] = useState({
@@ -155,45 +159,53 @@ const methodLimits = isMobileMoney ? LIMITS.mobile : LIMITS.card;
   };
 
   /* -------------------- Withdrawal -------------------- */
-  const handleWithdrawal = async () => {
-    const numericAmount = Number(formData.amount);
-    if (!numericAmount || numericAmount <= 0) {
-      Alert.alert("Invalid Amount", "Enter a valid amount.");
-      return;
-    }
+ const handleWithdrawal = async () => {
+  const numericAmount = Number(formData.amount);
+  if (!numericAmount || numericAmount <= 0) {
+    Alert.alert("Invalid Amount", "Enter a valid amount.");
+    return;
+  }
+  if (!appSettings.enablePayouts) {
+  Alert.alert(
+    "Payouts Disabled",
+    "Payout requests are temporarily disabled. Please try again later."
+  );
+  return;
+}
 
-    const userRef = doc(db, "users", currentUser!.uid);
-    const FEE_RATE = 0.04;
+if (appSettings.maintenanceMode) {
+  Alert.alert(
+    "Maintenance Mode",
+    "Withdrawals are unavailable during maintenance."
+  );
+  return;
+}
 
-    await runTransaction(db, async (tx) => {
-      const snap = await tx.get(userRef);
-      const balance = snap.data()?.walletBalance || 0;
 
-      if (numericAmount > balance) {
-        throw new Error("Insufficient");
-      }
-
-      const fee = numericAmount * FEE_RATE;
-
-      tx.set(doc(collection(db, "withdrawals")), {
-        userId: currentUser!.uid,
-        amount: numericAmount,
-        fee,
-        netAmount: numericAmount - fee,
-        currency: formData.currency,
-        method: activeMethod,
-        destination:
-          formData.phone || formData.walletAddress || null,
-        status: "pending",
-        createdAt: serverTimestamp(),
-        type: "withdrawal",
-      });
-
-      tx.update(userRef, { walletBalance: balance - numericAmount });
+  await runTransaction(db, async (tx) => {
+    tx.set(doc(collection(db, "payouts")), {
+      uid: currentUser!.uid,
+      userName: currentUser?.displayName || "User",
+      amount: numericAmount,
+      method: activeMethod,
+      wallet: formData.phone || formData.walletAddress || "",
+      status: "pending",
+      createdAt: serverTimestamp(),
     });
+  });
 
-    Alert.alert("Withdrawal Sent", "Request pending approval.");
-  };
+  await addDoc(collection(db, "notifications"), {
+    uid: currentUser!.uid,
+    title: "Withdrawal Requested",
+    message: `Your payout request of ${numericAmount} ${formData.currency} is pending admin approval.`,
+    type: "payout",
+    createdAt: serverTimestamp(),
+    read: false,
+  });
+
+  Alert.alert("Request Sent", "Waiting for admin approval.");
+};
+
 
   /* -------------------- Submit -------------------- */
   const submitForm = async () => {
@@ -282,6 +294,46 @@ if (isDeposit && isMobileMoney) {
       </View>
     );
   }
+  /* -------------------- Preview Guard -------------------- */
+if (profile?.preview) {
+  return (
+    <View
+      style={[
+        styles.container,
+        { justifyContent: "center", alignItems: "center" },
+      ]}
+    >
+      <Text
+        style={{
+          color: "#FACC15",
+          fontSize: 18,
+          fontWeight: "bold",
+          marginBottom: 10,
+        }}
+      >
+        Preview Mode
+      </Text>
+
+      <Text
+        style={{
+          color: "#ccc",
+          textAlign: "center",
+          marginBottom: 20,
+        }}
+      >
+        Deposits and withdrawals are disabled in preview mode.
+        You can explore the app freely without making payments.
+      </Text>
+
+      <TouchableOpacity
+        style={styles.confirmButton}
+        onPress={() => router.back()}
+      >
+        <Text style={styles.confirmButtonText}>Go Back</Text>
+      </TouchableOpacity>
+    </View>
+  );
+}
 
   /* -------------------- UI -------------------- */
   return (

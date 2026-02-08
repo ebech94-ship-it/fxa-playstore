@@ -2,16 +2,14 @@
 import { Ionicons } from "@expo/vector-icons";
 import {
   collection,
-  doc,
   getFirestore,
   onSnapshot,
   orderBy,
   query,
-  runTransaction,
-  updateDoc,
 } from "firebase/firestore";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  Alert,
   Animated,
   FlatList,
   Modal,
@@ -143,26 +141,38 @@ const UsersSection = () => {
   // -------------------------------
   // FREEZE / UNFREEZE
   // -------------------------------
-  const toggleFreeze = async () => {
-    if (!selected) return;
-    setLoadingAction(true);
-    try {
-      await updateDoc(doc(db, "users", selected.id), {
-        frozen: !selected.frozen,
-      });
-    } catch (e) {
-      console.log("ERR FREEZE:", e);
-    }
-    setLoadingAction(false);
-  };
+ const toggleFreeze = async () => {
+  if (!selected) return;
+
+  setLoadingAction(true);
+
+  try {
+    const res = await fetch(`${BACKEND_URL}/admin/toggle-freeze`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userId: selected.id,
+        freeze: !selected.frozen,
+      }),
+    });
+
+    if (!res.ok) throw new Error("Action failed");
+  } catch (e: any) {
+    Alert.alert("Error", e.message ||"Could not update user status");
+  }
+
+  setLoadingAction(false);
+};
+
 
   // -------------------------------
   // UPDATE BALANCE (+ OR -)
   // -------------------------------
-  
+ const handleBalanceUpdate = async () => {
+  if (!selected) return;
 
-const handleBalanceUpdate = async () => {
-  if (!selected || !editBalance.trim()) return;
+  if (selected.frozen)
+    return Alert.alert("Blocked", "User is frozen");
 
   const amount = parseFloat(editBalance);
   if (isNaN(amount) || amount <= 0) return;
@@ -170,27 +180,28 @@ const handleBalanceUpdate = async () => {
   setLoadingAction(true);
 
   try {
-    const userRef = doc(db, "users", selected.id);
-
-    await runTransaction(db, async (t) => {
-      const snap = await t.get(userRef);
-      if (!snap.exists()) return;
-
-      const current = snap.data().balance || 0;
-      const updated =
-        balanceMode === "add" ? current + amount : current - amount;
-
-      t.update(userRef, {
-        balance: Math.max(0, updated),
-      });
+    const res = await fetch(`${BACKEND_URL}/admin/adjust-balance`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        userId: selected.id,
+        amount,
+        mode: balanceMode, // "add" | "subtract"
+      }),
     });
-  } catch (e) {
-    console.log("BALANCE ERROR:", e);
+
+    if (!res.ok) throw new Error("Server rejected request");
+
+    Alert.alert("Success", "Balance updated");
+    setModalVisible(false);
+  } catch (e: any) {
+    Alert.alert("Failed", e.message || "Error");
   }
 
   setLoadingAction(false);
   setEditBalance("");
 };
+
 
   // -------------------------------
   // RESET PASSWORD (YOUR BACKEND)
@@ -217,24 +228,32 @@ const handleBalanceUpdate = async () => {
   // DELETE USER
   // -------------------------------
   const deleteUserAccount = async () => {
-    if (!selected) return;
-if (selected.deleted) return;
-    setLoadingAction(true);
+  if (!selected) return;
 
+  if (selected.balance > 0)
+    return Alert.alert("Blocked", "User still has funds");
 
-    try {
-      await updateDoc(doc(db, "users", selected.id), {
-  deleted: true,
-  deletedAt: new Date(),
-});
+  if (selected.joinedTournaments?.length)
+    return Alert.alert("Blocked", "User is in tournaments");
 
-      setModalVisible(false);
-    } catch (e) {
-      console.log("DELETE USER ERR:", e);
-    }
+  setLoadingAction(true);
 
-    setLoadingAction(false);
-  };
+  try {
+    const res = await fetch(`${BACKEND_URL}/admin/delete-user`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ userId: selected.id }),
+    });
+
+    if (!res.ok) throw new Error("Delete failed");
+
+    setModalVisible(false);
+  } catch {
+    Alert.alert("Error", "Could not delete user");
+  }
+
+  setLoadingAction(false);
+};
 
   // -------------------------------
   // RENDER EACH USER
@@ -262,7 +281,7 @@ if (selected.deleted) return;
     <View style={styles.container}>
       {/* HEADER WITH GLOW */}
       <Animated.View style={[styles.header, { backgroundColor: glowColor }]}>
-        <Text style={styles.headerText}>Users Management</Text>
+        <Text style={styles.headerText}>User Administration</Text>
       </Animated.View>
 
       {/* SEARCH BAR */}
@@ -388,16 +407,17 @@ if (selected.deleted) return;
   ]}
 >
   <Text style={styles.btnText}>
-    {loadingAction ? "Deleting..." : "Delete User"}
+    {loadingAction ? "Deleting..." : "Disable Account"}
   </Text>
 </TouchableOpacity>
 
 
                 {/* CLOSE */}
-                <TouchableOpacity
-                  onPress={() => setModalVisible(false)}
-                  style={[styles.closeBtn]}
+               <TouchableOpacity
+  onPress={() => !loadingAction && setModalVisible(false)}
+  style={[styles.closeBtn, loadingAction && { opacity: 0.6 }]}
                 >
+
                   <Text style={styles.closeText}>Close</Text>
                 </TouchableOpacity>
               </ScrollView>

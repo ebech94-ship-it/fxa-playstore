@@ -9,6 +9,7 @@ import ProfileBadge from "../components/ProfileBadge";
 import type { ChartViewHandle } from "./ChartView";
 
 import { useEffect, useRef, useState } from "react";
+
 import {
   Animated, Dimensions, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from "react-native";
@@ -23,6 +24,7 @@ import LeaderboardBar from "./LeaderboardBar";
 import ProfileScreen from "./Profile";
 import TournamentScreen from "./Tournament";
 import TradeSummaryBar from "./TradeSummaryBar";
+import { loadDemoBalance, saveDemoBalance } from "./demoBalance";
 
 
 import { getAuth } from "firebase/auth";
@@ -183,8 +185,17 @@ setStableTournamentBalance(newBalance);
   return () => unsub();
 }, [activeAccount]);
 
-
-
+useEffect(() => {
+  (async () => {
+    const savedDemo = await loadDemoBalance();
+    if (savedDemo !== null) {
+      setBalances((b) => ({ ...b, demo: savedDemo }));
+    }
+  })();
+}, []);
+useEffect(() => {
+  saveDemoBalance(balances.demo);
+}, [balances.demo]);
 
 useEffect(() => {
   if (!tournaments || tournaments.length === 0) return;
@@ -221,11 +232,6 @@ useEffect(() => {
 }, [tournaments]);
 
 
-
-useEffect(() => {
-  // ChartView handles readiness internally
-  chartRef.current?.setHeikinAshi(useHeikinAshi);
-}, [useHeikinAshi]);
 
 useEffect(() => {
   chartRef.current?.setWickCompression(compressWicks ? 0.3 : 1);
@@ -294,6 +300,11 @@ const buildAccountPayload = (account: AccountType): AccountType => {
 
  // Open a trade (deduct stake now, add marker now)
 const handleTrade = async(type: "buy" | "sell") => {
+ // 🔐 PREVIEW MODE GUARD
+  if (profile?.preview) {
+    alert("Preview mode: trading is disabled");
+    return;
+  }
   const stake = Number(amount) || 0;
   if (stake <= 0) return;
 
@@ -728,7 +739,7 @@ useEffect(() => {
 
 
    
-<View style={{ height: "70%", width: "100%" }}>
+<View style={{ flex: 1, width: "100%" }}>
   <ChartView
     ref={chartRef}
     symbol="BECH/USD"
@@ -836,11 +847,11 @@ useEffect(() => {
 
 // Styles
 const styles = StyleSheet.create({
-  leftMenu: { width: "10%", backgroundColor: "#2c2c2c", top:10, bottom: 10, paddingTop: 10, },
+  leftMenu: { width: "10%", backgroundColor: "#2c2c2c", top:3, bottom: 10, paddingTop: 10, },
   menuItem: { marginVertical: 20, alignItems: "center" },
   menuText: { color: "white", fontSize: 12, marginTop: 4 },
 
-  chartContainer: { width: "70%", height: "100%",  justifyContent: "flex-start", paddingBottom: 40, },
+  chartContainer: { width: "70%", height: "100%",  justifyContent: "flex-start", paddingBottom: 50, },
 
   rightPanel: { overflow: "visible",
   position: "relative", zIndex: 10, width: "20%", backgroundColor: "#2c2c2c", padding: 10, top:30,

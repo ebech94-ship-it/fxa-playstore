@@ -1,13 +1,5 @@
 // PaymentsSection.tsx
-import {
-  addDoc,
-  collection,
-  doc,
-  increment,
-  onSnapshot,
-  runTransaction,
-  serverTimestamp
-} from "firebase/firestore";
+import {  collection,  onSnapshot, } from "firebase/firestore";
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -31,6 +23,7 @@ type PaymentDoc = {
   amount?: number;
   method?: string;
   screenshot?: string;
+   transactionId?: string;
   date?: any;
   processing?: boolean;
 };
@@ -70,80 +63,74 @@ const PaymentsSection = () => {
     });
   }, []);
 
-  const approve = async () => {
-    if (!selected || loading) return;
-    setLoading(true);
+ const approve = async () => {
+  if (!selected || loading) return;
 
-    try {
-      await runTransaction(db, async (tx) => {
-        const pendingRef = doc(db, "pendingPayments", selected.id!);
-        const snap = await tx.get(pendingRef);
-        if (!snap.exists()) throw new Error("Already processed");
+  if (!selected.amount || Number(selected.amount) <= 0) {
+    Alert.alert("Invalid amount");
+    return;
+  }
 
-        tx.set(doc(collection(db, "approvedPayments")), {
-          ...selected,
-          originalId: selected.id,
-          approvedAt: serverTimestamp(),
-        });
+  setLoading(true);
 
-        if (selected.uid) {
-          tx.update(doc(db, "users", selected.uid), {
-            "accounts.real.balance": increment(Number(selected.amount)),
-          });
-        }
+  try {
+    const res = await fetch(
+      "https://forexapp2-backend.onrender.com/admin/approve-payment",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          paymentId: selected.id,
+        }),
+      }
+    );
 
-        tx.delete(pendingRef);
-      });
+    if (!res.ok) throw new Error("Approval failed");
 
-      await addDoc(collection(db, "notifications"), {
-        uid: selected.uid,
-        title: "Payment Approved",
-        message: `Your payment of ${selected.amount} was approved.`,
-        createdAt: serverTimestamp(),
-        read: false,
-      });
+    Alert.alert("Success", "Payment approved");
+    setModalVisible(false);
+  } catch (e: any) {
+    Alert.alert("Error", e.message || "Approval error");
+  } finally {
+    setLoading(false);
+  }
+};
 
-      setModalVisible(false);
-    } catch (e: any) {
-      Alert.alert("Error", e.message);
-    } finally {
-      setLoading(false);
-    }
-  };
 
-  const reject = async () => {
-    if (!selected || loading) return;
-    setLoading(true);
+ const reject = async () => {
+  if (!selected || loading) return;
 
-    try {
-      await runTransaction(db, async (tx) => {
-        tx.set(doc(collection(db, "rejectedPayments")), {
-          ...selected,
-          originalId: selected.id,
+  setLoading(true);
+
+  try {
+    const res = await fetch(
+      "https://forexapp2-backend.onrender.com/admin/reject-payment",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          paymentId: selected.id,
           reason: rejectReason || "Rejected by admin",
-          rejectedAt: serverTimestamp(),
-        });
-        tx.delete(doc(db, "pendingPayments", selected.id!));
-      });
+        }),
+      }
+    );
 
-      await addDoc(collection(db, "notifications"), {
-        uid: selected.uid,
-        title: "Payment Rejected",
-        message: rejectReason || "Payment rejected",
-        createdAt: serverTimestamp(),
-        read: false,
-      });
+    if (!res.ok) throw new Error("Reject failed");
 
-      setRejectModal(false);
-      setModalVisible(false);
-    } finally {
-      setLoading(false);
-    }
-  };
+    setRejectModal(false);
+    setModalVisible(false);
+    setRejectReason("");
+  } catch (e: any) {
+  Alert.alert("Error", e?.message || "Rejection failed");
+}finally {
+    setLoading(false);
+  }
+};
+
 
   return (
     <View style={styles.container}>
-      <Animated.Text style={styles.header}>💳 Payments Approval</Animated.Text>
+      <Animated.Text style={styles.header}>💳 Deposit Approvals</Animated.Text>
 
       <ScrollView contentContainerStyle={{ flexGrow: 1 }}>
   {payments.length === 0 ? (
@@ -186,16 +173,27 @@ const PaymentsSection = () => {
             <Text style={styles.title}>Payment Details</Text>
             <Text style={styles.text}>User: {selected?.username}</Text>
             <Text style={styles.text}>Amount: ${selected?.amount}</Text>
-
+<Text style={[styles.text, { color: "#7cf" }]}> Type: Deposit</Text>
             {selected?.screenshot && (
               <Image source={{ uri: selected.screenshot }} style={styles.image} />
             )}
 
-            <TouchableOpacity style={styles.approve} onPress={approve} disabled={loading}>
+            <TouchableOpacity
+  style={styles.approve}
+  onPress={approve}
+  disabled={loading || !selected?.screenshot}
+>
+
+
               {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btn}>Approve</Text>}
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.reject} onPress={() => setRejectModal(true)}>
+            <TouchableOpacity
+  style={styles.reject}
+  onPress={() => setRejectModal(true)}
+  disabled={loading}
+                >
+
               <Text style={styles.btn}>Reject</Text>
             </TouchableOpacity>
           </View>

@@ -9,8 +9,9 @@ admin.initializeApp({
 
 // 👇 LIST OF ADMINS
 const adminUIDs = [
-  "hVVhXP4HfvbNBkFsEXKGNiNGYUN2",
+  
   "Kts84GS92lfV8s6J2tESjBeecQL2",
+  "4l7iIqhblyPYEt1gryFe0Zt19b52",
 ];
 
 async function makeAdmins() {

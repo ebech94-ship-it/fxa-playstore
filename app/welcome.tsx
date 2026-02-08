@@ -2,22 +2,29 @@ import { AntDesign, Ionicons } from "@expo/vector-icons";
 
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
+//import { FirebaseRecaptchaVerifierModal } from "expo-firebase-recaptcha";
 
-import { makeRedirectUri } from "expo-auth-session";
+import PasswordInput from "../components/PasswordInput";
+
 import * as Google from "expo-auth-session/providers/google";
 import * as Localization from "expo-localization";
 import { useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
+import { useApp } from "../app/AppContext";
+
 
 import {
   createUserWithEmailAndPassword,
+  EmailAuthProvider,
+  fetchSignInMethodsForEmail,
   GoogleAuthProvider,
+  linkWithCredential,
   PhoneAuthProvider,
   signInWithCredential,
-  signInWithEmailAndPassword,
+  signInWithEmailAndPassword
 } from "firebase/auth";
-import { doc, getDoc, runTransaction, serverTimestamp, setDoc } from "firebase/firestore";
-import { useEffect, useState, } from "react";
+import { collection, doc, getDoc, getDocs, query, runTransaction, serverTimestamp, setDoc, where } from "firebase/firestore";
+import { useEffect, useRef, useState } from "react";
 
 
 import {
@@ -37,7 +44,9 @@ import {
   View,
 } from "react-native";
 
-import { auth, db } from "../firebaseConfig";
+import {  auth, db, } from "../firebaseConfig";
+//import { FirebaseRecaptchaVerifierModal as FirebaseRecaptchaVerifierModalType } from "expo-firebase-recaptcha";
+
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -119,7 +128,8 @@ const generateUserId = async () => {
   return newUserId;
 };
 
-
+// ✅ Validate 5-digit numeric password
+const isValidPassword = (pwd: string) => /^\d{5}$/.test(pwd);
 
 export default function Welcome() {
   const router = useRouter();
@@ -142,19 +152,28 @@ const [showPicker, setShowPicker] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
+ 
+// ✅ Value can be null on web
+//const FirebaseRecaptchaVerifierModal = Platform.OS !== "web" ? FirebaseRecaptchaVerifierModalType : null;
+
+// ✅ Ref type only uses the class type, not null
+//const recaptchaVerifier = useRef<InstanceType<typeof FirebaseRecaptchaVerifierModalType> | null>(null);
+  // 🔗 Google → Email linking
+const [showSetPassword, setShowSetPassword] = useState(false);
+const [linkPassword, setLinkPassword] = useState("");
+const [linkConfirmPassword, setLinkConfirmPassword] = useState("");
+const [pendingGoogleUser, setPendingGoogleUser] = useState<any>(null);
 
 
+const { setActiveAccount, setProfile } = useApp();
 
-// 🔐 GOOGLE LOGIN SETUP
-const [request, response, promptAsync] = Google.useAuthRequest({
-  androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
-  webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-  scopes: ["profile", "email"],
-  redirectUri: makeRedirectUri({
-    scheme: "forextournamentsarena", // must match app.json
-  }),
-});
+// 🔐 GOOGLE LOGIN SETUP (MOBILE / NATIVE)
+const [request, response, promptAsync] =
+  Google.useIdTokenAuthRequest({
+    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
+    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+  });
 
 
   const [showSignupEmail, setShowSignupEmail] = useState(false);
@@ -165,7 +184,8 @@ const [inviteRef, setInviteRef] = useState<string | null>(null);
 
 const [verificationId, setVerificationId] = useState<string | null>(null);
 const [otp, setOtp] = useState("");
-const [googleHandled, setGoogleHandled] = useState(false);
+const googleHandledRef = useRef(false);
+
 const COUNTRIES = [
   // 🇨🇲 Central & West Africa
   { code: "CM", name: "Cameroon", callingCode: "237" },
@@ -231,7 +251,10 @@ const sendOTP = async () => {
 
     console.log("Sending OTP to:", fullPhoneNumber);
 
-    const id = await provider.verifyPhoneNumber(fullPhoneNumber);
+ const id = await provider.verifyPhoneNumber(
+  fullPhoneNumber,
+  //recaptchaVerifier.current!
+);
 
     setVerificationId(id);
     alert("OTP sent to your phone");
@@ -290,7 +313,7 @@ useEffect(() => {
 
   // 🎯 Google login handler
 useEffect(() => {
-  if (!response || googleHandled) return;
+  if (!response || googleHandledRef.current) return;
   if (response.type !== "success") return;
 
   const { idToken, accessToken } = response.authentication ?? {};
@@ -304,27 +327,42 @@ useEffect(() => {
     try {
       setLoading(true);
 
-      // ✅ FIX: pass BOTH tokens
+      googleHandledRef.current = true;
+
       const credential = GoogleAuthProvider.credential(
         idToken ?? undefined,
         accessToken ?? undefined
       );
 
-      const userCred = await signInWithCredential(auth, credential);
+     const userCred = await signInWithCredential(auth, credential);
 
-      await createUserAccounts(
-        userCred.user.uid,
-        userCred.user.displayName || "Google User",
-        userCred.user.email || ""
-      );
+await createUserAccounts(
+  userCred.user.uid,
+  userCred.user.displayName || "Google User",
+  userCred.user.email || ""
+);
 
-      await AsyncStorage.setItem("isLoggedIn", "true");
-      setGoogleHandled(true);
+// 👇 CHECK: Google-only account?
+if (userCred.user.providerData.length === 1) {
+  // Google only → ask to set password
+  setPendingGoogleUser(userCred.user);
+  setShowSetPassword(true);
+  return;
+}
 
-      // ✅ NOW navigation will work
-      router.replace("/tradinglayout");
+// Already linked before → go in
+await AsyncStorage.setItem("isLoggedIn", "true");
+router.replace("/tradinglayout");
+
+const providers = userCred.user.providerData.map(p => p.providerId);
+if (providers.includes("password")) {
+  // Already has password, just log in
+  await AsyncStorage.setItem("isLoggedIn", "true");
+  router.replace("/tradinglayout");
+  return;
+}
     } catch (e) {
-      setGoogleHandled(false);
+      googleHandledRef.current = false;
       alert((e as Error).message);
     } finally {
       setLoading(false);
@@ -332,7 +370,8 @@ useEffect(() => {
   };
 
   run();
-}, [response, googleHandled, router]);
+}, [response, router]);
+
 
 
 
@@ -362,7 +401,13 @@ useEffect(() => {
   // 📧 Email Signup
   const handleSignupEmail = async () => {
     try {
-      if (password !== confirmPassword) return alert("Passwords do not match");
+      if (!isValidPassword(password)) {
+  return alert("Password must be exactly 5 digits. Example: 12345");
+}
+
+if (password !== confirmPassword) {
+  return alert("Passwords do not match");
+}
 
       setLoading(true);
  const userCred = await createUserWithEmailAndPassword(
@@ -392,25 +437,94 @@ router.replace("/tradinglayout");
   // 🔑 Email Login
   // 🔑 Email Login (RETURNING USERS ONLY)
 const handleLogin = async () => {
+
   if (!email || !password) {
-    alert("Enter email and password");
+    alert("Enter email, username, or phone and password");
     return;
   }
 
   try {
     setLoading(true);
 
-    await signInWithEmailAndPassword(
-      auth,
-      email.trim().toLowerCase(),
-      password
-    );
+    const identifier = email.trim().toLowerCase();
+    let resolvedEmail: string | null = null;
+
+    // 1️⃣ IF IT LOOKS LIKE AN EMAIL → USE DIRECTLY
+    if (identifier.includes("@")) {
+      resolvedEmail = identifier;
+    } else {
+      // 2️⃣ OTHERWISE → LOOK UP USER IN FIRESTORE
+      const q = query(
+        collection(db, "users"),
+        where("publicId", "==", identifier)
+      );
+
+      const snap = await getDocs(q);
+
+      if (snap.empty) {
+        alert("User not found");
+        return;
+      }
+
+      resolvedEmail = snap.docs[0].data().email;
+    }
+if (!resolvedEmail) {
+  alert("Could not resolve email for this user");
+  return;
+}
+    // 3️⃣ CHECK SIGN-IN METHODS
+    const methods = await fetchSignInMethodsForEmail(auth, resolvedEmail);
+
+    // 🚫 GOOGLE-ONLY ACCOUNT → BLOCK PASSWORD LOGIN
+    if (methods.includes("google.com") && !methods.includes("password")) {
+      alert(
+        "This account uses Google. Please log in with Google first to set a password."
+      );
+      return;
+    }
+
+    // 4️⃣ LOGIN
+    await signInWithEmailAndPassword(auth, resolvedEmail, password);
 
     await AsyncStorage.setItem("isLoggedIn", "true");
     router.replace("/tradinglayout");
 
   } catch {
-    alert("Invalid email or password");
+    alert("Invalid credentials");
+  } finally {
+    setLoading(false);
+  }
+};
+
+const handleLinkPassword = async () => {
+  if (!isValidPassword(linkPassword)) {
+  return alert("Password must be exactly 5 digits. Example: 12345");
+}
+
+if (linkPassword !== linkConfirmPassword) {
+  return alert("Passwords do not match");
+}
+
+  try {
+    setLoading(true);
+
+   if (!pendingGoogleUser) return alert("No Google user to link password to.");
+const credential = EmailAuthProvider.credential(
+  pendingGoogleUser.email,
+  linkPassword.trim()
+);
+    await linkWithCredential(pendingGoogleUser, credential);
+
+    alert("Password set successfully 🎉");
+
+    setShowSetPassword(false);
+    setPendingGoogleUser(null);
+
+    await AsyncStorage.setItem("isLoggedIn", "true");
+    router.replace("/tradinglayout");
+
+  } catch (e) {
+    alert((e as Error).message);
   } finally {
     setLoading(false);
   }
@@ -418,12 +532,13 @@ const handleLogin = async () => {
 
 
 
-
   return (
+  
     <KeyboardAvoidingView
   style={{ flex: 1 }}
   behavior={Platform.OS === "ios" ? "padding" : undefined}
 >
+
   <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
     <ImageBackground
       source={require("../assets/images/background.png")}
@@ -446,7 +561,7 @@ const handleLogin = async () => {
   </View>
 )}
           <Text style={styles.desc}>
-            Join live Forex Tournaments, compete for real cash rewards by growing your virtual account balance!
+          Compete in simulated Forex tournaments with rewards and rankings based on virtual account performance.
           </Text>
 
 {/* AGREEMENT CHECKBOX */}
@@ -502,17 +617,14 @@ const handleLogin = async () => {
   <>
     {/* SIGN UP WITH EMAIL */}
     <TouchableOpacity
-      style={[
-        styles.button,
-        { opacity: accepted ? 1 : 0.4 }, // fade when disabled
-      ]}
-      onPress={() => accepted && openForm(setShowSignupEmail)}
-      disabled={!accepted}
-    >
-      <Text style={styles.buttonText}>📧 Sign Up with Email</Text>
-    </TouchableOpacity>
-
-    {/* SIGN UP WITH PHONE */}
+  style={[styles.button, { opacity: accepted && !loading ? 1 : 0.4 }]}
+  onPress={() => accepted && !loading && openForm(setShowSignupEmail)}
+  disabled={!accepted || loading}
+>
+  <Text style={styles.buttonText}>📧 Sign Up with Email</Text>
+</TouchableOpacity>
+   
+     {/* SIGN UP WITH PHONE */}
     <TouchableOpacity
       style={[
         styles.button,
@@ -525,45 +637,97 @@ const handleLogin = async () => {
     </TouchableOpacity>
 
     {/* GOOGLE SIGN IN */}
-    <TouchableOpacity
-      style={[
-        styles.button,
-        { backgroundColor: "#DB4437", opacity: accepted ? 1 : 0.4 },
-      ]}
-     onPress={() =>
-  accepted &&
-  request &&
-  promptAsync()
-}
+   <TouchableOpacity
+  style={[
+    styles.button,
+    { backgroundColor: "#DB4437", opacity: accepted && !loading ? 1 : 0.4 },
+  ]}
+  onPress={() => accepted && !loading && request && promptAsync()}
+  disabled={!accepted || loading || !request}
+>
+  {!request ? (
+    <ActivityIndicator color="#fff" />
+  ) : (
+    <>
+      <AntDesign name="google" size={16} color="white" />
+      <Text style={[styles.buttonText, { marginLeft: 8 }]}>
+        {loading ? "Processing..." : "Continue with Google"}
+      </Text>
+    </>
+  )}
+</TouchableOpacity>
 
-      disabled={!accepted || !request}
-    >
-      {!request ? (
-        <ActivityIndicator color="#fff" />
-      ) : (
-        <>
-          <AntDesign name="google" size={16} color="white" />
-          <Text style={[styles.buttonText, { marginLeft: 8 }]}>
-            Continue with Google
-          </Text>
-        </>
-      )}
-    </TouchableOpacity>
 
     {/* LOGIN */}
-    <TouchableOpacity
-      style={[
-        styles.button,
-        { opacity: accepted ? 1 : 0.4 },
-      ]}
-      onPress={() => accepted && openForm(setShowLogin)}
-      disabled={!accepted}
-    >
-      <Text style={styles.buttonText}>Log In</Text>
-    </TouchableOpacity>
+   <TouchableOpacity
+  style={[styles.button, { opacity: accepted && !loading ? 1 : 0.4 }]}
+  onPress={() => accepted && !loading && openForm(setShowLogin)}
+  disabled={!accepted || loading}
+>
+  <Text style={styles.buttonText}>
+    {loading ? "Loading..." : "Log In"}
+  </Text>
+</TouchableOpacity>
+
   </>
 )}
+{/* PREVIEW MODE / EVALUATORS ONLY */}
+<TouchableOpacity
+  style={[
+    styles.button,
+    { backgroundColor: "#21e6c1" }, // nice greenish-blue
+  ]}
+  onPress={() => {
+  setProfile({
+    username: "Evaluator",
+    displayName: "Preview User",
+    verified: false,
+    preview: true, // 👈 add this
+  });
+
+  setActiveAccount({ type: "demo" });
+
+  AsyncStorage.setItem("isLoggedIn", "preview");
+  router.replace("/tradinglayout");
+}}
+>
+  <Text style={styles.buttonText}>👀 Preview Mode</Text>
+  <Text style={{ color: "#aaa", fontSize: 12, marginTop: 4 }}>
+  No signup required · View-only access
+</Text>
+</TouchableOpacity>
+
           {/* POPUP FORMS */}
+          {showSetPassword && (
+  <View style={styles.blockerOverlay}>
+    <View style={styles.popup}>
+      <Text style={styles.subtitle}>Set a Password</Text>
+
+     <PasswordInput
+  value={linkPassword}
+  onChangeText={setLinkPassword}
+  placeholder="Enter 5-digit PIN"
+/>
+
+<PasswordInput
+  value={linkConfirmPassword}
+  onChangeText={setLinkConfirmPassword}
+  placeholder="Confirm PIN"
+/>
+     <TouchableOpacity
+  style={[styles.button, { opacity: !loading ? 1 : 0.4 }]}
+  onPress={() => !loading && handleLinkPassword()}
+  disabled={loading}
+>
+  <Text style={styles.buttonText}>
+    {loading ? "Saving..." : "Save PIN"}
+  </Text>
+</TouchableOpacity>
+
+    </View>
+  </View>
+)}
+
           {(showSignupEmail || showSignupPhone || showLogin) && (
   <View style={styles.blockerOverlay} pointerEvents="box-none">
     <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
@@ -596,43 +760,27 @@ const handleLogin = async () => {
                     value={email}
                     onChangeText={setEmail}
                   />
-                   <TextInput
-    style={[styles.input, { flex: 1 }]}
-    placeholder="Password"
-    placeholderTextColor="#aaa"
-    secureTextEntry={!showPassword}
-    value={password}
-    onChangeText={setPassword}
-  />
+      <PasswordInput
+  value={password}
+  onChangeText={setPassword}
+  placeholder="Enter 5-digit PIN"
+/>
 
-  <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-    <Ionicons
-      name={showPassword ? "eye-off" : "eye"}
-      size={22}
-      color="#fff"
-      style={{ paddingHorizontal: 6 }}
-    />
-  </TouchableOpacity>
-                  <TextInput
-                    style={styles.input}
-                    placeholder="Confirm Password"
-                    placeholderTextColor="#aaa"
-                    secureTextEntry={!showPassword}
-                    value={confirmPassword}
-                    onChangeText={setConfirmPassword}
-                  />
+<PasswordInput
+  value={confirmPassword}
+  onChangeText={setConfirmPassword}
+  placeholder="Confirm PIN"
+/>
+<TouchableOpacity
+  style={[styles.button, { opacity: accepted && !loading ? 1 : 0.4 }]}
+  onPress={() => accepted && !loading && handleSignupEmail()}
+  disabled={!accepted || loading}
+>
+   <Text style={styles.buttonText}>
+    {loading ? "Submitting..." : "Submit"}
+  </Text>
+</TouchableOpacity>
 
-            <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-                   <Ionicons
-            name={showPassword ? "eye-off" : "eye"}
-                  size={22} color="#fff"
-              style={{ paddingHorizontal: 6 }}
-                   />
-                 </TouchableOpacity>
-
-                  <TouchableOpacity style={styles.button} onPress={handleSignupEmail}>
-                    <Text style={styles.buttonText}>Submit</Text>
-                  </TouchableOpacity>
 
                   <TouchableOpacity style={styles.link} onPress={closeForm}>
                     <Text style={styles.linkText}>Back</Text>
@@ -689,16 +837,21 @@ const handleLogin = async () => {
 
   setPhone(cleaned.replace(/[^0-9]/g, ""));
 }}
-
-
       />
     </View>
 
     {/* STEP 1 — SEND OTP */}
     {!verificationId && (
-      <TouchableOpacity style={styles.button} onPress={sendOTP}>
-        <Text style={styles.buttonText}>Send OTP</Text>
-      </TouchableOpacity>
+   <TouchableOpacity
+  style={[styles.button, { opacity: !loading ? 1 : 0.4 }]}
+  onPress={() => !loading && sendOTP()}
+  disabled={loading}
+>
+  <Text style={styles.buttonText}>
+    {loading ? "Sending OTP..." : "Send OTP"}
+  </Text>
+</TouchableOpacity>
+
     )}
 
     {/* STEP 2 — VERIFY OTP */}
@@ -713,9 +866,16 @@ const handleLogin = async () => {
           onChangeText={setOtp}
         />
 
-        <TouchableOpacity style={styles.button} onPress={verifyOTP}>
-          <Text style={styles.buttonText}>Verify & Continue</Text>
-        </TouchableOpacity>
+     <TouchableOpacity
+  style={[styles.button, { opacity: !loading ? 1 : 0.4 }]}
+  onPress={() => !loading && verifyOTP()}
+  disabled={loading}
+>
+  <Text style={styles.buttonText}>
+    {loading ? "Verifying..." : "Verify & Continue"}
+  </Text>
+</TouchableOpacity>
+
       </>
     )}
 
@@ -789,9 +949,6 @@ const handleLogin = async () => {
   </>
 )}
 
-
-
-
               {/* LOGIN */}
               {showLogin && (
                 <>
@@ -799,29 +956,25 @@ const handleLogin = async () => {
 
                   <TextInput
                     style={styles.input}
-                    placeholder="Email"
+                   placeholder="Email / Username / Phone"
                     placeholderTextColor="#aaa"
                     value={email}
                     onChangeText={setEmail}
                   />
-                  <TextInput
-                    style={styles.input}
-                    placeholder="enter you password"
-                    placeholderTextColor="#aaa"
-                    secureTextEntry={!showPassword}
-                    value={password}
-                    onChangeText={setPassword}
-                  />
-              <TouchableOpacity onPress={() => setShowPassword(!showPassword)}>
-                  <Ionicons
-                  name={showPassword ? "eye-off" : "eye"}
-                      size={22} color="#fff"
-                    style={{ paddingHorizontal: 6 }}
-                      />
-              </TouchableOpacity>
-                  <TouchableOpacity style={styles.button} onPress={handleLogin}>
-                    <Text style={styles.buttonText}>Submit</Text>
-                  </TouchableOpacity>
+                  <PasswordInput
+  value={password}
+  onChangeText={setPassword}
+  placeholder="Enter 5-digit PIN"
+/>
+<TouchableOpacity
+  style={[styles.button, { opacity: !loading ? 1 : 0.4 }]}
+  onPress={() => !loading && handleLogin()}
+  disabled={loading}
+>
+  <Text style={styles.buttonText}>
+    {loading ? "Logging in..." : "Submit"}
+  </Text>
+</TouchableOpacity>
 
                   <TouchableOpacity style={styles.link} onPress={closeForm}>
                     <Text style={styles.linkText}>Back</Text>

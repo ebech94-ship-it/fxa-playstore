@@ -1,9 +1,9 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
-import { Picker } from "@react-native-picker/picker";
+
 
 import {
-  addDoc, collection, deleteDoc, doc, getDocs, onSnapshot,
-  orderBy, query, serverTimestamp, updateDoc, writeBatch,
+  addDoc, collection, doc, getDocs, onSnapshot,
+  orderBy, query, serverTimestamp, updateDoc,
 } from "firebase/firestore";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -54,16 +54,6 @@ const STATUS_ORDER = {
   Completed: 2,
 };
 
-
-
-const capitalize = (s: any) => {
-  if (!s || typeof s !== "string") return "Upcoming";
-  const low = s.toLowerCase();
-  if (low === "live") return "Live";
-  if (low === "completed") return "Completed";
-  return "Upcoming";
-};
-
 const computeStatus = (
   startTime: number,
   endTime: number
@@ -106,8 +96,7 @@ const [saving, setSaving] = useState(false);
 const [formStartDelay, setFormStartDelay] = useState("0");
   const [formDuration, setFormDuration] = useState("");
   const [formDesc, setFormDesc] = useState("");
-  const [formStatus, setFormStatus] = useState<"Upcoming" | "Live" | "Completed">("Upcoming");
-
+ 
 const [formRules, setFormRules] = useState("");
 const [formOnRegisterInfo, setFormOnRegisterInfo] = useState("");
 const [templateDesc, setTemplateDesc] = useState("");
@@ -197,7 +186,8 @@ useEffect(() => {
       rebuyFee: Number(data.rebuyFee ?? data.entryFee ?? 0),
           durationMinutes: Number(data.durationMinutes ?? 0),
           description: data.description ?? "",
-          status: capitalize(data.status) as "Upcoming" | "Live" | "Completed",
+        status: data.startTime && data.endTime
+  ? computeStatus(data.startTime, data.endTime)  : "Upcoming",
           participantsCount: undefined, // will be filled below (or later lazy)
           rules: data.rules,
           onRegisterInfo: data.onRegisterInfo,
@@ -301,6 +291,13 @@ useEffect(() => {
   // OPEN CREATE / EDIT MODAL
   const openModal = (t?: Tournament) => {
     if (t) {
+     if (t.status === "Live") {
+      Alert.alert(
+        "Live Tournament",
+        "Editing live tournaments is restricted"
+      );
+      return;
+    }
       setIsEditing(true);
       setSelectedTournament(t);
 
@@ -313,7 +310,7 @@ useEffect(() => {
      
  setFormDuration(String(t.durationMinutes ?? 0));
       setFormDesc(t.description ?? "");
-      setFormStatus(capitalize(t.status) as "Upcoming" | "Live" | "Completed");
+    
       setFormRules(t.rules || "");
       setFormOnRegisterInfo(t.onRegisterInfo || "");
 
@@ -328,7 +325,7 @@ useEffect(() => {
       setFormRebuyFee("");
       
       setFormDuration("60");
-      setFormStatus("Upcoming");     
+        
   // PREFILL FROM LAST USED TEMPLATE
   setFormDesc(templateDesc);
   setFormRules(templateRules);
@@ -383,6 +380,17 @@ const saveTournament = async () => {
       "Invalid Entry Fee",
       "Entry Fee must be an integer"
     );
+  const rebuyFeeNum =
+    formRebuyFee.trim() === ""
+      ? entryFeeNum
+      : Number(formRebuyFee);
+
+  if (isNaN(rebuyFeeNum) || rebuyFeeNum < entryFeeNum)
+    return fail(
+      "Invalid Rebuy Fee",
+      "Rebuy fee cannot be lower than entry fee"
+    );
+
 
   if (isNaN(durationNum) || durationNum <= 0)
     return fail(
@@ -407,10 +415,19 @@ const saveTournament = async () => {
   // Manual start delay in minutes (admin input)
 // Empty or invalid → defaults to 0 (start immediately)
 
-const delayMinutes = Number(formStartDelay) || 0;
+const delayMinutes = Number(formStartDelay);
+const now = Date.now();
+const startTime = now + delayMinutes * 60 * 1000; // convert minutes to milliseconds
+const endTime = startTime + durationNum * 60 * 1000; // duration in ms
 
-const startTime = Date.now() + delayMinutes * 60 * 1000;
-const endTime = startTime + durationNum * 60 * 1000;
+if (isNaN(delayMinutes) || delayMinutes < 0)
+  return fail(
+    "Invalid Start Delay",
+    "Start delay cannot be negative"
+  );
+
+
+
 
 
 
@@ -425,9 +442,10 @@ const endTime = startTime + durationNum * 60 * 1000;
     rebuyFee:formRebuyFee.trim() === ""? entryFeeNum
     : Number(formRebuyFee),
     durationMinutes: durationNum,
-    startTime,
-    endTime,
-    status: computeStatus(startTime, endTime),
+    startDelayMinutes: delayMinutes,
+    startTime,   // ✅ add
+  endTime,     // ✅ add
+  status: computeStatus(startTime, endTime),  // ✅ compute now
     rules: formRules || "",
     onRegisterInfo: formOnRegisterInfo || "",
     type: "tournament",
@@ -516,23 +534,22 @@ setSaving(false);
 
 
   // DELETE tournament and its participants subcollection documents (batch)
-  const deleteTournament = async (id: string) => {
+ const deleteTournament = async (id: string, status: Tournament["status"]) => {
   if (deleting) return;
   setDeleting(true);
 
   try {
-    const playersRef = collection(db, "tournaments", id, "players");
-    const snap = await getDocs(playersRef);
-
-    if (!snap.empty) {
-      const batch = writeBatch(db);
-      snap.docs.forEach((d) => batch.delete(d.ref));
-      await batch.commit();
+    if (status === "Live") {
+      Alert.alert("Not allowed", "Live tournaments cannot be deleted");
+      return;
     }
 
-    await deleteDoc(doc(db, "tournaments", id));
+    await updateDoc(doc(db, "tournaments", id), {
+      status: "Completed",
+      deletedAt: serverTimestamp(),
+    });
 
-    Alert.alert("Deleted successfully");
+    Alert.alert("Tournament archived");
   } catch (err) {
     console.warn("deleteTournament error:", err);
     Alert.alert("Error deleting tournament");
@@ -540,6 +557,7 @@ setSaving(false);
     setDeleting(false);
   }
 };
+
 
 
   // FILTER
@@ -609,13 +627,14 @@ setSaving(false);
           onPress={() => {
             Alert.alert(
               "Confirm delete",
-              "Delete tournament and all participants?",
+              "Archive this tournament? It will no longer appear to users."
+,
               [
                 { text: "Cancel", style: "cancel" },
                 {
                   text: "Delete",
                   style: "destructive",
-                  onPress: () => deleteTournament(t.id),
+                  onPress: () => deleteTournament(t.id, t.status),
                 },
               ]
             );
@@ -679,7 +698,10 @@ setSaving(false);
 <Text style={styles.formLabel}>Prize Distribution</Text>
 
 {payouts.map((p, i) => (
-  <View key={i} style={{ flexDirection: "row", gap: 8, marginBottom: 8 }}>
+  <View
+    key={i}
+    style={{ flexDirection: "row", gap: 8, marginBottom: 8, alignItems: "center" }}
+  >
     <TextInput
       style={[styles.input, { flex: 1 }]}
       keyboardType="numeric"
@@ -691,7 +713,6 @@ setSaving(false);
         setPayouts(copy);
       }}
     />
-
     <TextInput
       style={[styles.input, { flex: 2 }]}
       keyboardType="numeric"
@@ -703,6 +724,16 @@ setSaving(false);
         setPayouts(copy);
       }}
     />
+    {/* Delete Button */}
+    <TouchableOpacity
+      onPress={() => {
+        const copy = payouts.filter((_, idx) => idx !== i);
+        setPayouts(copy);
+      }}
+      style={{ paddingHorizontal: 8, paddingVertical: 4, backgroundColor: "#900", borderRadius: 6 }}
+    >
+      <Text style={{ color: "#fff" }}>✕</Text>
+    </TouchableOpacity>
   </View>
 ))}
 
@@ -748,31 +779,10 @@ setSaving(false);
           />
 
           {/* Tournament Status */}
-          <View style={{ marginBottom: 16 }}>
-            <Text style={{ color: "#fff", marginBottom: 6, fontSize: 14 }}>Status</Text>
+         <Text style={{ color: "#888", marginBottom: 12 }}>
+  Status is auto-calculated based on start and end time
+</Text>
 
-            <View
-              style={{
-                backgroundColor: "#111827",
-                borderColor: "#374151",
-                borderWidth: 1,
-                borderRadius: 8,
-              }}
-            >
-              <Picker
-                selectedValue={formStatus}
-                dropdownIconColor="#fff"
-                style={{ color: "#fff" }}
-                onValueChange={(value: any) =>
-                  setFormStatus(capitalize(value) as "Upcoming" | "Live" | "Completed")
-                }
-              >
-                <Picker.Item label="Upcoming" value="Upcoming" />
-                <Picker.Item label="Live" value="Live" />
-                <Picker.Item label="Completed" value="Completed" />
-              </Picker>
-            </View>
-          </View>
 
           <TextInput
             placeholder="Description"

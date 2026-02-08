@@ -1,23 +1,22 @@
 import { Ionicons } from "@expo/vector-icons";
+  
 
 import { useApp } from "@/app/AppContext";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
 import { deleteUser, getAuth } from "firebase/auth";
 import {
-  addDoc,
   collection,
   deleteDoc,
   doc,
   onSnapshot,
   orderBy,
   query,
-  serverTimestamp,
   updateDoc,
   where,
 } from "firebase/firestore";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -116,24 +115,30 @@ const [profileLocked, setProfileLocked] = useState(false);
 
   const [saving, setSaving] = useState(false);
 
+const formHydratedRef = useRef(false);
 
 const { profile: appProfile,  setProfile, setProfileSubmitted, profile, profileLoaded, balances } = useApp();
 
 
 useEffect(() => {
-  if (!appProfile || submitted) return;
+  if (!appProfile) return;
+  if (formHydratedRef.current) return; // 🔒 only once
 
-  setForm((p) => ({
-    ...p,
+  setForm({
     displayName: appProfile.displayName ?? "",
     username: appProfile.username ?? "",
-    
+    email: "",
     phone: appProfile.phone ?? "",
     country: appProfile.country ?? "",
     dateOfBirth: appProfile.dateOfBirth ?? "",
     avatarUrl: appProfile.avatarUrl ?? "",
-  }));
-}, [appProfile, submitted]);
+    useHeikinAshi,
+    compressWicks,
+  });
+
+  formHydratedRef.current = true;
+}, [appProfile, useHeikinAshi, compressWicks]);
+
 
 
 
@@ -450,49 +455,38 @@ const handleSupportSend = async () => {
   setSendingSupport(true);
 
   try {
-    let threadId = userThread?.id;
+    const token = await user.getIdToken();
 
-    // 🟡 CREATE THREAD ONLY ONCE
-    if (!threadId) {
-      const threadRef = await addDoc(collection(db, "supportThreads"), {
-        userId: user.uid,
-        userName: supportName,
-        userEmail: supportEmail,
-        status: "open",
-        lastMessage: supportMessage,
-        createdAt: serverTimestamp(),
-        lastMessageAt: serverTimestamp(),
-      });
-
-      threadId = threadRef.id;
-    } else {
-      // 🔁 UPDATE THREAD META
-      await updateDoc(doc(db, "supportThreads", threadId), {
-        lastMessage: supportMessage,
-        lastMessageAt: serverTimestamp(),
-        status: "open",
-      });
-    }
-
-    // 📨 ADD MESSAGE
-    await addDoc(
-      collection(db, "supportThreads", threadId, "messages"),
+    const res = await fetch(
+      "https://forexapp2-backend.onrender.com/support/send",
       {
-        sender: "user",
-        text: supportMessage,
-        createdAt: serverTimestamp(),
-        read: false,
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          threadId: userThread?.id ?? null,
+          name: supportName,
+          email: supportEmail,
+          message: supportMessage,
+        }),
       }
     );
 
+    if (!res.ok) {
+      throw new Error("Support send failed");
+    }
+
     setSupportMessage("");
-  } catch (error: any) {
+  } catch (error) {
     console.error("Support send error:", error);
     Alert.alert("Error", "Failed to send message.");
   } finally {
     setSendingSupport(false);
   }
 };
+
 useEffect(() => {
   if (user && !supportEmail) {
     setSupportEmail(user.email || "");

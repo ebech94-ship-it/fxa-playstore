@@ -1,14 +1,19 @@
-import React, { useEffect, useRef, useState } from "react";
+import { db } from "@/lib/firebase"; // adjust path if needed
+import { Ionicons } from "@expo/vector-icons";
+import { doc, getDoc, setDoc } from "firebase/firestore";
+import { useEffect, useRef, useState } from "react";
 import {
-  View,
-  Text,
+  Alert,
+  Animated,
   ScrollView,
   StyleSheet,
-  Animated,
   Switch,
+  Text,
   TouchableOpacity,
+  View
 } from "react-native";
-import { Ionicons } from "@expo/vector-icons";
+
+
 
 const SettingsSection = () => {
   // GLOW ANIMATION
@@ -41,6 +46,37 @@ const SettingsSection = () => {
   const [soundEffects, setSoundEffects] = useState(true);
   const [enablePayouts, setEnablePayouts] = useState(true);
   const [maintenanceMode, setMaintenanceMode] = useState(false);
+  useEffect(() => {
+  const loadSettings = async () => {
+    const ref = doc(db, "settings", "app");
+    const snap = await getDoc(ref);
+
+    if (snap.exists()) {
+      const data = snap.data();
+      setEnablePayouts(data.enablePayouts ?? true);
+      setMaintenanceMode(data.maintenanceMode ?? false);
+    }
+  };
+
+  loadSettings();
+}, []);
+
+const saveSettings = async () => {
+  try {
+    await setDoc(doc(db, "settings", "app"), {
+      enablePayouts,
+      maintenanceMode,
+      updatedAt: serverTimestamp()
+,
+    });
+
+    Alert.alert("Saved", "Settings updated successfully.");
+ } catch (error) {
+  console.error(error);
+  Alert.alert("Error", "Failed to save settings.");
+}
+
+};
 
   return (
     <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
@@ -105,7 +141,8 @@ const SettingsSection = () => {
       </View>
 
       {/* SAVE BUTTON */}
-      <TouchableOpacity style={styles.saveButton}>
+      <TouchableOpacity style={styles.saveButton} onPress={saveSettings}>
+
         <Text style={styles.saveText}>Save Settings</Text>
       </TouchableOpacity>
     </ScrollView>

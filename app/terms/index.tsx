@@ -59,6 +59,7 @@ export default function TermsScreen() {
         <Text style={styles.paragraph}>
           The App uses synthetic charts designed for gameplay. These charts do
           not reflect real-world market movements.
+          Price movements are simulated to ensure fair competition and equal conditions for all participants.
         </Text>
 
         <Text style={styles.sectionTitle}>7. Virtual Funds</Text>

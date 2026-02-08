@@ -1,12 +1,11 @@
+import { getAuth } from "firebase/auth";
 import {
-  addDoc,
   collection,
   deleteDoc,
   doc,
   onSnapshot,
   orderBy,
   query,
-  serverTimestamp,
   updateDoc,
 } from "firebase/firestore";
 import { useEffect, useState } from "react";
@@ -21,6 +20,9 @@ import {
   View,
 } from "react-native";
 import { db } from "../../../firebaseConfig";
+
+
+const API_URL = "https://forexapp2-backend.onrender.com";
 
 const NotificationsSection = () => {
   const [message, setMessage] = useState("");
@@ -53,20 +55,30 @@ const [activeTab, setActiveTab] = useState<"notifications" | "support">(
   }, []);
 
   // 🚀 Send notification
-  const sendNotification = async () => {
-    if (!message.trim()) return;
+ const sendNotification = async () => {
+  if (!message.trim()) return;
 
-    await addDoc(collection(db, "alerts"), {
-  title: "📢 Admin  Message",
-  message,
-  type: "admin",
-  read: false,
-  createdAt: serverTimestamp(),
-});
+  try {
+    const token = await getAuth().currentUser?.getIdToken();
 
+    const res = await fetch(`${API_URL}/admin/send-notification`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ message }),
+    });
+
+    if (!res.ok) throw new Error("Failed to send");
 
     setMessage("");
-  };
+  } catch {
+    Alert.alert("Error", "Failed to send notification");
+  }
+};
+
+
 
 useEffect(() => {
   const q = query(
@@ -89,39 +101,30 @@ const sendReply = async () => {
   if (!replyText.trim() || !activeThread) return;
 
   try {
-    await addDoc(
-      collection(
-        db,
-        "supportThreads",
-        activeThread.id,
-        "messages"
-      ),
-      {
-        sender: "admin",
-        text: replyText,
-        createdAt: serverTimestamp(),
-        read: false,
-      }
-    );
+    const token = await getAuth().currentUser?.getIdToken();
 
-    await updateDoc(
-  doc(db, "supportThreads", activeThread.id),
-  {
-    lastMessage: replyText,
-    lastMessageAt: serverTimestamp(),
-    status: "answered",
-  }
-);
+    const res = await fetch(`${API_URL}/admin/reply-support`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        threadId: activeThread.id,
+        message: replyText,
+      }),
+    });
 
+    if (!res.ok) throw new Error("Reply failed");
 
     setReplyText("");
     setActiveThread(null);
-  } catch (err) {
-  console.error("Send reply failed:", err);
-  Alert.alert("Error", "Failed to send reply");
-}
-
+  } catch {
+    Alert.alert("Error", "Failed to send reply");
+  }
 };
+
+
 
   // 🗑 Delete notification
   const deleteNotification = async (id: string) => {

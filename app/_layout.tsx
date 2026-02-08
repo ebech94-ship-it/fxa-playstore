@@ -18,21 +18,27 @@ import { AppProvider, useApp } from "./AppContext";
    AUTH GATE (OUTSIDE)
    =============================== */
 function AuthGate() {
-  const { authUser, loading } = useApp();
+  const { authUser, loading, appReady } = useApp();
   const router = useRouter();
+  const hasRedirected = useRef(false);
 
   useEffect(() => {
-  if (loading) return;
+    if (loading || !appReady) return;
+    if (hasRedirected.current) return;
 
-  if (authUser) {
-    router.replace("/tradinglayout");
-  } else {
-    router.replace("/welcome");
-  }
-}, [authUser, loading, router]);
+    hasRedirected.current = true;
+
+    if (authUser) {
+      router.replace("/tradinglayout");
+    } else {
+      router.replace("/welcome");
+    }
+  }, [authUser, loading, appReady, router]);
 
   return null;
 }
+
+
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
@@ -73,10 +79,11 @@ export default function RootLayout() {
   }, []);
 
   return (
-    <AppProvider>
-      <AuthGate />
-<ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
-        <Stack screenOptions={{ headerShown: false }}>
+ <AppProvider>
+  <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
+    <AuthGate />
+    <Stack screenOptions={{ headerShown: false }}>
+
           <Stack.Screen name="index" />
           <Stack.Screen name="splash" />
           <Stack.Screen name="welcome" />

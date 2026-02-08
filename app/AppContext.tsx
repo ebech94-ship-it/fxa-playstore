@@ -32,7 +32,10 @@ status?: "upcoming" | "ongoing" | "finished";
 
 };
 
-
+type AppSettings = {
+  enablePayouts: boolean;
+  maintenanceMode: boolean;
+};
 
 
 type Accounts = {
@@ -62,9 +65,11 @@ type UserProfile = {
   // media
   avatarUrl?: string;
 
+  preview?: boolean; // 👈 ADD THIS
   // status
   verified: boolean;
   profileCompleted?: boolean;
+
 };
 
 type FirestoreUserDoc = {
@@ -82,12 +87,23 @@ type FirestoreUserDoc = {
 
   accounts?: Accounts;
     walletBalance?: number;
+    
+  // 🔐 admin / roles
+  isAdmin?: boolean;
+  roles?: {
+    admin?: boolean;
+  };
 
 };
 
 
 
 type AppContextType = {
+  appSettings: AppSettings;
+  // 🔐 admin
+  isAdmin: boolean;
+  adminLoaded: boolean;
+
   authUser: User | null;
   userDoc: FirestoreUserDoc | null;
 
@@ -120,6 +136,8 @@ setProfileSubmitted: React.Dispatch<React.SetStateAction<boolean>>;
 
 
   tournamentAccounts: TournamentAccount[];
+  rebuyUnlockedMap: Record<string, boolean>;
+
 };
 
 
@@ -144,6 +162,13 @@ export type TournamentAccount = {
 /* ---------------- CONTEXT ---------------- */
 
 const AppContext = createContext<AppContextType>({
+  appSettings: {
+  enablePayouts: true,
+  maintenanceMode: false,
+},
+  isAdmin: false,
+  adminLoaded: false,
+
   authUser: null,
   userDoc: null,
   accounts: null,
@@ -172,12 +197,18 @@ setAppReady: () => {},
   setProfileSubmitted: () => {}, // ✅ ADD
 
   tournamentAccounts: [],
+  rebuyUnlockedMap: {},
+  
 });
 
 /* ---------------- PROVIDER ---------------- */ 
 
 export const AppProvider = ({ children }: { children: ReactNode }) => {
   const [now, setNow] = useState(Date.now());
+  // 🔐 Admin state
+const [isAdmin, setIsAdmin] = useState(false);
+const [adminLoaded, setAdminLoaded] = useState(false);
+
 
   const [authUser, setAuthUser] = useState<User | null>(null);
 
@@ -189,6 +220,10 @@ const [activeTournament, setActiveTournament] =
 const activeAccountRef = useRef<AccountType>({ type: "demo" });
 const activeTournamentRef = useRef<PlayerTournament | null>(null);
 
+const [appSettings, setAppSettings] = useState<AppSettings>({
+  enablePayouts: true,
+  maintenanceMode: false,
+});
 
   const [activeAccount, setActiveAccount] = useState<AccountType>({
   type: "demo", // default account
@@ -199,6 +234,9 @@ const [liveTournamentBalances, setLiveTournamentBalances] = useState<Record<stri
 const [tournamentMeta, setTournamentMeta] = useState<
   Record<string, { name: string; symbol: string }>
 >({});
+const [rebuyUnlockedMap, setRebuyUnlockedMap] =
+  useState<Record<string, boolean>>({});
+
 
 const activeBalance = (() => {
   if (activeAccount.type === "demo") {
@@ -220,7 +258,11 @@ const activeBalance = (() => {
 const balancesState = {
   demo: accounts?.demo?.balance ?? 1000,
    real: userDoc?.walletBalance ?? 0,
-  tournament: activeTournament?.balance ?? 0,
+  tournament: activeTournament
+  ? liveTournamentBalances[activeTournament.tournamentId] ??
+    activeTournament.balance
+  : 0,
+
 };
 
 
@@ -271,13 +313,28 @@ symbol: tournamentMeta[t.tournamentId]?.symbol ?? "T",
   joined: t.joined,
 }));
 
+useEffect(() => {
+  const ref = doc(db, "settings", "app");
+
+  const unsub = onSnapshot(ref, (snap) => {
+    if (!snap.exists()) return;
+
+    const data = snap.data();
+    setAppSettings({
+      enablePayouts: data.enablePayouts ?? true,
+      maintenanceMode: data.maintenanceMode ?? false,
+    });
+  });
+
+  return unsub;
+}, []);
 
 
   /* 🔐 Auth listener */
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
       setAuthUser(user);
-      setLoading(false);
+      
     });
     return unsub;
   }, []);
@@ -314,8 +371,11 @@ useEffect(() => {
     setActiveTournament(null);
     setActiveAccount({ type: "demo" });
     setProfile(null);
-  setProfileSubmitted(false); // ✅ reset
-  setProfileLoaded(false);
+    setProfileSubmitted(false);
+    setProfileLoaded(false);
+    setIsAdmin(false);          // ✅ reset here
+    setAdminLoaded(false);      // ✅ reset here
+    setLoading(false);
     return;
   }
 
@@ -323,51 +383,52 @@ useEffect(() => {
   const unsub = onSnapshot(ref, (snap) => {
     if (!snap.exists()) return;
 
-    
-      const data = snap.data() as FirestoreUserDoc;
+    const data = snap.data() as FirestoreUserDoc;
     setUserDoc(data);
+
+    // 🔐 ADMIN CHECK
+    setIsAdmin(data?.roles?.admin === true || data?.isAdmin === true);
+    setAdminLoaded(true);
 
     const acc: Accounts = data.accounts ?? {};
     setAccounts(acc);
 
-  const tournamentList = acc.tournaments
-  ? Object.entries(acc.tournaments).map(([id, t]) => {
-      let status: "upcoming" | "ongoing" | "finished" = "upcoming";
+    const tournamentList = acc.tournaments
+      ? Object.entries(acc.tournaments).map(([id, t]) => {
+          let status: "upcoming" | "ongoing" | "finished" = "upcoming";
 
-      const start = t.startTime;
-      const end = t.endTime;
+          const start = t.startTime;
+          const end = t.endTime;
 
-      if (start && end) {
-        if (now < start) status = "upcoming";
-        else if (now <= end) status = "ongoing";
-        else status = "finished";
+          if (start && end) {
+            if (now < start) status = "upcoming";
+            else if (now <= end) status = "ongoing";
+            else status = "finished";
+          }
+
+          return {
+            ...t,
+            tournamentId: id,
+            status,
+          };
+        })
+      : [];
+
+    setTournaments(tournamentList);
+
+    if (activeAccountRef.current.type === "tournament") {
+      const activeTournamentId = activeAccountRef.current.tournamentId;
+      const stillExists = tournamentList.find(
+        t => t.tournamentId === activeTournamentId
+      );
+
+      if (!stillExists) {
+        setActiveAccount({ type: "demo" });
+        setActiveTournament(null);
       }
+    }
 
-      return {
-        ...t,
-        tournamentId: id,
-        status,
-      };
-    })
-  : [];
-
-setTournaments(tournamentList);
-
-
-  // ✅ Keep current active account if it still exists
-if (activeAccountRef.current.type === "tournament") {
-  const activeTournamentId = activeAccountRef.current.tournamentId;
-
-  const stillExists = tournamentList.find(
-    t => t.tournamentId === activeTournamentId
-  );
-
-  if (!stillExists) {
-    setActiveAccount({ type: "demo" });
-    setActiveTournament(null);
-  }
-}
-
+    setLoading(false);
   });
 
   return unsub;
@@ -380,45 +441,45 @@ useEffect(() => {
     return;
   }
 
-  // 🛑 DO NOT overwrite freshly submitted profile
   if (profileSubmitted) {
     if (userDoc.profileCompleted === true) {
-  setProfileSubmitted(false);
-}
+      setProfileSubmitted(false);
+    }
     setProfileLoaded(true);
     return;
   }
 
- const verified =
-  !!userDoc.username &&
-  !!userDoc.country &&
-  !!userDoc.avatarUrl;
-
+  const verified =
+    !!userDoc.username &&
+    !!userDoc.country &&
+    !!userDoc.avatarUrl;
 
   setProfile(prev => ({
-  publicId: userDoc.publicId,
-  username: userDoc.username ?? prev?.username ?? "Guest",
-  displayName: userDoc.displayName ?? prev?.displayName,
-  email: userDoc.email ?? prev?.email,
-  phone: userDoc.phone ?? prev?.phone,
-  country: userDoc.country ?? prev?.country,
-  dateOfBirth: userDoc.dateOfBirth ?? prev?.dateOfBirth,
-  avatarUrl:  typeof userDoc.avatarUrl === "string"
-    ? userDoc.avatarUrl
-    : prev?.avatarUrl ?? "",
-
-  verified,
-  profileCompleted: userDoc.profileCompleted === true,
-}));
-
+    publicId: userDoc.publicId,
+    username: userDoc.username ?? prev?.username ?? "Guest",
+    displayName: userDoc.displayName ?? prev?.displayName,
+    email: userDoc.email ?? prev?.email,
+    phone: userDoc.phone ?? prev?.phone,
+    country: userDoc.country ?? prev?.country,
+    dateOfBirth: userDoc.dateOfBirth ?? prev?.dateOfBirth,
+    avatarUrl:
+      typeof userDoc.avatarUrl === "string"
+        ? userDoc.avatarUrl
+        : prev?.avatarUrl ?? "",
+    verified,
+    profileCompleted: userDoc.profileCompleted === true,
+  }));
 
   setProfileLoaded(true);
 }, [userDoc, profileSubmitted]);
 
 
+
+
 useEffect(() => {
   if (!authUser || tournaments.length === 0) {
     setLiveTournamentBalances({});
+    setRebuyUnlockedMap({});
     return;
   }
 
@@ -437,9 +498,15 @@ useEffect(() => {
       if (!snap.exists()) return;
 
       const data = snap.data();
+
       setLiveTournamentBalances((prev) => ({
         ...prev,
         [t.tournamentId]: data.balance ?? 0,
+      }));
+
+      setRebuyUnlockedMap((prev) => ({
+        ...prev,
+        [t.tournamentId]: data.rebuyUnlocked === true,
       }));
     });
 
@@ -449,6 +516,7 @@ useEffect(() => {
   return () => unsubs.forEach((u) => u());
 }, [authUser, tournaments]);
 
+
 useEffect(() => {
   if (tournaments.length === 0) {
     setTournamentMeta({});
@@ -457,14 +525,15 @@ useEffect(() => {
 
   const unsubs: (() => void)[] = [];
 
-  tournaments.forEach(t => {
+  tournaments.forEach((t) => {
     const ref = doc(db, "tournaments", t.tournamentId);
 
-    const unsub = onSnapshot(ref, snap => {
+    const unsub = onSnapshot(ref, (snap) => {
       if (!snap.exists()) return;
 
       const data = snap.data();
-      setTournamentMeta(prev => ({
+
+      setTournamentMeta((prev) => ({
         ...prev,
         [t.tournamentId]: {
           name: data.name ?? "Tournament",
@@ -476,17 +545,17 @@ useEffect(() => {
     unsubs.push(unsub);
   });
 
-  return () => unsubs.forEach(u => u());
+  return () => unsubs.forEach((u) => u());
 }, [tournaments]);
-
-
-
   
   return (
     <AppContext.Provider
   value={{
     appReady,
   setAppReady,
+appSettings,
+    isAdmin,
+    adminLoaded,
 
     authUser,
   
@@ -510,6 +579,7 @@ useEffect(() => {
 
           
     tournamentAccounts,           // ✅ UI-ready tournament info
+   rebuyUnlockedMap,
   }}
 >
   {children}

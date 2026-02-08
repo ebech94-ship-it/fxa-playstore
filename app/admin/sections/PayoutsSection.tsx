@@ -1,12 +1,6 @@
 import {
-  addDoc,
   collection,
-  doc,
-  increment,
-  onSnapshot,
-  runTransaction,
-  serverTimestamp,
-  updateDoc,
+   onSnapshot,
 } from "firebase/firestore";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -90,92 +84,72 @@ export default function PayoutsSection() {
     filter === "all" ? payouts : payouts.filter((p) => p.status === filter);
 
   // approve payout
-  const markPaid = async () => {
-    if (!selected || busy) return;
-    setBusy(true);
+ const markPaid = async () => {
+  if (!selected || busy) return;
 
-    try {
-      await runTransaction(db, async (tx) => {
-        const payoutRef = doc(db, "payouts", selected.id);
-        const payoutSnap = await tx.get(payoutRef);
-        if (!payoutSnap.exists()) throw new Error("Already processed");
+  setBusy(true);
 
-        const data = payoutSnap.data();
-        if (data.status !== "pending") throw new Error("Not pending");
-        if (data.processing === true) throw new Error("Already in progress");
+  try {
+    const res = await fetch(
+      "https://forexapp2-backend.onrender.com/admin/approve-payout",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          payoutId: selected.id,
+        }),
+      }
+    );
 
-        const treasuryRef = doc(db, "treasury", "main");
-        const treasurySnap = await tx.get(treasuryRef);
-        const treasuryBalance = treasurySnap.data()?.balance || 0;
+    if (!res.ok) throw new Error("Payout approval failed");
 
-        if (treasuryBalance < selected.amount)
-          throw new Error("Treasury insufficient");
+    alert("Payout marked as paid");
+    setModalVisible(false);
+  } catch (e: any) {
+    alert(e.message || "Error approving payout");
+  } finally {
+    setBusy(false);
+  }
+};
 
-        tx.update(payoutRef, { processing: true });
-
-        tx.update(doc(db, "users", selected.uid), {
-          "accounts.real.balance": increment(-Math.abs(selected.amount)),
-        });
-
-        tx.update(treasuryRef, {
-          balance: increment(-Math.abs(selected.amount)),
-        });
-
-        tx.update(payoutRef, {
-          status: "paid",
-          processing: false,
-          paidAt: serverTimestamp(),
-        });
-      });
-
-      await addDoc(collection(db, "notifications"), {
-        uid: selected.uid,
-        title: "Payout Approved",
-        message: `Your payout of ${selected.amount} FRS has been approved.`,
-        createdAt: serverTimestamp(),
-        read: false,
-      });
-
-      setModalVisible(false);
-    } catch (e: any) {
-      alert(e.message);
-    } finally {
-      setBusy(false);
-    }
-  };
 
   // reject payout
-  const rejectPayout = async () => {
-    if (!selected || busy) return;
-    setBusy(true);
+ const rejectPayout = async () => {
+  if (!selected || busy) return;
 
-    try {
-      await updateDoc(doc(db, "payouts", selected.id), {
-        status: "rejected",
-        reason: rejectReason || "Rejected by admin",
-        rejectedAt: serverTimestamp(),
-      });
+  setBusy(true);
 
-      await addDoc(collection(db, "notifications"), {
-        uid: selected.uid,
-        title: "Payout Rejected",
-        message: rejectReason || "Your payout request was rejected.",
-        createdAt: serverTimestamp(),
-        read: false,
-      });
+  try {
+    const res = await fetch(
+      "https://forexapp2-backend.onrender.com/admin/reject-payout",
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          payoutId: selected.id,
+          reason: rejectReason || "Rejected by admin",
+        }),
+      }
+    );
 
-      setRejectReason("");
-      setReasonModal(false);
-      setModalVisible(false);
-    } finally {
-      setBusy(false);
-    }
-  };
+    if (!res.ok) throw new Error("Rejection failed");
+
+    setRejectReason("");
+    setReasonModal(false);
+    setModalVisible(false);
+  } catch (e: any) {
+    alert(e.message || "Error rejecting payout");
+  } finally {
+    setBusy(false);
+  }
+};
+
+
 
   return (
     <View style={styles.container}>
       <Animated.View style={[styles.header, { shadowColor: glowColor }]}>
-        <Text style={styles.headerText}>Payouts Management</Text>
+        <Text style={styles.headerText}>Withdrawal Payouts</Text>
       </Animated.View>
 
       <View style={styles.filters}>
@@ -195,10 +169,12 @@ export default function PayoutsSection() {
           <TouchableOpacity
             key={p.id}
             style={styles.card}
-            onPress={() => {
-              setSelected(p);
-              setModalVisible(true);
-            }}
+           onPress={() => {
+  if (p.status !== "pending") return;
+  setSelected(p);
+  setModalVisible(true);
+}}
+
           >
             <Text style={styles.name}>{p.userName}</Text>
             <Text style={styles.amount}>Amount: {p.amount} FRS</Text>

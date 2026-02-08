@@ -31,12 +31,8 @@ export default function TradeSummaryBar({
 
   const translateY = useRef(new Animated.Value(maxTranslateY)).current;
   const lastY = useRef(maxTranslateY);
-const MIN_VISIBLE_TOP = 10; // px – keep handle always reachable
 
-const minTranslateY = Math.max(
-  0,
-  screenHeight - EXPANDED_HEIGHT - MIN_VISIBLE_TOP
-);
+const minTranslateY = 0;
 
 useEffect(() => {
   translateY.setValue(maxTranslateY);
@@ -67,22 +63,36 @@ useEffect(() => {
     return () => clearInterval(timer);
   }, []);
 
-  const panResponder = useRef(
-    PanResponder.create({
-      onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 10,
-      onPanResponderMove: (_, g) => {
-const newY = Math.max(  minTranslateY,  Math.min(maxTranslateY, lastY.current + g.dy));
-        translateY.setValue(newY);
-      },
-      onPanResponderRelease: (_, g) => {
-const shouldExpand =  g.vy < -0.5 ||
-  lastY.current + g.dy < (minTranslateY + maxTranslateY) / 2;
-const toValue = shouldExpand ? minTranslateY : maxTranslateY;
-        lastY.current = toValue;
-        Animated.spring(translateY, { toValue, useNativeDriver: true }).start();
-      },
-    })
-  ).current;
+ const panResponder = useRef(
+  PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 10,
+
+    onPanResponderMove: (_, g) => {
+      const rawY = lastY.current + g.dy;
+      const clampedY = Math.max(minTranslateY, Math.min(maxTranslateY, rawY));
+      translateY.setValue(clampedY);
+    },
+
+    onPanResponderRelease: (_, g) => {
+      const rawY = lastY.current + g.dy;
+      const clampedY = Math.max(minTranslateY, Math.min(maxTranslateY, rawY));
+
+      const shouldExpand =
+        g.vy < -0.3 || clampedY < maxTranslateY * 0.6;
+
+      const toValue = shouldExpand ? minTranslateY : maxTranslateY;
+      lastY.current = toValue;
+
+      Animated.spring(translateY, {
+        toValue,
+        damping: 20,
+        stiffness: 180,
+        useNativeDriver: true,
+      }).start();
+    },
+  })
+).current;
 
   const getRemainingTime = (expiryTime: number) => {
     const now = Date.now();
@@ -97,15 +107,18 @@ const toValue = shouldExpand ? minTranslateY : maxTranslateY;
   return (
     <Animated.View
       style={[styles.panel, { height: EXPANDED_HEIGHT, transform: [{ translateY }] }]}
-      {...panResponder.panHandlers}
+      
     >
       {/* HANDLE */}
-      <View style={styles.handle}>
+      <View style={styles.handle} {...panResponder.panHandlers}>
         <View style={styles.handleLine} />
         <Text style={styles.handleText}>Portfolio / Trade Summary</Text>
       </View>
 
-      <ScrollView style={styles.content}>
+      <ScrollView
+  style={styles.content}
+  keyboardShouldPersistTaps="handled"
+  scrollEventThrottle={16}>
         {/* ===== ACTIVE ACCOUNT HEADING ===== */}
         <View style={styles.accountHeader}>
           <Text
@@ -256,6 +269,7 @@ const styles = StyleSheet.create({
   },
   handle: {
     height: 50,
+      paddingVertical: 8,
     backgroundColor: "#333",
     justifyContent: "center",
     alignItems: "center",
