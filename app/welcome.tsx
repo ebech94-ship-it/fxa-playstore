@@ -2,7 +2,7 @@ import { AntDesign, Ionicons } from "@expo/vector-icons";
 
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
-//import { FirebaseRecaptchaVerifierModal } from "expo-firebase-recaptcha";
+
 
 import PasswordInput from "../components/PasswordInput";
 
@@ -44,8 +44,8 @@ import {
   View,
 } from "react-native";
 
-import {  auth, db, } from "../firebaseConfig";
-//import { FirebaseRecaptchaVerifierModal as FirebaseRecaptchaVerifierModalType } from "expo-firebase-recaptcha";
+
+import { auth, db, } from "../firebaseConfig";
 
 
 WebBrowser.maybeCompleteAuthSession();
@@ -153,11 +153,17 @@ const [showPicker, setShowPicker] = useState(false);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
  
-// ✅ Value can be null on web
-//const FirebaseRecaptchaVerifierModal = Platform.OS !== "web" ? FirebaseRecaptchaVerifierModalType : null;
+const recaptchaVerifier = useRef<any>(null);
+const [FirebaseRecaptchaVerifierModalType, setRecaptchaModal] = useState<any>(null);
 
-// ✅ Ref type only uses the class type, not null
-//const recaptchaVerifier = useRef<InstanceType<typeof FirebaseRecaptchaVerifierModalType> | null>(null);
+// Dynamically load recaptcha only on mobile
+useEffect(() => {
+  if (Platform.OS !== "web") {
+    import("expo-firebase-recaptcha").then((mod) => {
+      setRecaptchaModal(() => mod.FirebaseRecaptchaVerifierModal);
+    });
+  }
+}, []);
   // 🔗 Google → Email linking
 const [showSetPassword, setShowSetPassword] = useState(false);
 const [linkPassword, setLinkPassword] = useState("");
@@ -253,8 +259,9 @@ const sendOTP = async () => {
 
  const id = await provider.verifyPhoneNumber(
   fullPhoneNumber,
-  //recaptchaVerifier.current!
+  recaptchaVerifier.current!
 );
+
 
     setVerificationId(id);
     alert("OTP sent to your phone");
@@ -311,7 +318,7 @@ useEffect(() => {
 
 
 
-  // 🎯 Google login handler
+// 🎯 Google login handler
 useEffect(() => {
   if (!response || googleHandledRef.current) return;
   if (response.type !== "success") return;
@@ -326,7 +333,6 @@ useEffect(() => {
   const run = async () => {
     try {
       setLoading(true);
-
       googleHandledRef.current = true;
 
       const credential = GoogleAuthProvider.credential(
@@ -334,33 +340,29 @@ useEffect(() => {
         accessToken ?? undefined
       );
 
-     const userCred = await signInWithCredential(auth, credential);
+      const userCred = await signInWithCredential(auth, credential);
 
-await createUserAccounts(
-  userCred.user.uid,
-  userCred.user.displayName || "Google User",
-  userCred.user.email || ""
-);
+      // Ensure Firestore profile exists
+      await createUserAccounts(
+        userCred.user.uid,
+        userCred.user.displayName || "Google User",
+        userCred.user.email || ""
+      );
 
-// 👇 CHECK: Google-only account?
-if (userCred.user.providerData.length === 1) {
-  // Google only → ask to set password
-  setPendingGoogleUser(userCred.user);
-  setShowSetPassword(true);
-  return;
-}
+      // 🔍 Get all provider IDs
+      const providers = userCred.user.providerData.map(p => p.providerId);
 
-// Already linked before → go in
-await AsyncStorage.setItem("isLoggedIn", "true");
-router.replace("/tradinglayout");
+      // ✅ Google-only account? Prompt to set password
+      if (providers.includes("google.com") && !providers.includes("password")) {
+        setPendingGoogleUser(userCred.user);
+        setShowSetPassword(true);
+        return;
+      }
 
-const providers = userCred.user.providerData.map(p => p.providerId);
-if (providers.includes("password")) {
-  // Already has password, just log in
-  await AsyncStorage.setItem("isLoggedIn", "true");
-  router.replace("/tradinglayout");
-  return;
-}
+      // Already linked (password exists) → proceed to app
+      await AsyncStorage.setItem("isLoggedIn", "true");
+      router.replace("/tradinglayout");
+
     } catch (e) {
       googleHandledRef.current = false;
       alert((e as Error).message);
@@ -538,6 +540,14 @@ const credential = EmailAuthProvider.credential(
   style={{ flex: 1 }}
   behavior={Platform.OS === "ios" ? "padding" : undefined}
 >
+ 
+{Platform.OS !== "web" && FirebaseRecaptchaVerifierModalType && (
+  <FirebaseRecaptchaVerifierModalType
+    ref={recaptchaVerifier}
+    firebaseConfig={auth.app.options}
+    attemptInvisibleVerification={true}
+  />
+)}
 
   <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
     <ImageBackground
@@ -692,7 +702,7 @@ const credential = EmailAuthProvider.credential(
 }}
 >
   <Text style={styles.buttonText}>👀 Preview Mode</Text>
-  <Text style={{ color: "#aaa", fontSize: 12, marginTop: 4 }}>
+  <Text style={{ color: "#5f79eeff", fontSize: 12, marginTop: 4 }}>
   No signup required · View-only access
 </Text>
 </TouchableOpacity>
@@ -780,7 +790,6 @@ const credential = EmailAuthProvider.credential(
     {loading ? "Submitting..." : "Submit"}
   </Text>
 </TouchableOpacity>
-
 
                   <TouchableOpacity style={styles.link} onPress={closeForm}>
                     <Text style={styles.linkText}>Back</Text>
@@ -1037,9 +1046,6 @@ const credential = EmailAuthProvider.credential(
     </TouchableOpacity>
   </View>
 </View>
-
-
-
         </View>
 
       </ScrollView>

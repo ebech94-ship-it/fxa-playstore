@@ -134,14 +134,8 @@ export default function TradingLayout() {
 const [tournamentBalances, setTournamentBalances] = useState<
   Record<string, number>
 >({});
-const [stableTournamentBalance, setStableTournamentBalance] = useState<number>(0);
-
-const lastTournamentAlertRef = useRef<number>(0);
-
 
 const { profile, tournaments, activeAccount, setActiveAccount, activeTournament, balances: ctxBalances, } = useApp();
-
-
 
 // -------- Chart Settings --------
 const [useHeikinAshi, setUseHeikinAshi] = useState(false);
@@ -178,7 +172,7 @@ setBalances((prev) => ({
   tournament: newBalance,
 }));
 
-setStableTournamentBalance(newBalance);
+
 
   });
 
@@ -321,54 +315,13 @@ const handleTrade = async(type: "buy" | "sell") => {
   }
 
   // 🔎 CHECK BALANCE FIRST
-  if (activeAccount.type === "demo" && balances.demo - stake < 0) {
-    console.log("Not enough demo balance");
-    return;
-  }
-
+  
   if (activeAccount.type === "real" && balances.real - stake < 0) {
     console.log("Not enough real balance");
     return;
   }
 
- if (activeAccount.type === "tournament") {
-  if (stableTournamentBalance < stake) {
-    const now = Date.now();
 
-    if (now - lastTournamentAlertRef.current > 1500) {
-      lastTournamentAlertRef.current = now;
-      alert("Tournament balance low. Go to tournament page to rebuy.");
-      setActivePage("Tournaments");
-    }
-
-    return;
-  }
-}
-
-
-
-  const now = Date.now();
-  const id = uuid.v4() as string;
-
-  // ===============================
-  // 💰 DEDUCT STAKE IMMEDIATELY
-  // ===============================
-
-  // 🟦 DEMO → local only
-  if (activeAccount.type === "demo") {
-    setBalances((prev) => ({
-      ...prev,
-      demo: prev.demo - stake,
-    }));
-  }
-
-  // 🟨 REAL → Firestore
-  if (activeAccount.type === "real") {
-    updateAccountBalance(uid, activeAccount, -stake);
-  }
-
- 
- // 🟥 TOURNAMENT → SAFE DEDUCTION (NO NEGATIVE POSSIBLE)
 if (activeAccount.type === "tournament" && activeAccount.tournamentId) {
   const playerRef = doc(
     db,
@@ -397,16 +350,40 @@ if (activeAccount.type === "tournament" && activeAccount.tournamentId) {
         updatedAt: serverTimestamp(),
       });
     });
-  } catch  {
-    alert("Insufficient tournament balance");
-    return; // ⛔ STOP trade completely
+  } catch {
+    alert("Tournament balance low. Go to tournament page to rebuy.");
+    setActivePage("Tournaments");
+    return; // ⛔ STOP TRADE
   }
 }
 
 
+  const now = Date.now();
+  const id = uuid.v4() as string;
 
-  
+  // ===============================
+  // 💰 DEDUCT STAKE IMMEDIATELY
+  // ===============================
 
+  // 🟦 DEMO → local only
+  if (activeAccount.type === "demo") {
+  setBalances((prev) => {
+    if (prev.demo < stake) {
+      alert("Not enough demo balance, top up your demo account to trade more");
+      return prev;
+    }
+
+    return {
+      ...prev,
+      demo: prev.demo - stake,
+    };
+  });
+}
+
+  // 🟨 REAL → Firestore
+  if (activeAccount.type === "real") {
+    updateAccountBalance(uid, activeAccount, -stake);
+  }
 
   // Track open trade (include openPrice for summary)
   const t: Trade & { openPrice?: number } = {

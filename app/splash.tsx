@@ -78,7 +78,7 @@ const { setAppReady } = useApp();
         <Text style={styles.powered}>
           Powered by{' '}
           <Animated.Text style={[styles.glow, { color: glowColor }]}>
-            GodSpeed (GS) Tech.
+            GodSpeed (GS) Technologies.
           </Animated.Text>
         </Text>
       </View>

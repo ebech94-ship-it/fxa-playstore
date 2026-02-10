@@ -191,6 +191,17 @@ const { activeAccount, rebuyUnlockedMap,   isAdmin, adminLoaded, tournamentAccou
   tournaments.forEach((t) => {
     const ref = doc(db, "tournaments", t.id, "players", currentUser.uid);
 
+    // ✅ check once immediately
+    getDoc(ref)
+      .then((snap) => {
+        setJoinedMap((prev) => ({
+          ...prev,
+          [t.id]: snap.exists(),
+        }));
+      })
+      .catch((err) => console.error("Error fetching joined state:", err));
+
+    // ✅ also listen for real-time changes
     const unsub = onSnapshot(ref, (snap) => {
       setJoinedMap((prev) => ({
         ...prev,
@@ -284,6 +295,7 @@ snap.docs.forEach((d) => {
     setViewTab("info");
   }
 }, [tournamentId, tournaments]);
+
 useEffect(() => {
   if (!selectedTournament?.id) return;
 
@@ -489,6 +501,7 @@ transaction.set(
   }
 };
 
+
 // ----------- REBUY ACTION (CLEAN + BACKEND-MATCHED) -----------
 const handleRebuy = async (tournamentId: string) => {
   // 🚫 DOUBLE TAP GUARD
@@ -658,15 +671,7 @@ const allowRebuy =
   const tagStyle =
     status === "ongoing" ? styles.tagOngoing : status === "upcoming" ? styles.tagUpcoming : styles.tagPast;
  
-if (!adminLoaded) {
-  return (
-    <View style={styles.container}>
-      <Text style={{ color: "#fff", textAlign: "center" }}>
-        Loading…
-      </Text>
-    </View>
-  );
-}
+
 
   return (
     <TouchableOpacity
@@ -885,25 +890,24 @@ if (!adminLoaded) {
         contentContainerStyle={{ paddingBottom: 20 }}
         showsVerticalScrollIndicator={false}
       />
-
       {/* admin button */}
-            {isAdmin && (
+{adminLoaded && isAdmin && (
   <View style={styles.adminSection}>
-    <TouchableOpacity onPress={() => setAdminModal(true)} activeOpacity={0.8}>
+    <TouchableOpacity onPress={() => setAdminModal(true)}>
       <LinearGradient
         colors={["#7c3aed", "#0ea5e9"]}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 0 }}
         style={styles.adminButton}
       >
-        <Text style={styles.adminButtonText}>👑 Administrator Access</Text>
+        <Text style={styles.adminButtonText}>
+          👑 Administrator Access
+        </Text>
       </LinearGradient>
     </TouchableOpacity>
   </View>
 )}
-
-
-      {/* admin modal */}
+       {/* admin modal */}
       <Modal visible={adminModal} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.adminModalBox}>
