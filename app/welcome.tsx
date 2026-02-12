@@ -153,17 +153,8 @@ const [showPicker, setShowPicker] = useState(false);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
  
-const recaptchaVerifier = useRef<any>(null);
-const [FirebaseRecaptchaVerifierModalType, setRecaptchaModal] = useState<any>(null);
 
-// Dynamically load recaptcha only on mobile
-useEffect(() => {
-  if (Platform.OS !== "web") {
-    import("expo-firebase-recaptcha").then((mod) => {
-      setRecaptchaModal(() => mod.FirebaseRecaptchaVerifierModal);
-    });
-  }
-}, []);
+
   // 🔗 Google → Email linking
 const [showSetPassword, setShowSetPassword] = useState(false);
 const [linkPassword, setLinkPassword] = useState("");
@@ -259,7 +250,7 @@ const sendOTP = async () => {
 
  const id = await provider.verifyPhoneNumber(
   fullPhoneNumber,
-  recaptchaVerifier.current!
+ 
 );
 
 
@@ -540,14 +531,6 @@ const credential = EmailAuthProvider.credential(
   style={{ flex: 1 }}
   behavior={Platform.OS === "ios" ? "padding" : undefined}
 >
- 
-{Platform.OS !== "web" && FirebaseRecaptchaVerifierModalType && (
-  <FirebaseRecaptchaVerifierModalType
-    ref={recaptchaVerifier}
-    firebaseConfig={auth.app.options}
-    attemptInvisibleVerification={true}
-  />
-)}
 
   <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
     <ImageBackground

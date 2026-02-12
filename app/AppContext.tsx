@@ -7,6 +7,7 @@ import {
   ReactNode,
   useContext,
   useEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -289,29 +290,23 @@ const switchAccount = (account: AccountType) => {
   setActiveAccount(account);
 };
 
-
-
 const [profile, setProfile] = useState<UserProfile | null>(null);
 const [profileLoaded, setProfileLoaded] = useState(false);
 const [profileSubmitted, setProfileSubmitted] = useState(false);
 
-
-
-
-
-const tournamentAccounts: TournamentAccount[] = tournaments.map(t => ({
-  type: "tournament",
-  tournamentId: t.tournamentId,
-  id: t.tournamentId,
-  name: tournamentMeta[t.tournamentId]?.name ?? "Tournament",
-symbol: tournamentMeta[t.tournamentId]?.symbol ?? "T",
-
-  balance: liveTournamentBalances[t.tournamentId] ?? t.balance,
-  initialBalance: t.initialBalance,
-  currency: t.currency,
-  status: t.status ?? "upcoming",
-  joined: t.joined,
-}));
+const tournamentAccounts = useMemo(() => 
+  tournaments.map(t => ({
+     type: "tournament" as const,
+    tournamentId: t.tournamentId,
+    id: t.tournamentId,
+    name: tournamentMeta[t.tournamentId]?.name ?? "Tournament",
+    symbol: tournamentMeta[t.tournamentId]?.symbol ?? "T",
+    balance: liveTournamentBalances[t.tournamentId] ?? t.balance,
+    initialBalance: t.initialBalance,
+    currency: t.currency,
+    status: t.status ?? "upcoming",
+    joined: t.joined,
+  })), [tournaments, tournamentMeta, liveTournamentBalances]);
 
 useEffect(() => {
   const ref = doc(db, "settings", "app");
@@ -362,8 +357,8 @@ useEffect(() => {
   activeTournamentRef.current = activeTournament;
 }, [activeAccount, activeTournament]);
 
-  /* 📄 User document listener */
- useEffect(() => {
+/* 📄 User document listener */
+useEffect(() => {
   if (!authUser) {
     setUserDoc(null);
     setAccounts(null);
@@ -373,15 +368,19 @@ useEffect(() => {
     setProfile(null);
     setProfileSubmitted(false);
     setProfileLoaded(false);
-    setIsAdmin(false);          // ✅ reset here
-    setAdminLoaded(false);      // ✅ reset here
+    setIsAdmin(false);
+    setAdminLoaded(false);
     setLoading(false);
     return;
   }
 
   const ref = doc(db, "users", authUser.uid);
+
   const unsub = onSnapshot(ref, (snap) => {
-    if (!snap.exists()) return;
+    if (!snap.exists()) {
+      setLoading(false);
+      return;
+    }
 
     const data = snap.data() as FirestoreUserDoc;
     setUserDoc(data);
@@ -393,33 +392,23 @@ useEffect(() => {
     const acc: Accounts = data.accounts ?? {};
     setAccounts(acc);
 
+    // ✅ NO TIME LOGIC HERE
     const tournamentList = acc.tournaments
-      ? Object.entries(acc.tournaments).map(([id, t]) => {
-          let status: "upcoming" | "ongoing" | "finished" = "upcoming";
-
-          const start = t.startTime;
-          const end = t.endTime;
-
-          if (start && end) {
-            if (now < start) status = "upcoming";
-            else if (now <= end) status = "ongoing";
-            else status = "finished";
-          }
-
-          return {
-            ...t,
-            tournamentId: id,
-            status,
-          };
-        })
+      ? Object.entries(acc.tournaments).map(([id, t]) => ({
+          ...t,
+          tournamentId: id,
+           status: "upcoming" as const, // temporary, real status calculated elsewhere
+        }))
       : [];
 
     setTournaments(tournamentList);
 
+    // ✅ Active tournament safety check
     if (activeAccountRef.current.type === "tournament") {
       const activeTournamentId = activeAccountRef.current.tournamentId;
+
       const stillExists = tournamentList.find(
-        t => t.tournamentId === activeTournamentId
+        (t) => t.tournamentId === activeTournamentId
       );
 
       if (!stillExists) {
@@ -432,7 +421,25 @@ useEffect(() => {
   });
 
   return unsub;
-}, [authUser, now]);
+}, [authUser]);
+
+useEffect(() => {
+  setTournaments(prev => {
+    if (prev.length === 0) return prev;
+
+    return prev.map(t => {
+      let status: "upcoming" | "ongoing" | "finished" = "upcoming";
+
+      if (t.startTime && t.endTime) {
+        if (now < t.startTime) status = "upcoming";
+        else if (now <= t.endTime) status = "ongoing";
+        else status = "finished";
+      }
+
+      return { ...t, status };
+    });
+  });
+}, [now]);
 
 
 useEffect(() => {

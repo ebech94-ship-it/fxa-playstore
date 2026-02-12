@@ -293,12 +293,14 @@ const buildAccountPayload = (account: AccountType): AccountType => {
 
 
  // Open a trade (deduct stake now, add marker now)
-const handleTrade = async(type: "buy" | "sell") => {
- // 🔐 PREVIEW MODE GUARD
+
+const handleTrade = async (type: "buy" | "sell") => {
+  // 🔐 PREVIEW MODE GUARD
   if (profile?.preview) {
     alert("Preview mode: trading is disabled");
     return;
   }
+
   const stake = Number(amount) || 0;
   if (stake <= 0) return;
 
@@ -315,75 +317,73 @@ const handleTrade = async(type: "buy" | "sell") => {
   }
 
   // 🔎 CHECK BALANCE FIRST
-  
-  if (activeAccount.type === "real" && balances.real - stake < 0) {
-    console.log("Not enough real balance");
-    return;
-  }
 
+  // ---------------- TOURNAMENT ACCOUNT ----------------
+  if (activeAccount.type === "tournament" && activeAccount.tournamentId) {
+    const playerRef = doc(
+      db,
+      "tournaments",
+      activeAccount.tournamentId,
+      "players",
+      uid
+    );
 
-if (activeAccount.type === "tournament" && activeAccount.tournamentId) {
-  const playerRef = doc(
-    db,
-    "tournaments",
-    activeAccount.tournamentId,
-    "players",
-    uid
-  );
+    try {
+      await runTransaction(db, async (tx) => {
+        const snap = await tx.get(playerRef);
 
-  try {
-    await runTransaction(db, async (tx) => {
-      const snap = await tx.get(playerRef);
+        if (!snap.exists()) {
+          throw new Error("PLAYER_NOT_FOUND");
+        }
 
-      if (!snap.exists()) {
-        throw new Error("PLAYER_NOT_FOUND");
-      }
+        const balance = snap.data().balance ?? 0;
 
-      const balance = snap.data().balance ?? 0;
+        if (balance < stake) {
+          throw new Error("INSUFFICIENT_BALANCE");
+        }
 
-      if (balance < stake) {
-        throw new Error("INSUFFICIENT_BALANCE");
-      }
+        const newBalance = balance - stake;
 
-      tx.update(playerRef, {
-        balance: balance - stake,
-        updatedAt: serverTimestamp(),
+        tx.update(playerRef, {
+          balance: newBalance,
+          updatedAt: serverTimestamp(),
+        });
+
+        // ✅ Immediately update local balances for UI
+        setBalances((prev) => ({
+          ...prev,
+          tournament: newBalance,
+        }));
+
+        setTournamentBalances((prev) => ({
+          ...prev,
+          [activeAccount.tournamentId!]: newBalance,
+        }));
       });
-    });
-  } catch {
-    alert("Tournament balance low. Go to tournament page to rebuy.");
-    setActivePage("Tournaments");
-    return; // ⛔ STOP TRADE
+    } catch (err) {
+      console.log("❌ Tournament trade error:", err);
+      alert("Tournament balance low. Go to tournament page to rebuy.");
+      setActivePage("Tournaments");
+      return; // ⛔ STOP TRADE
+    }
   }
-}
 
+  // ---------------- DEMO ACCOUNT ----------------
+  if (activeAccount.type === "demo") {
+    setBalances((prev) => {
+      if (prev.demo < stake) {
+        alert("Not enough demo balance, top up your demo account to trade more");
+        return prev;
+      }
+      return {
+        ...prev,
+        demo: prev.demo - stake,
+      };
+    });
+  }
 
   const now = Date.now();
   const id = uuid.v4() as string;
-
-  // ===============================
-  // 💰 DEDUCT STAKE IMMEDIATELY
-  // ===============================
-
-  // 🟦 DEMO → local only
-  if (activeAccount.type === "demo") {
-  setBalances((prev) => {
-    if (prev.demo < stake) {
-      alert("Not enough demo balance, top up your demo account to trade more");
-      return prev;
-    }
-
-    return {
-      ...prev,
-      demo: prev.demo - stake,
-    };
-  });
-}
-
-  // 🟨 REAL → Firestore
-  if (activeAccount.type === "real") {
-    updateAccountBalance(uid, activeAccount, -stake);
-  }
 
   // Track open trade (include openPrice for summary)
   const t: Trade & { openPrice?: number } = {
@@ -392,39 +392,37 @@ if (activeAccount.type === "tournament" && activeAccount.tournamentId) {
     amount: stake,
     entryPrice,
     currentPrice: entryPrice,
-    openPrice: entryPrice, // keep an explicit field for summary & closedTrades
+    openPrice: entryPrice,
     openTime: now,
     expiryTime: now + parseExpirationMs(expiration),
     account: buildAccountPayload(activeAccount),
-
   };
 
   setOpenTrades((prev) => [...prev, t]);
 
-// 🔥 SAVE TO FIRESTORE (ONLY REAL & TOURNAMENT)
-if (activeAccount.type !== "demo") {
-  createTradeInFirestore(uid, t);
-}
+  // 🔥 SAVE TO FIRESTORE (ONLY REAL & TOURNAMENT)
+  if (activeAccount.type !== "demo") {
+    createTradeInFirestore(uid, t);
+  }
 
-// Calculate potential profit
-const potentialProfit = stake * (1 + profitPercent / 100);
+  // Calculate potential profit
+  const potentialProfit = stake * (1 + profitPercent / 100);
 
-// Drop a marker on the chart — correct 6-argument call
-if (chartRef.current?.onTrade) {
-  chartRef.current.onTrade(
-    type.toUpperCase(),             // string
-    stake,                          // number
-    entryPrice,                     // number
-    id,                             // string
-    potentialProfit,                // number
-    parseExpirationMs(expiration)   // number
+  // Drop a marker on the chart
+  if (chartRef.current?.onTrade) {
+    chartRef.current.onTrade(
+      type.toUpperCase(),             // string
+      stake,                          // number
+      entryPrice,                     // number
+      id,                             // string
+      potentialProfit,                // number
+      parseExpirationMs(expiration)   // number
+    );
+  }
+
+  console.log(
+    `Opened ${type.toUpperCase()} ${stake} @ ${entryPrice} | Account=${activeAccount.type}`
   );
-}
-
-console.log(
-  `Opened ${type.toUpperCase()} ${stake} @ ${entryPrice} | Account=${activeAccount.type}`
-);
-
 };
 // 🕒 SINGLE MASTER CLOCK — updates price + resolves trades
 useEffect(() => {

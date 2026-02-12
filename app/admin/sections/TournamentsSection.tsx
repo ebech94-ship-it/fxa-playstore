@@ -48,6 +48,17 @@ interface Tournament {
   onRegisterInfo?: string;
 }
 
+// ---------------- RANK TIERS ---------------- //
+const RANK_TIERS = [
+  { name: "🏆 Grand Champion", max: 3 },
+  { name: "🔥 Elite Trader", max: 5 },
+  { name: "⭐ Star Performer", max: 7 },
+  { name: "🚀 Rising Trader", max: 10 },
+  { name: "🌱 Active Trader", max: 15 },
+  { name: "👤 Participant", max: 20 },
+  { name: "💪 Novice", max: Infinity },
+];
+
 const STATUS_ORDER = {
   Live: 0,
   Upcoming: 1,
@@ -68,9 +79,9 @@ const computeStatus = (
 const TournamentsSection = () => {
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [search, setSearch] = useState("");
-const [payouts, setPayouts] = useState<{ rank: number; amount: number }[]>([
+{/*const [payouts, setPayouts] = useState<{ rank: number; amount: number }[]>([
   { rank: 1, amount: 0 },
-]);
+]);*/}
 
   const [modalVisible, setModalVisible] = useState(false);
   const [leaderboardVisible, setLeaderboardVisible] = useState(false);
@@ -87,7 +98,7 @@ const [loadingPlayers, setLoadingPlayers] = useState(true);
   // FORM FIELDS
   const [formName, setFormName] = useState("");
   const [formSB, setFormSB] = useState("");
-  const [formPrize, setFormPrize] = useState("");
+  // const [formPrize, setFormPrize] = useState("");
   const [formEntryFee, setFormEntryFee] = useState(""); // new
 const [formRebuyFee, setFormRebuyFee] = useState("");
 
@@ -134,6 +145,14 @@ const loadTemplate = async () => {
   } catch (e) {
     console.warn("Failed to load template", e);
   }
+};
+
+
+const getRankName = (position: number) => {
+  for (const tier of RANK_TIERS) {
+    if (position <= tier.max) return tier.name;
+  }
+  return "💪 Novice"; // fallback, should never happen
 };
 useEffect(() => {
   loadTemplate();
@@ -303,8 +322,8 @@ useEffect(() => {
 
       setFormName(t.name);
       setFormSB(String(t.startingBalance ?? 0));
-      setFormPrize(String(t.prizePool ?? 0));
-      setPayouts(t.payoutStructure || [{ rank: 1, amount: 0 }]);
+      // setFormPrize(String(t.prizePool ?? 0));
+     // setPayouts(t.payoutStructure || [{ rank: 1, amount: 0 }]);
      setFormEntryFee(String(t.entryFee ?? 0));
 
      
@@ -320,7 +339,7 @@ useEffect(() => {
 
       setFormName("");
       setFormSB("1000");
-      setFormPrize("500");
+      // setFormPrize("500");
       setFormEntryFee("0");
       setFormRebuyFee("");
       
@@ -353,9 +372,10 @@ const saveTournament = async () => {
     return fail("Name required");
 
   const sbNum = Number(formSB);
-  const prizeNum = Number(formPrize);
+  
   const entryFeeNum = Number(formEntryFee);
   const durationNum = Number(formDuration);
+  
 
   if (isNaN(sbNum) || sbNum < 0)
     return fail(
@@ -363,11 +383,15 @@ const saveTournament = async () => {
       "Starting balance must be a non-negative number"
     );
 
-  if (isNaN(prizeNum) || prizeNum < 0)
-    return fail(
-      "Invalid Prize Pool",
-      "Prize Pool must be a non-negative number"
-    );
+/*
+const prizeNum = Number(formPrize);
+
+if (isNaN(prizeNum) || prizeNum < 0)
+  return fail(
+    "Invalid Prize Pool",
+    "Prize Pool must be a non-negative number"
+  );
+*/
 
   if (isNaN(entryFeeNum) || entryFeeNum < 0)
     return fail(
@@ -399,17 +423,21 @@ const saveTournament = async () => {
     );
 
   // ✅ Validate payout distribution
-  const payoutTotal = payouts.reduce(
-    (sum, p) => sum + Number(p.amount || 0),
-    0
-  );
+ {/*
+const prizeNum = Number(formPrize);
 
-  if (Math.abs(payoutTotal - prizeNum) > 0.0001) {
-    return fail(
-      "Invalid Prize Distribution",
-      `Total payouts (${payoutTotal}) must equal prize pool (${prizeNum}).`
-    );
-  }
+const payoutTotal = payouts.reduce(
+  (sum, p) => sum + Number(p.amount || 0),
+  0
+);
+
+if (Math.abs(payoutTotal - prizeNum) > 0.0001) {
+  return fail(
+    "Invalid Prize Distribution",
+    `Total payouts (${payoutTotal}) must equal prize pool (${prizeNum}).`
+  );
+}
+*/}
 
   // Convert duration into timestamps
   // Manual start delay in minutes (admin input)
@@ -426,18 +454,15 @@ if (isNaN(delayMinutes) || delayMinutes < 0)
     "Start delay cannot be negative"
   );
 
-
-
-
-
-
   // Unified tournament data
   const data = {
     name: formName.trim(),
     description: formDesc || "",
     startingBalance: sbNum,
-    prizePool: prizeNum,
-    payoutStructure: payouts,
+ /*
+prizePool: prizeNum,
+*/
+    // payoutStructure: payouts,
     entryFee: entryFeeNum,
     rebuyFee:formRebuyFee.trim() === ""? entryFeeNum
     : Number(formRebuyFee),
@@ -448,6 +473,7 @@ if (isNaN(delayMinutes) || delayMinutes < 0)
   status: computeStatus(startTime, endTime),  // ✅ compute now
     rules: formRules || "",
     onRegisterInfo: formOnRegisterInfo || "",
+    rankTiers: RANK_TIERS,  // <-- new
     type: "tournament",
   };
 try {
@@ -606,7 +632,8 @@ setSaving(false);
         <Text style={styles.cardDesc}>{t.description}</Text>
 
         <View style={styles.rowBetween}>
-          <Text style={styles.meta}>💰 Prize: {t.prizePool}</Text>
+          {/* <Text style={styles.meta}>💰 Prize: {t.prizePool}</Text> */}
+<Text style={styles.meta}>🏆 Top Rank: {RANK_TIERS[0].name}</Text>
           <Text style={styles.meta}>
             👥 Players: {t.participantsCount ?? 0}
           </Text>
@@ -686,15 +713,17 @@ setSaving(false);
             value={formSB}
             onChangeText={setFormSB}
           />
-
-          <TextInput
-            placeholder="Prize Pool"
-            placeholderTextColor="#666"
-            style={styles.input}
-            keyboardType="numeric"
-            value={formPrize}
-            onChangeText={setFormPrize}
-          />
+{/*
+<TextInput
+  placeholder="Prize Pool"
+  placeholderTextColor="#666"
+  style={styles.input}
+  keyboardType="numeric"
+  value={formPrize}
+  onChangeText={setFormPrize}
+/>
+*/}
+{/*
 <Text style={styles.formLabel}>Prize Distribution</Text>
 
 {payouts.map((p, i) => (
@@ -724,13 +753,17 @@ setSaving(false);
         setPayouts(copy);
       }}
     />
-    {/* Delete Button */}
     <TouchableOpacity
       onPress={() => {
         const copy = payouts.filter((_, idx) => idx !== i);
         setPayouts(copy);
       }}
-      style={{ paddingHorizontal: 8, paddingVertical: 4, backgroundColor: "#900", borderRadius: 6 }}
+      style={{
+        paddingHorizontal: 8,
+        paddingVertical: 4,
+        backgroundColor: "#900",
+        borderRadius: 6,
+      }}
     >
       <Text style={{ color: "#fff" }}>✕</Text>
     </TouchableOpacity>
@@ -738,13 +771,15 @@ setSaving(false);
 ))}
 
 <TouchableOpacity
-  onPress={() => setPayouts([...payouts, { rank: payouts.length + 1, amount: 0 }])}
+  onPress={() =>
+    setPayouts([...payouts, { rank: payouts.length + 1, amount: 0 }])
+  }
 >
   <Text style={{ color: "#6A00FF", textAlign: "center", marginBottom: 10 }}>
     + Add Winner
   </Text>
 </TouchableOpacity>
-
+*/}
           <TextInput
             placeholder="Entry Fee"
             placeholderTextColor="#666"
@@ -851,7 +886,7 @@ setSaving(false);
 
                     <View style={{ flex: 1 }}>
                       <Text style={styles.pName}>{p.username}</Text>
-                      <Text style={styles.pBalance}>{p.balance} USD</Text>
+                      <Text style={styles.pBalance}>{getRankName(i + 1)}</Text>
                     </View>
                   </View>
                 ))

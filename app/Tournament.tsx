@@ -13,7 +13,7 @@ import { useApp } from "./AppContext"; // <-- add this at the top
 import {
   collection, doc, getDoc, limit, onSnapshot, orderBy, query, runTransaction, serverTimestamp
 } from "firebase/firestore";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Alert, FlatList, LayoutAnimation, Modal, Platform, Pressable, ScrollView, StyleSheet,
   Text, TextInput, TouchableOpacity, UIManager, View,
@@ -76,7 +76,22 @@ const getTournamentStatus = (
   if (now <= endTime) return "ongoing";
   return "finished";
 };
+// ---------- Rank Tiers ----------
+const RANK_TIERS = [
+  { name: "🏆 Grand Champion", max: 3 },
+  { name: "🔥 Elite Trader", max: 5 },
+  { name: "⭐ Star Performer", max: 7 },
+  { name: "🚀 Rising Trader", max: 10 },
+  { name: "🌱 Active Trader", max: 15 },
+  { name: "👤 Participant", max: 20 },
+  { name: "💪 Novice", max: Infinity },
+];
 
+function getTierForRank(rank: number) {
+  const tier = RANK_TIERS.find((t) => rank <= t.max);
+  return tier ? tier.name : "💪 Novice"; // fallback
+}
+/*
 const getPrizeForRank = (
   rank: number,
   tournament: Tournament | null
@@ -89,6 +104,8 @@ const getPrizeForRank = (
 
   return entry ? Number(entry.amount) : null;
 };
+*/
+
 const NameWithFlag = ({
   username,
   countryCode,
@@ -127,7 +144,7 @@ const [tournamentRebuys, setTournamentRebuys] = useState<Record<string, number>>
   const [adminModal, setAdminModal] = useState(false);
 
   const [joinedMap, setJoinedMap] = useState<Record<string, boolean>>({});
-
+const rebuyAlertShown = useRef<Record<string, boolean>>({});
 
   const [adminCode, setAdminCode] = useState("");
  type LoadingState = {
@@ -139,7 +156,7 @@ const [loadingActions, setLoadingActions] = useState<
   Record<string, LoadingState>
 >({});
 // If you already have a context like useApp() that provides tournamentAccounts:
-const { activeAccount, rebuyUnlockedMap,   isAdmin, adminLoaded, tournamentAccounts, profile } = useApp(); // or replace with your actual context
+const { activeAccount,   isAdmin, adminLoaded, tournamentAccounts, profile } = useApp(); // or replace with your actual context
 
 
 
@@ -349,12 +366,12 @@ useEffect(() => {
 const handleRegister = async (tournamentId: string) => {
  // 🔒 PREVIEW MODE BLOCK
   if (profile?.preview) {
-    Alert.alert(
-      "Preview Mode",
-      "Tournament registration is disabled in preview mode."
-    );
-    return;
-  }
+  Alert.alert(
+    "Preview Mode",
+    "You are in preview mode. Registration is temporary and will not affect real accounts."
+  );
+  // Do NOT return; allow registration to proceed
+}
 
   // 🚫 DOUBLE TAP GUARD
   if (loadingActions[tournamentId]?.register) return;
@@ -540,10 +557,13 @@ const handleRebuy = async (tournamentId: string) => {
 
     // check wallet
     const wallet = await getUserWalletBalance(currentUser.uid);
-    if (wallet < rebuyCost) {
-      Alert.alert("Insufficient Funds", `Wallet: ${wallet} — Required: ${rebuyCost}`);
-      return;
-    }
+   if (wallet < rebuyCost) {
+  if (!rebuyAlertShown.current[tournamentId]) {
+    Alert.alert("Insufficient Funds", `Wallet: ${wallet} — Required: ${rebuyCost}`);
+    rebuyAlertShown.current[tournamentId] = true; // mark shown
+  }
+  return;
+}
 
     // 🌐 CALL BACKEND
     const response = await fetch(
@@ -651,18 +671,23 @@ const progress =
 
  const durationText = formatDuration(duration);
   const rebuyFee = item.rebuyFee ?? item.entryFee ?? 0;
-    // Step 4: Rebuy logic
-const tAccount = tournamentAccounts.find(
-  t => t.tournamentId === item.id
-);
 
+   // Step 4: Rebuy logic (fixed)
+const tAccount = tournamentAccounts.find(t => t.tournamentId === item.id);
+
+const currentBalance = tAccount?.balance ?? 0;
+const initialBalance = tAccount?.initialBalance ?? item.startingBalance ?? 1000;
+
+// only allow rebuy if:
+// 1. user joined
+// 2. tournament ongoing
+// 3. current balance <= 50% of initial
+// ✅ no external map required, cleaner logic
 const allowRebuy =
   !!tAccount &&
   tAccount.joined &&
   tAccount.status === "ongoing" &&
-  rebuyUnlockedMap[item.id] === true;
-
-
+  currentBalance < initialBalance / 2;
   // Step 5: Active tournament highlight
   const isActiveTournament =
   activeAccount.type === "tournament" && activeAccount.tournamentId === item.id;
@@ -671,8 +696,6 @@ const allowRebuy =
   const tagStyle =
     status === "ongoing" ? styles.tagOngoing : status === "upcoming" ? styles.tagUpcoming : styles.tagPast;
  
-
-
   return (
     <TouchableOpacity
       activeOpacity={0.95}
@@ -710,8 +733,9 @@ const allowRebuy =
 
       {/* PRIZE + ENTRY */}
       <View style={styles.cardPrizeRow}>
-        <Text style={styles.cardPrizeText}>🏆 Prize Pool: {item.prizePool} $</Text>
-        <Text style={styles.cardFeeText}>🎟 Entry Fee: {item.entryFee} $</Text>
+         {/* <Text style={styles.cardPrizeText}>🏆 Prize Pool: {item.prizePool} $</Text> */}
+          <Text style={styles.cardPrizeText}>🏆🏅 Top Ranked Winners:{item.payoutStructure?.length ?? 0}</Text>
+            <Text style={styles.cardFeeText}>🎟 Entry Fee: {item.entryFee} $</Text>
         <Text style={styles.cardFeeText}>♻️ Rebuy: {item.rebuyFee ?? item.entryFee} $</Text>
 <Text style={styles.cardFeeText}>💵 Starting Balance: {item.startingBalance ?? 0} $</Text> {/* ✅ new line */}
       </View>
@@ -820,16 +844,21 @@ const allowRebuy =
     </Text>
 
     {/* Prize */}
-    <Text style={[styles.tableCol, styles.priceGreen, styles.pinnedCol]}>
-      {(() => {
-        if (!selectedTournament) return "-";
+<Text style={[styles.tableCol, styles.priceGreen, styles.pinnedCol]}>
+  {(() => {
+    if (!selectedTournament) return "-";
 
-        const rank = list.findIndex((p) => p.id === me.id) + 1;
-        const prize = getPrizeForRank(rank, selectedTournament);
+    const rank = list.findIndex((p) => p.id === currentUser?.uid) + 1;
 
-        return prize ? `$${prize}` : "-";
-      })()}
-    </Text>
+    // Old prize logic commented out
+    // const prize = getPrizeForRank(rank, selectedTournament);
+    // return prize ? `$${prize}` : "-";
+
+    // New logic: show tier instead of prize
+    const tier = getTierForRank(rank);
+    return tier;
+  })()}
+</Text>
   </View>
 );
 
@@ -844,7 +873,8 @@ const allowRebuy =
           <Text style={[styles.tableColSmall, styles.headerText]}>#</Text>
           <Text style={[styles.tableCol, styles.headerText]}>Participant</Text>
           <Text style={[styles.tableCol, styles.headerText]}>Balance</Text>
-          <Text style={[styles.tableCol, styles.headerText]}>Prize</Text>
+         {/* <Text style={[styles.tableCol, styles.headerText]}>Prize</Text>*/}
+                   <Text style={[styles.tableCol, styles.headerText]}>Tier</Text>
         </View>
         {list.map((row, i) => (
           <View
@@ -868,8 +898,10 @@ const allowRebuy =
   {(() => {
     if (!selectedTournament) return "-";
 
-    const prize = getPrizeForRank(i + 1, selectedTournament);
-    return prize ? `$${prize}` : "-";
+   {/* const prize = getPrizeForRank(i + 1, selectedTournament);
+    return prize ? `$${prize}` : "-";*/}
+     const rank = i + 1;
+    return getTierForRank(rank);
   })()}
 </Text>
 
@@ -947,13 +979,21 @@ const allowRebuy =
             </Pressable>
 
             {selectedTournament && (
-              <>
+              <View>
                 <Text style={styles.modalTitle}>
   {selectedTournament.title || selectedTournament.name || "Tournament"} </Text>
-                <View style={styles.modalMetaRow}>
+                {/*<View style={styles.modalMetaRow}>
                   <Text style={styles.modalPrize}>💰 {selectedTournament.prizePool}</Text>
                   <Text style={styles.modalInfo}>⏰ {formatTime(selectedTournament.endTime - now)}</Text>
-                </View>
+                </View>*/}
+                <View style={styles.modalMetaRow}>
+  <Text style={styles.modalPrize}>
+    🏆 {selectedTournament.payoutStructure?.length ?? 0} Ranked Positions
+  </Text>
+  <Text style={styles.modalInfo}>
+    ⏰ {formatTime(selectedTournament.endTime - now)}
+  </Text>
+</View>
 {/* participants */}
 <Text style={styles.modalInfo}>
   👥 {players.length} participants
@@ -982,7 +1022,7 @@ const allowRebuy =
 
                 <ScrollView style={{ marginTop: 8 }}>
                   {viewTab === "info" ? (
-                    <>
+                    <View>
                       <Text style={styles.sectionTitle}>📖 Information</Text>
                       <Text style={styles.infoText}>
                         {selectedTournament.description ||
@@ -1001,9 +1041,9 @@ const allowRebuy =
                 `You get a starting demo balance of ${selectedTournament.startingBalance ?? 0} $ and leaderboard entry.`} {/* ✅ updated */}
                    </Text>
 {selectedTournament.payoutStructure?.length ? (
-  <>
-    <Text style={styles.sectionTitle}>🏆 Prize Distribution</Text>
-
+  <View>
+    {/*<Text style={styles.sectionTitle}>🏆 Prize Distribution</Text>*/}
+<Text style={styles.sectionTitle}>🏆 RANKINGS </Text>
     {selectedTournament.payoutStructure.map((p: any) => (
       <View
         key={p.rank}
@@ -1014,25 +1054,23 @@ const allowRebuy =
           {" "}Place
         </Text>
         <Text style={{ color: "#86efac", fontWeight: "800" }}>
-          ${p.amount}
+         {getTierForRank(p.rank)}
+          {/*${p.amount}*/}
         </Text>
       </View>
     ))}
-  </>
+  </View>
 ) : null}
 
-
-
-
-                    </>
+                    </View>
                   ) : (
-                    <>
+                    <View>
                       <Text style={styles.sectionTitle}>🏆 Live Leaderboard</Text>
                       <LeaderboardTable list={leaderboard} />
-                    </>
+                    </View>
                   )}
                 </ScrollView>
-              </>
+              </View>
             )}
           </View>
         </View>

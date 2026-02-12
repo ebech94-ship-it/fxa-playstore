@@ -59,7 +59,14 @@ const [activeTab, setActiveTab] = useState<"notifications" | "support">(
   if (!message.trim()) return;
 
   try {
-    const token = await getAuth().currentUser?.getIdToken();
+    const user = getAuth().currentUser;
+
+    if (!user) {
+      Alert.alert("Error", "Not logged in");
+      return;
+    }
+
+    const token = await user.getIdToken(true);
 
     const res = await fetch(`${API_URL}/admin/send-notification`, {
       method: "POST",
@@ -70,16 +77,18 @@ const [activeTab, setActiveTab] = useState<"notifications" | "support">(
       body: JSON.stringify({ message }),
     });
 
-    if (!res.ok) throw new Error("Failed to send");
+    if (!res.ok) {
+      const text = await res.text();
+      console.log("SERVER ERROR:", text);
+      throw new Error("Failed");
+    }
 
     setMessage("");
-  } catch {
+  } catch (err) {
+    console.log("SEND ERROR:", err);
     Alert.alert("Error", "Failed to send notification");
   }
 };
-
-
-
 useEffect(() => {
   const q = query(
     collection(db, "supportThreads"),
@@ -98,11 +107,23 @@ useEffect(() => {
 }, []);
 
 const sendReply = async () => {
-  if (!replyText.trim() || !activeThread) return;
+  if (!replyText.trim()) return;
+
+  if (!activeThread) return;
 
   try {
-    const token = await getAuth().currentUser?.getIdToken();
+    // 1️⃣ Check user
+    const user = getAuth().currentUser;
 
+    if (!user) {
+      Alert.alert("Error", "You are not logged in");
+      return;
+    }
+
+    // 2️⃣ Get fresh token
+    const token = await user.getIdToken(true);
+
+    // 3️⃣ Send to backend
     const res = await fetch(`${API_URL}/admin/reply-support`, {
       method: "POST",
       headers: {
@@ -115,11 +136,20 @@ const sendReply = async () => {
       }),
     });
 
-    if (!res.ok) throw new Error("Reply failed");
+    // 4️⃣ If backend fails
+    if (!res.ok) {
+      const text = await res.text();
+      console.log("SERVER ERROR:", text);
+      Alert.alert("Error", text);
+      return;
+    }
 
+    // 5️⃣ Success
     setReplyText("");
     setActiveThread(null);
-  } catch {
+
+  } catch (error) {
+    console.log("REPLY ERROR:", error);
     Alert.alert("Error", "Failed to send reply");
   }
 };

@@ -83,17 +83,15 @@ if (userSnap.data()?.deleted) {
     return res.status(401).json({ error: "Invalid Firebase token" });
   }
 };
-const requireAdmin = async (req, res, next) => {
+const requireAdmin = (req, res, next) => {
   try {
-    const user = req.user;
-    const adminSnap = await db.collection("admins").doc(user.uid).get();
-
-    if (!adminSnap.exists) {
+    // ✅ Check custom claim from Firebase token
+    if (!req.user.admin) {
       return res.status(403).json({ error: "Admin access denied" });
     }
 
     next();
-  } catch (_e) {
+  } catch  {
     return res.status(500).json({ error: "Admin verification failed" });
   }
 };
@@ -533,7 +531,8 @@ app.post("/admin/send-notification", authenticate, requireAdmin, async (req, res
       return res.status(400).json({ error: "Message required" });
     }
 
-    await db.collection("alerts").add({
+    const alertRef = db.collection("alerts").doc(); // explicit doc
+    await alertRef.set({
       title: "📢 Admin Message",
       message,
       type: "admin",
@@ -541,12 +540,15 @@ app.post("/admin/send-notification", authenticate, requireAdmin, async (req, res
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    res.json({ success: true });
+    res.json({ success: true, alertId: alertRef.id });
   } catch (err) {
-    console.error("SEND NOTIFICATION ERROR:", err.message);
+    console.error("SEND NOTIFICATION ERROR:", err);
     res.status(500).json({ error: "Failed to send notification" });
   }
 });
+// ---------------------------------------------------------------------
+// ADMIN — REPLY SUPPORT THREAD
+// ---------------------------------------------------------------------
 // ---------------------------------------------------------------------
 // ADMIN — REPLY SUPPORT THREAD
 // ---------------------------------------------------------------------
@@ -560,33 +562,30 @@ app.post("/admin/reply-support", authenticate, requireAdmin, async (req, res) =>
 
     const threadRef = db.collection("supportThreads").doc(threadId);
 
-    await db.runTransaction(async (t) => {
-      const snap = await t.get(threadRef);
+    const snap = await threadRef.get();
+    if (!snap.exists) {
+      return res.status(404).json({ error: "Support thread not found" });
+    }
 
-      if (!snap.exists) {
-        throw new Error("Support thread not found");
-      }
+    // ✅ Add admin message
+    await threadRef.collection("messages").add({
+      sender: "admin",
+      text: message,
+      read: false,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
 
-      // Add admin message
-      const msgRef = threadRef.collection("messages").doc();
-      t.set(msgRef, {
-        sender: "admin",
-        text: message,
-        read: false,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
-
-      // Update thread metadata
-      t.update(threadRef, {
-        lastMessage: message,
-        lastMessageAt: admin.firestore.FieldValue.serverTimestamp(),
-        status: "answered",
-      });
+    // ✅ Update thread metadata
+    await threadRef.update({
+      lastMessage: message,
+      lastMessageAt: admin.firestore.FieldValue.serverTimestamp(),
+      status: "answered",
     });
 
     res.json({ success: true });
+
   } catch (err) {
-    console.error("REPLY SUPPORT ERROR:", err.message);
+    console.error("REPLY SUPPORT ERROR:", err);
     res.status(500).json({ error: "Failed to send reply" });
   }
 });

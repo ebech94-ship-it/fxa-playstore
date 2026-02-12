@@ -1,6 +1,6 @@
-import { useState } from "react";
-import { View, TextInput, TouchableOpacity, StyleSheet, TextInputProps } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useState } from "react";
+import { StyleSheet, TextInput, TextInputProps, TouchableOpacity, View } from "react-native";
 
 interface PasswordInputProps extends TextInputProps {
   value: string;

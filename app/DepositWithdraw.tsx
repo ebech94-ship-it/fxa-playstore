@@ -283,13 +283,13 @@ if (isDeposit && isMobileMoney) {
     return (
       <View style={[styles.container, { justifyContent: "center", alignItems: "center" }]}>
         <Text style={{ color: "#fff", marginBottom: 12 }}>
-          You are not logged in.
-        </Text>
+            This is a preview mode — you can explore the app safely. No real actions or transactions are possible here.
+          </Text>
         <TouchableOpacity
           style={styles.confirmButton}
           onPress={() => router.push("/welcome")}
         >
-          <Text style={styles.confirmButtonText}>Go to Login</Text>
+          <Text style={styles.confirmButtonText}> Return to Welcome</Text>
         </TouchableOpacity>
       </View>
     );
@@ -321,8 +321,8 @@ if (profile?.preview) {
           marginBottom: 20,
         }}
       >
-        Deposits and withdrawals are disabled in preview mode.
-        You can explore the app freely without making payments.
+     Deposits and withdrawals are not available in this version.
+You can navigate and explore the app safely without making any real transactions.
       </Text>
 
       <TouchableOpacity
