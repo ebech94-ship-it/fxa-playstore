@@ -26,6 +26,8 @@ const API_URL = "https://forexapp2-backend.onrender.com";
 
 const NotificationsSection = () => {
   const [message, setMessage] = useState("");
+  const [loadingNotification, setLoadingNotification] = useState(false);
+const [loadingReply, setLoadingReply] = useState(false);
   const [notifications, setNotifications] = useState<any[]>([]);
   const [editModal, setEditModal] = useState(false);
   const [editMessage, setEditMessage] = useState("");
@@ -55,19 +57,19 @@ const [activeTab, setActiveTab] = useState<"notifications" | "support">(
   }, []);
 
   // 🚀 Send notification
- const sendNotification = async () => {
+const sendNotification = async () => {
   if (!message.trim()) return;
+
+  setLoadingNotification(true); // start loading
 
   try {
     const user = getAuth().currentUser;
-
     if (!user) {
       Alert.alert("Error", "Not logged in");
       return;
     }
 
     const token = await user.getIdToken(true);
-
     const res = await fetch(`${API_URL}/admin/send-notification`, {
       method: "POST",
       headers: {
@@ -79,14 +81,15 @@ const [activeTab, setActiveTab] = useState<"notifications" | "support">(
 
     if (!res.ok) {
       const text = await res.text();
-      console.log("SERVER ERROR:", text);
-      throw new Error("Failed");
+      throw new Error(text || "Failed");
     }
 
     setMessage("");
   } catch (err) {
     console.log("SEND ERROR:", err);
     Alert.alert("Error", "Failed to send notification");
+  } finally {
+    setLoadingNotification(false); // stop loading
   }
 };
 useEffect(() => {
@@ -107,23 +110,19 @@ useEffect(() => {
 }, []);
 
 const sendReply = async () => {
-  if (!replyText.trim()) return;
+  if (!replyText.trim() || !activeThread) return;
 
-  if (!activeThread) return;
-
+  setLoadingReply(true);
   try {
-    // 1️⃣ Check user
     const user = getAuth().currentUser;
-
     if (!user) {
       Alert.alert("Error", "You are not logged in");
       return;
     }
 
-    // 2️⃣ Get fresh token
     const token = await user.getIdToken(true);
 
-    // 3️⃣ Send to backend
+    // 1️⃣ Send to backend
     const res = await fetch(`${API_URL}/admin/reply-support`, {
       method: "POST",
       headers: {
@@ -136,21 +135,36 @@ const sendReply = async () => {
       }),
     });
 
-    // 4️⃣ If backend fails
     if (!res.ok) {
       const text = await res.text();
-      console.log("SERVER ERROR:", text);
-      Alert.alert("Error", text);
-      return;
+      throw new Error(text || "Failed");
     }
 
-    // 5️⃣ Success
+    // 2️⃣ Persist reply in Firestore
+    const threadRef = doc(db, "supportThreads", activeThread.id);
+
+    await updateDoc(threadRef, {
+      messages: [
+        ...(activeThread.messages || []), // keep old messages
+        {
+          sender: "admin",
+          message: replyText,
+          createdAt: new Date(),
+        },
+      ],
+      lastMessage: replyText,
+      status: "open", // or "replied" if you want
+    });
+
+    // 3️⃣ Reset state
     setReplyText("");
     setActiveThread(null);
 
-  } catch (error) {
-    console.log("REPLY ERROR:", error);
+  } catch (err) {
+    console.log("REPLY ERROR:", err);
     Alert.alert("Error", "Failed to send reply");
+  } finally {
+    setLoadingReply(false);
   }
 };
 
@@ -234,9 +248,15 @@ const sendReply = async () => {
       onChangeText={setMessage}
     />
 
-    <TouchableOpacity style={styles.sendBtn} onPress={sendNotification}>
-      <Text style={styles.sendText}>Send Notification</Text>
-    </TouchableOpacity>
+   <TouchableOpacity
+  style={styles.sendBtn}
+  onPress={sendNotification}
+  disabled={loadingNotification}
+>
+  <Text style={styles.sendText}>
+    {loadingNotification ? "Sending..." : "Send Notification"}
+  </Text>
+</TouchableOpacity>
   </View>
 )}
 
@@ -364,6 +384,21 @@ const sendReply = async () => {
         Reply to {activeThread?.userEmail}
       </Text>
 
+      {/* ===== FULL THREAD VIEW ===== */}
+      <ScrollView style={{ maxHeight: 200, marginBottom: 10 }}>
+  {activeThread?.messages?.map(
+    (msg: { sender: string; message: string; createdAt: Date }, index: number) => (
+      <Text
+        key={index}
+        style={{ color: msg.sender === "admin" ? "#4e2cff" : "white", marginBottom: 4 }}
+      >
+        {msg.sender === "admin" ? "You: " : "User: "} {msg.message}
+      </Text>
+    )
+  )}
+</ScrollView>
+
+
       <TextInput
         style={styles.modalInput}
         placeholder="Type your reply..."
@@ -382,11 +417,14 @@ const sendReply = async () => {
         </TouchableOpacity>
 
         <TouchableOpacity
-          style={styles.modalBtnSave}
-          onPress={sendReply}
-        >
-          <Text style={styles.modalTxt}>Send</Text>
-        </TouchableOpacity>
+  style={styles.modalBtnSave}
+  onPress={sendReply}
+  disabled={loadingReply}
+>
+  <Text style={styles.modalTxt}>
+    {loadingReply ? "Sending..." : "Send"}
+  </Text>
+</TouchableOpacity>
       </View>
     </View>
   </View>
