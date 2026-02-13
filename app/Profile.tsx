@@ -465,12 +465,18 @@ const handleSupportSend = async () => {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          threadId: userThread?.id ?? null,
-          name: supportName,
-          email: supportEmail,
-          message: supportMessage,
-        }),
+       body: JSON.stringify({
+  threadId: userThread?.id ?? null,
+
+  // ⭐ CRITICAL IDENTIFICATION
+  userId: user.uid,
+  userEmail: user.email || supportEmail || "No Email",
+
+  // optional but useful for admin UI
+  name: supportName || appProfile?.displayName || "Unknown User",
+
+  message: supportMessage,
+}),
       }
     );
 
@@ -492,6 +498,11 @@ useEffect(() => {
     setSupportEmail(user.email || "");
   }
 }, [user, supportEmail]);
+useEffect(() => {
+  if (appProfile?.displayName && !supportName) {
+    setSupportName(appProfile.displayName);
+  }
+}, [appProfile, supportName]);
 const getStatusStyle = (status: string) => ({
   color: status === "completed" ? "#21e6c1" : "#e94560",
   fontWeight: "bold" as const,

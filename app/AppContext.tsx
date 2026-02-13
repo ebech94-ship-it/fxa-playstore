@@ -480,9 +480,6 @@ useEffect(() => {
   setProfileLoaded(true);
 }, [userDoc, profileSubmitted]);
 
-
-
-
 useEffect(() => {
   if (!authUser || tournaments.length === 0) {
     setLiveTournamentBalances({});
@@ -506,14 +503,19 @@ useEffect(() => {
 
       const data = snap.data();
 
+      const balance = data.balance ?? 0;
+      const initialBalance = data.initialBalance ?? t.initialBalance ?? 0;
+
+      // Update live balances
       setLiveTournamentBalances((prev) => ({
         ...prev,
-        [t.tournamentId]: data.balance ?? 0,
+        [t.tournamentId]: balance,
       }));
 
+      // Allow rebuy if balance < 50% of initial
       setRebuyUnlockedMap((prev) => ({
         ...prev,
-        [t.tournamentId]: data.rebuyUnlocked === true,
+        [t.tournamentId]: balance < initialBalance * 0.5,
       }));
     });
 

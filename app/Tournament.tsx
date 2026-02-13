@@ -158,8 +158,6 @@ const [loadingActions, setLoadingActions] = useState<
 // If you already have a context like useApp() that provides tournamentAccounts:
 const { activeAccount,   isAdmin, adminLoaded, tournamentAccounts, profile } = useApp(); // or replace with your actual context
 
-
-
   const router = useRouter();
 
   const setLoadingFor = (
@@ -289,16 +287,16 @@ snap.docs.forEach((d) => {
     if (!selectedTournament?.id) return;
 
     const playersRef = collection(db, "tournaments", selectedTournament.id, "players");
-    const q = query(playersRef, orderBy("balance", "desc"), limit(30));
+const q = query(playersRef, orderBy("balance", "desc")); // ✅ removed limit
 
-    const unsub = onSnapshot(q, (snapshot) => {
-      const playerList = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...(doc.data() as any),
-      }));
-      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-      setLeaderboard(playerList);
-    });
+const unsub = onSnapshot(q, (snapshot) => {
+  const playerList = snapshot.docs.map((doc) => ({
+    id: doc.id,
+    ...(doc.data() as any),
+  }));
+  LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+  setLeaderboard(playerList);
+});
 
     return () => unsub();
   }, [selectedTournament]);

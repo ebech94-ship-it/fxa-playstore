@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { db } from "@/lib/firebase";
 import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
 
-import { Image, StyleSheet, Text, View } from "react-native";
+import { FlatList, Image, Modal, Pressable, StyleSheet, Text, View } from "react-native";
 import CountryFlag from "react-native-country-flag";
 import Animated, { FadeOut, Layout, SlideInRight } from "react-native-reanimated";
 import { AccountType, useApp } from "./AppContext";
@@ -157,6 +157,7 @@ const activeTourney =
   const currentUser = authUser;
 
   
+ const [showFull, setShowFull] = useState(false); 
   const [livePlayers, setLivePlayers] = useState<Player[]>([]);
 
 const [loadingLive, setLoadingLive] = useState(false);
@@ -212,23 +213,25 @@ const players: Player[] = isTournamentLive
   : PREVIEW_PLAYERS;
 
 
+// add this at the top of LeaderboardBar
 
-  return (
-    <View style={styles.container}>
-     <Animated.ScrollView
-  horizontal
-  showsHorizontalScrollIndicator={false}
-  layout={Layout.springify().damping(15).stiffness(100).mass(0.6)}
-  contentContainerStyle={styles.row}
->
-  {loadingLive && isTournamentLive && (
-    <Text style={{ color: "#9ca3af", fontSize: 12, marginRight: 10 }}>
-      Loading live leaderboard…
-    </Text>
-  )}
+return (
+  <View style={styles.container}>
+    {/* Wrapper for relative positioning of floating button */}
+    <View style={{ position: "relative" }}>
+      <Animated.ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        layout={Layout.springify().damping(15).stiffness(100).mass(0.6)}
+        contentContainerStyle={styles.row}
+      >
+        {loadingLive && isTournamentLive && (
+          <Text style={{ color: "#9ca3af", fontSize: 12, marginRight: 10 }}>
+            Loading live leaderboard…
+          </Text>
+        )}
 
-  {players.map((p, index) => {
-
+        {players.map((p, index) => {
           const isCurrent = currentUser && p.id === currentUser.uid;
 
           // Highlight top 3
@@ -243,7 +246,7 @@ const players: Player[] = isTournamentLive
               style={[
                 styles.player,
                 isCurrent && styles.currentUser,
-                topColor && { borderColor: topColor, borderWidth: 2 }
+                topColor && { borderColor: topColor, borderWidth: 2 },
               ]}
               entering={SlideInRight.springify()}
               exiting={FadeOut}
@@ -260,17 +263,14 @@ const players: Player[] = isTournamentLive
 
               <View style={styles.info}>
                 <PlayerRow
-                  username={isCurrent ? profile?.username || p.username || "You"
-                 : p.username || "Player"}
-                  countryCode={
-  isCurrent ? toISO2(profile?.country) : p.countryCode || "CM"}                />
+                  username={isCurrent ? profile?.username || p.username || "You" : p.username || "Player"}
+                  countryCode={isCurrent ? toISO2(profile?.country) : p.countryCode || "CM"}
+                />
                 <Text style={styles.balance}>
-  {activeAccount.type === "tournament" && isCurrent
-    ? isCurrent ? tournamentBalance ?? p.balance ?? 0 : p.balance ?? 0
-
-    : p.balance ?? 0}T
-</Text>
-
+                  {activeAccount.type === "tournament" && isCurrent
+                    ? tournamentBalance ?? p.balance ?? 0
+                    : p.balance ?? 0}T
+                </Text>
               </View>
 
               <Text style={[styles.rank, topColor ? { color: topColor } : {}]}>#{index + 1}</Text>
@@ -278,8 +278,87 @@ const players: Player[] = isTournamentLive
           );
         })}
       </Animated.ScrollView>
+
+      {/* Floating See All button */}
+      <Pressable
+        onPress={() => setShowFull(true)}
+        style={{
+          position: "absolute",
+          right: 5,
+          top: 0,
+          bottom: 0,
+          justifyContent: "center",
+          alignItems: "center",
+          paddingHorizontal: 12,
+          backgroundColor: "#174355ff",
+          borderRadius: 12,
+          shadowColor: "#000",
+          shadowOpacity: 0.3,
+          shadowRadius: 4,
+          shadowOffset: { width: 0, height: 2 },
+        }}
+      >
+        <Text style={{ color: "#fff", fontWeight: "700" }}>See All</Text>
+      </Pressable>
     </View>
-  );
+
+    {/* Full leaderboard modal */}
+    {showFull && (
+      <Modal
+        animationType="slide"
+        transparent={true}
+        visible={showFull}
+        onRequestClose={() => setShowFull(false)}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "#0f1727dd",
+            padding: 5,
+            justifyContent: "center",
+          }}
+        >
+          <Pressable
+            style={{ alignSelf: "flex-end", marginBottom: 10 }}
+            onPress={() => setShowFull(false)}
+          >
+            <Text style={{ color: "#f87171", fontSize: 16 }}>Close ✖</Text>
+          </Pressable>
+
+          <FlatList
+            data={players}
+            keyExtractor={(p) => p.id}
+            numColumns={3} // makes it grid-like
+            columnWrapperStyle={{ justifyContent: "space-between", marginBottom: 10 }}
+            renderItem={({ item, index }) => (
+              <View
+                style={{
+                  backgroundColor: "rgba(255,255,255,0.05)",
+                  padding: 8,
+                  borderRadius: 10,
+                  alignItems: "center",
+                  width: "30%",
+                }}
+              >
+                <Image
+                  source={{ uri: item.avatar || "https://via.placeholder.com/32" }}
+                  style={{ width: 40, height: 40, borderRadius: 20, marginBottom: 4 }}
+                />
+                <Text style={{ color: "#fff", fontWeight: "600", fontSize: 12 }}>
+                  {item.username || "Player"}
+                </Text>
+                <Text style={{ color: "#22c55e", fontSize: 11 }}>
+                  {item.balance ?? 0}T
+                </Text>
+                <Text style={{ color: "#facc15", fontSize: 10 }}>#{index + 1}</Text>
+              </View>
+            )}
+          />
+        </View>
+      </Modal>
+    )}
+  </View>
+);
 };
 
 export default LeaderboardBar;
@@ -300,7 +379,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 5,
     bottom: 5,
-    top: 3,
+    top: 1,
   },
   player: {
     flexDirection: "row",

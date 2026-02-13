@@ -1,11 +1,13 @@
 // app/admin/sections/UsersSection.tsx
 import { Ionicons } from "@expo/vector-icons";
 import {
+  addDoc,
   collection,
   getFirestore,
   onSnapshot,
   orderBy,
   query,
+  serverTimestamp,
 } from "firebase/firestore";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -45,7 +47,10 @@ const UsersSection = () => {
 
   const [editBalance, setEditBalance] = useState("");
   const [balanceMode, setBalanceMode] = useState<"add" | "subtract">("add");
-  const [loadingAction, setLoadingAction] = useState(false);
+ const [loadingBalance, setLoadingBalance] = useState(false);
+const [loadingFreeze, setLoadingFreeze] = useState(false);
+const [loadingReset, setLoadingReset] = useState(false);
+const [loadingDelete, setLoadingDelete] = useState(false);
 
   // -------------------------------
   // GLOW ANIMATION HEADER
@@ -136,15 +141,35 @@ const UsersSection = () => {
     setSelected(user);
     setModalVisible(true);
     setEditBalance("");
+     setBalanceMode("add");
   };
 
+// -------------------------------
+// ADMIN ACTION LOGGER (CRITICAL)
+// -------------------------------
+const logAdminAction = async (
+  action: string,
+  extra: Record<string, any> = {}
+) => {
+  try {
+    await addDoc(collection(db, "adminLogs"), {
+      action, // e.g. "add_balance", "freeze_user"
+      targetUserId: selected?.id || null,
+      targetEmail: selected?.email || null,
+      ...extra,
+      createdAt: serverTimestamp(),
+    });
+  } catch (err) {
+    console.log("Admin log failed:", err);
+  }
+};
   // -------------------------------
   // FREEZE / UNFREEZE
   // -------------------------------
  const toggleFreeze = async () => {
   if (!selected) return;
 
-  setLoadingAction(true);
+  setLoadingFreeze(true);
 
   try {
     const res = await fetch(`${BACKEND_URL}/admin/toggle-freeze`, {
@@ -157,27 +182,37 @@ const UsersSection = () => {
     });
 
     if (!res.ok) throw new Error("Action failed");
+    await logAdminAction(
+  selected.frozen ? "unfreeze_user" : "freeze_user"
+);
   } catch (e: any) {
-    Alert.alert("Error", e.message ||"Could not update user status");
+    Alert.alert("Error", e.message || "Could not update user status");
   }
 
-  setLoadingAction(false);
+  setLoadingFreeze(false);
 };
 
 
   // -------------------------------
   // UPDATE BALANCE (+ OR -)
   // -------------------------------
- const handleBalanceUpdate = async () => {
+const handleBalanceUpdate = async () => {
   if (!selected) return;
 
   if (selected.frozen)
     return Alert.alert("Blocked", "User is frozen");
 
   const amount = parseFloat(editBalance);
+  // Prevent overdraft (very important)
+if (balanceMode === "subtract" && amount > selected.balance) {
+  return Alert.alert(
+    "Blocked",
+    "Cannot subtract more than user's current balance"
+  );
+}
   if (isNaN(amount) || amount <= 0) return;
 
-  setLoadingAction(true);
+  setLoadingBalance(true);
 
   try {
     const res = await fetch(`${BACKEND_URL}/admin/adjust-balance`, {
@@ -186,19 +221,23 @@ const UsersSection = () => {
       body: JSON.stringify({
         userId: selected.id,
         amount,
-        mode: balanceMode, // "add" | "subtract"
+        mode: balanceMode,
       }),
     });
 
     if (!res.ok) throw new Error("Server rejected request");
 
     Alert.alert("Success", "Balance updated");
+    await logAdminAction("adjust_balance", {
+  amount,
+  mode: balanceMode,
+});
     setModalVisible(false);
   } catch (e: any) {
     Alert.alert("Failed", e.message || "Error");
   }
 
-  setLoadingAction(false);
+  setLoadingBalance(false);
   setEditBalance("");
 };
 
@@ -206,28 +245,34 @@ const UsersSection = () => {
   // -------------------------------
   // RESET PASSWORD (YOUR BACKEND)
   // -------------------------------
-  const resetPassword = async () => {
-    if (!selected) return;
+const resetPassword = async () => {
+  if (!selected) return;
 
-    setLoadingAction(true);
+  setLoadingReset(true);
 
-    try {
-      await fetch(`${BACKEND_URL}/admin/reset-password`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: selected.email }),
-      });
-    } catch (e) {
-      console.log("RESET ERR:", e);
-    }
+  try {
+    await fetch(`${BACKEND_URL}/admin/reset-password`, {
+    
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: selected.email }),
+    });
+    
+    await logAdminAction("reset_password");
 
-    setLoadingAction(false);
-  };
+    Alert.alert("Success", "Password reset email sent");
+  } catch (e) {
+    console.log("RESET ERR:", e);
+    Alert.alert("Error", "Could not reset password");
+  }
+
+  setLoadingReset(false);
+};
 
   // -------------------------------
   // DELETE USER
   // -------------------------------
-  const deleteUserAccount = async () => {
+ const deleteUserAccount = async () => {
   if (!selected) return;
 
   if (selected.balance > 0)
@@ -236,7 +281,7 @@ const UsersSection = () => {
   if (selected.joinedTournaments?.length)
     return Alert.alert("Blocked", "User is in tournaments");
 
-  setLoadingAction(true);
+  setLoadingDelete(true);
 
   try {
     const res = await fetch(`${BACKEND_URL}/admin/delete-user`, {
@@ -246,13 +291,14 @@ const UsersSection = () => {
     });
 
     if (!res.ok) throw new Error("Delete failed");
+    await logAdminAction("disable_user_account");
 
     setModalVisible(false);
   } catch {
     Alert.alert("Error", "Could not delete user");
   }
 
-  setLoadingAction(false);
+  setLoadingDelete(false);
 };
 
   // -------------------------------
@@ -309,6 +355,10 @@ const UsersSection = () => {
               <ScrollView showsVerticalScrollIndicator={false}>
                 <Text style={styles.modalTitle}>{selected.email}</Text>
 
+<Text style={{ color: "#00eaff", fontSize: 16, marginBottom: 10 }}>
+  Current Balance: ${selected.balance?.toFixed(2) ?? "0.00"}
+</Text>
+
                 {/* BALANCE EDIT */}
                 <Text style={styles.sectionTitle}>Balance</Text>
                 <View style={styles.row}>
@@ -344,14 +394,14 @@ const UsersSection = () => {
 
                <TouchableOpacity
   onPress={handleBalanceUpdate}
-  disabled={loadingAction}
+  disabled={loadingBalance}
   style={[
     styles.actionBtn,
-    loadingAction && { opacity: 0.6 },
+    loadingBalance && { opacity: 0.6 },
   ]}
 >
   <Text style={styles.btnText}>
-    {loadingAction
+    {loadingBalance
       ? "Processing..."
       : balanceMode === "add"
       ? "Add Funds"
@@ -363,15 +413,15 @@ const UsersSection = () => {
                 {/* FREEZE */}
                 <TouchableOpacity
   onPress={toggleFreeze}
-  disabled={loadingAction}
+  disabled={loadingFreeze}
   style={[
     styles.actionBtn,
     { backgroundColor: selected.frozen ? "#c62828" : "#0066cc" },
-    loadingAction && { opacity: 0.6 },
+    loadingFreeze && { opacity: 0.6 },
   ]}
 >
   <Text style={styles.btnText}>
-    {loadingAction
+    {loadingFreeze
       ? "Updating..."
       : selected.frozen
       ? "Unfreeze User"
@@ -383,15 +433,15 @@ const UsersSection = () => {
                 {/* RESET PASSWORD */}
                 <TouchableOpacity
   onPress={resetPassword}
-  disabled={loadingAction}
+  disabled={loadingReset}
   style={[
     styles.actionBtn,
     { backgroundColor: "#8800cc" },
-    loadingAction && { opacity: 0.6 },
+    loadingReset && { opacity: 0.6 },
   ]}
 >
   <Text style={styles.btnText}>
-    {loadingAction ? "Sending..." : "Reset Password"}
+    {loadingReset ? "Sending..." : "Reset Password"}
   </Text>
 </TouchableOpacity>
 
@@ -399,23 +449,29 @@ const UsersSection = () => {
                 {/* DELETE USER */}
                 <TouchableOpacity
   onPress={deleteUserAccount}
-  disabled={loadingAction}
+  disabled={loadingDelete}
   style={[
     styles.actionBtn,
     { backgroundColor: "#cc0000" },
-    loadingAction && { opacity: 0.6 },
+    loadingDelete && { opacity: 0.6 },
   ]}
 >
   <Text style={styles.btnText}>
-    {loadingAction ? "Deleting..." : "Disable Account"}
+    {loadingDelete ? "Deleting..." : "Disable Account"}
   </Text>
 </TouchableOpacity>
 
 
                 {/* CLOSE */}
                <TouchableOpacity
-  onPress={() => !loadingAction && setModalVisible(false)}
-  style={[styles.closeBtn, loadingAction && { opacity: 0.6 }]}
+  onPress={() =>
+  !loadingBalance &&
+  !loadingFreeze &&
+  !loadingReset &&
+  !loadingDelete &&
+  setModalVisible(false)
+}
+  style={[styles.closeBtn, (loadingBalance || loadingFreeze || loadingReset || loadingDelete) && { opacity: 0.6 }]}
                 >
 
                   <Text style={styles.closeText}>Close</Text>

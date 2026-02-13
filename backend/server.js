@@ -69,10 +69,15 @@ const authenticate = async (req, res, next) => {
     req.user = decodedToken; // attach decoded user info to request
 
     // 🔒 FREEZE CHECK (ADD HERE)
-    const userSnap = await db.collection("users").doc(decodedToken.uid).get();
-    if (userSnap.data()?.frozen) {
-      return res.status(403).json({ error: "Account frozen" });
-    }
+   const userSnap = await db.collection("users").doc(decodedToken.uid).get();
+
+if (!userSnap.exists) {
+  return res.status(403).json({ error: "User record not found" });
+}
+
+if (userSnap.data()?.frozen) {
+  return res.status(403).json({ error: "Account frozen" });
+}
 
 if (userSnap.data()?.deleted) {
   return res.status(403).json({ error: "Account deleted" });
@@ -84,7 +89,9 @@ if (userSnap.data()?.deleted) {
   }
 };
 const requireAdmin = (req, res, next) => {
+console.log("USER CLAIMS:", req.user);
   try {
+
     // ✅ Check custom claim from Firebase token
     if (!req.user.admin) {
       return res.status(403).json({ error: "Admin access denied" });
@@ -264,15 +271,22 @@ app.post("/support/send", authenticate, async (req, res) => {
     let threadRef;
 
     // 🧵 CREATE THREAD IF NONE
-    if (!threadId) {
-      threadRef = await db.collection("supportThreads").add({
-        userId,
-        status: "open",
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        lastMessage: message,
-        lastMessageAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
-    } else {
+   if (!threadId) {
+  // 📥 Get user profile for identification
+  const userSnap = await db.collection("users").doc(userId).get();
+  const userData = userSnap.data() || {};
+
+  threadRef = await db.collection("supportThreads").add({
+    userId,
+    userEmail: req.user.email || userData.email || "No Email",
+    username: userData.username || "Unknown User",
+
+    status: "open",
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    lastMessage: message,
+    lastMessageAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+} else {
       threadRef = db.collection("supportThreads").doc(threadId);
     }
 
@@ -544,6 +558,88 @@ app.post("/admin/send-notification", authenticate, requireAdmin, async (req, res
   } catch (err) {
     console.error("SEND NOTIFICATION ERROR:", err);
     res.status(500).json({ error: "Failed to send notification" });
+  }
+});
+app.post("/admin/add-funds", authenticate, requireAdmin, async (req, res) => {
+  try {
+    const { userId, amount, reason } = req.body;
+
+    if (!userId || !amount || Number(amount) <= 0) {
+      return res.status(400).json({ error: "Invalid request" });
+    }
+
+    const userRef = db.collection("users").doc(userId);
+    const logRef = db.collection("adminLogs").doc();
+
+    await db.runTransaction(async (t) => {
+      const userSnap = await t.get(userRef);
+      if (!userSnap.exists) throw new Error("User not found");
+
+      // 💰 Credit wallet
+      t.update(userRef, {
+        walletBalance: admin.firestore.FieldValue.increment(Number(amount)),
+        lastBalanceUpdate: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      // 🧾 Audit log (VERY IMPORTANT)
+      t.set(logRef, {
+        action: "ADD_FUNDS",
+        targetUserId: userId,
+        amount: Number(amount),
+        reason: reason || "Admin credit",
+        adminId: req.user.uid,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    });
+
+    res.json({ success: true, message: "Funds added successfully" });
+  } catch (err) {
+    console.error("ADD FUNDS ERROR:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+app.post("/admin/subtract-funds", authenticate, requireAdmin, async (req, res) => {
+  try {
+    const { userId, amount, reason } = req.body;
+
+    if (!userId || !amount || Number(amount) <= 0) {
+      return res.status(400).json({ error: "Invalid request" });
+    }
+
+    const userRef = db.collection("users").doc(userId);
+    const logRef = db.collection("adminLogs").doc();
+
+    await db.runTransaction(async (t) => {
+      const userSnap = await t.get(userRef);
+      if (!userSnap.exists) throw new Error("User not found");
+
+      const currentBalance = userSnap.data().walletBalance || 0;
+
+      if (currentBalance < amount) {
+        throw new Error("Insufficient user balance");
+      }
+
+      // 💸 Debit wallet
+      t.update(userRef, {
+        walletBalance: admin.firestore.FieldValue.increment(-Number(amount)),
+        lastBalanceUpdate: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      // 🧾 Audit log
+      t.set(logRef, {
+        action: "SUBTRACT_FUNDS",
+        targetUserId: userId,
+        amount: Number(amount),
+        reason: reason || "Admin debit",
+        adminId: req.user.uid,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    });
+
+    res.json({ success: true, message: "Funds subtracted successfully" });
+  } catch (err) {
+    console.error("SUBTRACT FUNDS ERROR:", err.message);
+    res.status(500).json({ error: err.message });
   }
 });
 // ---------------------------------------------------------------------
