@@ -6,6 +6,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import PasswordInput from "../components/PasswordInput";
 
+import { makeRedirectUri } from "expo-auth-session";
 import * as Google from "expo-auth-session/providers/google";
 import * as Localization from "expo-localization";
 import { useRouter } from "expo-router";
@@ -19,10 +20,13 @@ import {
   fetchSignInMethodsForEmail,
   GoogleAuthProvider,
   linkWithCredential,
-  PhoneAuthProvider,
+ 
   signInWithCredential,
-  signInWithEmailAndPassword
+  signInWithEmailAndPassword,
+   signInWithPhoneNumber
 } from "firebase/auth";
+import { FirebaseRecaptchaVerifierModal } from "expo-firebase-recaptcha";
+
 import { collection, doc, getDoc, getDocs, query, runTransaction, serverTimestamp, setDoc, where } from "firebase/firestore";
 import { useEffect, useRef, useState } from "react";
 
@@ -129,7 +133,9 @@ const generateUserId = async () => {
 };
 
 // ✅ Validate 5-digit numeric password
-const isValidPassword = (pwd: string) => /^\d{5}$/.test(pwd);
+// ✅ Firebase requires minimum 6 characters
+const isValidPassword = (pwd: string) => pwd.length >= 6;
+
 
 export default function Welcome() {
   const router = useRouter();
@@ -165,12 +171,22 @@ const [pendingGoogleUser, setPendingGoogleUser] = useState<any>(null);
 const { setActiveAccount, setProfile } = useApp();
 
 // 🔐 GOOGLE LOGIN SETUP (MOBILE / NATIVE)
-const [request, response, promptAsync] =
-  Google.useIdTokenAuthRequest({
-    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
-    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-  });
+// 🔐 GOOGLE LOGIN SETUP (WEB COMPATIBLE)
+const redirectUri = makeRedirectUri();
+
+console.log("REDIRECT URI:", redirectUri);
+
+
+
+const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
+  clientId: Platform.select({
+    android: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
+    ios: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+    web: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+  }),
+  redirectUri,  // <-- important for web to redirect back
+});
+
 
 
   const [showSignupEmail, setShowSignupEmail] = useState(false);
@@ -178,10 +194,14 @@ const [request, response, promptAsync] =
   const [showLogin, setShowLogin] = useState(false);
 const [inviteRef, setInviteRef] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [confirmationResult, setConfirmationResult] = useState<any>(null);  // ✅ add this
+
 
 const [verificationId, setVerificationId] = useState<string | null>(null);
 const [otp, setOtp] = useState("");
 const googleHandledRef = useRef(false);
+   // 🔑 WEB + MOBILE OTP
+  const recaptchaVerifier = useRef<FirebaseRecaptchaVerifierModal>(null);
 
 const COUNTRIES = [
   // 🇨🇲 Central & West Africa
@@ -231,7 +251,6 @@ const sendOTP = async () => {
   }
 
   const cleanedPhone = phone.replace(/\s+/g, "");
-
   const minLength = 7;
   const maxLength = 14;
 
@@ -243,19 +262,19 @@ const sendOTP = async () => {
   try {
     setLoading(true);
 
-    const provider = new PhoneAuthProvider(auth);
-    const fullPhoneNumber = `+${callingCode}${cleanedPhone}`;
-
-    console.log("Sending OTP to:", fullPhoneNumber);
-
- const id = await provider.verifyPhoneNumber(
-  fullPhoneNumber,
  
+const result = await signInWithPhoneNumber(
+  auth,
+  `+${callingCode}${cleanedPhone}`,
+  recaptchaVerifier.current!
 );
 
 
-    setVerificationId(id);
-    alert("OTP sent to your phone");
+setConfirmationResult(result);
+setVerificationId("sent");  // ✅ store the whole object
+alert("OTP sent to your phone");
+
+
   } catch (e) {
     console.error(e);
     alert((e as Error).message || "Failed to send OTP");
@@ -263,8 +282,6 @@ const sendOTP = async () => {
     setLoading(false);
   }
 };
-
-
 
 const verifyOTP = async () => {
   if (!verificationId || otp.length < 6) {
@@ -275,12 +292,12 @@ const verifyOTP = async () => {
   try {
     setLoading(true);
 
-    const credential = PhoneAuthProvider.credential(
-      verificationId,
-      otp
-    );
+    if (!confirmationResult || otp.length < 6) {
+      alert("Enter valid OTP");
+      return;
+    }
 
-    const userCred = await signInWithCredential(auth, credential);
+    const userCred = await confirmationResult.confirm(otp); // confirm OTP
 
     await createUserAccounts(
       userCred.user.uid,
@@ -291,12 +308,14 @@ const verifyOTP = async () => {
     await AsyncStorage.setItem("isLoggedIn", "true");
     router.replace("/tradinglayout");
 
-  } catch {
+  } catch (error) {
     alert("Invalid OTP");
+    console.error(error);
   } finally {
     setLoading(false);
   }
 };
+
 
 
 useEffect(() => {
@@ -395,7 +414,7 @@ useEffect(() => {
   const handleSignupEmail = async () => {
     try {
       if (!isValidPassword(password)) {
-  return alert("Password must be exactly 5 digits. Example: 12345");
+  return alert("Password must be at least 6 characters/digits. Example: 123456");
 }
 
 if (password !== confirmPassword) {
@@ -488,24 +507,27 @@ if (!resolvedEmail) {
     setLoading(false);
   }
 };
-
 const handleLinkPassword = async () => {
   if (!isValidPassword(linkPassword)) {
-  return alert("Password must be exactly 5 digits. Example: 12345");
-}
+    return alert("Password must be at least 6 characters. Example: 123456");
+  }
 
-if (linkPassword !== linkConfirmPassword) {
-  return alert("Passwords do not match");
-}
+  if (linkPassword !== linkConfirmPassword) {
+    return alert("Passwords do not match");
+  }
 
   try {
     setLoading(true);
 
-   if (!pendingGoogleUser) return alert("No Google user to link password to.");
-const credential = EmailAuthProvider.credential(
-  pendingGoogleUser.email,
-  linkPassword.trim()
-);
+    if (!pendingGoogleUser) {
+      return alert("No Google user to link password to.");
+    }
+
+    const credential = EmailAuthProvider.credential(
+      pendingGoogleUser.email,
+      linkPassword.trim()
+    );
+
     await linkWithCredential(pendingGoogleUser, credential);
 
     alert("Password set successfully 🎉");
@@ -522,6 +544,7 @@ const credential = EmailAuthProvider.credential(
     setLoading(false);
   }
 };
+
 
 
 
@@ -545,6 +568,12 @@ const credential = EmailAuthProvider.credential(
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.overlay}>
+        <FirebaseRecaptchaVerifierModal
+  ref={recaptchaVerifier}
+  firebaseConfig={auth.app.options}
+/>
+
+
           <Text style={styles.title}>Welcome to Forex Tournaments Arena</Text>
           {inviteRef && (
   <View style={{ marginBottom: 16 }}>
@@ -635,7 +664,7 @@ const credential = EmailAuthProvider.credential(
     styles.button,
     { backgroundColor: "#DB4437", opacity: accepted && !loading ? 1 : 0.4 },
   ]}
-  onPress={() => accepted && !loading && request && promptAsync()}
+onPress={() => accepted && !loading && request && promptAsync()}
   disabled={!accepted || loading || !request}
 >
   {!request ? (
@@ -699,13 +728,15 @@ const credential = EmailAuthProvider.credential(
      <PasswordInput
   value={linkPassword}
   onChangeText={setLinkPassword}
-  placeholder="Enter 5-digit PIN"
+ placeholder="Enter password (min 6 characters/digits)"
+
 />
 
 <PasswordInput
   value={linkConfirmPassword}
   onChangeText={setLinkConfirmPassword}
-  placeholder="Confirm PIN"
+ placeholder="Confirm PIN"
+
 />
      <TouchableOpacity
   style={[styles.button, { opacity: !loading ? 1 : 0.4 }]}
@@ -756,13 +787,15 @@ const credential = EmailAuthProvider.credential(
       <PasswordInput
   value={password}
   onChangeText={setPassword}
-  placeholder="Enter 5-digit PIN"
+  placeholder="Enter password (min 6 characters/digits)"
+
 />
 
 <PasswordInput
   value={confirmPassword}
   onChangeText={setConfirmPassword}
-  placeholder="Confirm PIN"
+ placeholder="Confirm password"
+
 />
 <TouchableOpacity
   style={[styles.button, { opacity: accepted && !loading ? 1 : 0.4 }]}

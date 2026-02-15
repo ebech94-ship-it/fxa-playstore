@@ -13,7 +13,7 @@ export default {
     icon: "./assets/images/icon.png",
     userInterfaceStyle: "automatic",
 
-    newArchEnabled: true,
+   
 
     ios: {
       supportsTablet: true,
@@ -31,6 +31,7 @@ export default {
     },
 
     web: {
+      bundler: "metro",
       output: "static",
       favicon: "./assets/images/favicon.png",
     },
@@ -51,7 +52,7 @@ export default {
   "expo-web-browser",
   "expo-localization",
   "expo-router",
-  "@react-native-firebase/app",
+ 
   [
     "expo-build-properties",
     {
