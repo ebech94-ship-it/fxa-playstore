@@ -31,7 +31,7 @@ async function testWalletUpdate() {
 
     // 3️⃣ Check updated wallet balance
     const userSnap = await db.collection("users").doc(userId).get();
-    console.log("💰 Updated wallet balance:", userSnap.data()?.walletBalance);
+    console.log("💰 Updated wallet balance:", userSnap.data()?.realBalance);
 
   } catch (err) {
     console.error("Error updating wallet:", err);

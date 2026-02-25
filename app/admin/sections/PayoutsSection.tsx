@@ -1,7 +1,4 @@
-import {
-  collection,
-   onSnapshot,
-} from "firebase/firestore";
+import { } from "firebase/firestore";
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -14,7 +11,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { db } from "../../../firebaseConfig";
+import { auth } from "../../../firebaseConfig";
 
 type PayoutStatus = "pending" | "paid" | "rejected";
 
@@ -68,17 +65,26 @@ export default function PayoutsSection() {
 
   // fetch payouts
   useEffect(() => {
-    const ref = collection(db, "payouts");
-    return onSnapshot(ref, (snap) => {
-      const arr: Payout[] = snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
-      arr.sort((a, b) => {
-        if (a.status === "pending" && b.status !== "pending") return -1;
-        if (a.status !== "pending" && b.status === "pending") return 1;
-        return (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0);
-      });
-      setPayouts(arr);
-    });
-  }, []);
+  const unsubscribe = auth.onAuthStateChanged(async (user) => {
+    if (user) {
+      try {
+        const token = await user.getIdToken();
+        const res = await fetch(
+          "https://forexapp2-backend.onrender.com/admin/transactions?type=withdrawal&status=pending",
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        const data = await res.json();
+        setPayouts(data);
+      } catch (err) {
+        console.error("Failed to fetch payouts:", err);
+      }
+    } else {
+      setPayouts([]);
+    }
+  });
+
+  return () => unsubscribe();
+}, []);
 
   const filtered =
     filter === "all" ? payouts : payouts.filter((p) => p.status === filter);
@@ -90,13 +96,21 @@ export default function PayoutsSection() {
   setBusy(true);
 
   try {
+    const user = auth.currentUser;
+    if (!user) throw new Error("Not authenticated");
+
+    const token = await user.getIdToken();
+
     const res = await fetch(
       "https://forexapp2-backend.onrender.com/admin/approve-payout",
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({
-          payoutId: selected.id,
+         transactionId: selected.id,
         }),
       }
     );
@@ -104,14 +118,17 @@ export default function PayoutsSection() {
     if (!res.ok) throw new Error("Payout approval failed");
 
     alert("Payout marked as paid");
+    setPayouts((prev) =>
+  prev.filter((p) => p.id !== selected.id)
+);
     setModalVisible(false);
+    setSelected(null);
   } catch (e: any) {
     alert(e.message || "Error approving payout");
   } finally {
     setBusy(false);
   }
 };
-
 
   // reject payout
  const rejectPayout = async () => {
@@ -120,30 +137,41 @@ export default function PayoutsSection() {
   setBusy(true);
 
   try {
+    const user = auth.currentUser;
+    if (!user) throw new Error("Not authenticated");
+
+    const token = await user.getIdToken();
+
     const res = await fetch(
       "https://forexapp2-backend.onrender.com/admin/reject-payout",
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({
-          payoutId: selected.id,
+         transactionId: selected.id,
           reason: rejectReason || "Rejected by admin",
         }),
       }
     );
 
     if (!res.ok) throw new Error("Rejection failed");
+    setPayouts((prev) =>
+  prev.filter((p) => p.id !== selected.id)
+);
 
     setRejectReason("");
     setReasonModal(false);
     setModalVisible(false);
+    setSelected(null);
   } catch (e: any) {
     alert(e.message || "Error rejecting payout");
   } finally {
     setBusy(false);
   }
 };
-
 
 
   return (
@@ -174,10 +202,11 @@ export default function PayoutsSection() {
   setSelected(p);
   setModalVisible(true);
 }}
-
-          >
+  >
             <Text style={styles.name}>{p.userName}</Text>
             <Text style={styles.amount}>Amount: {p.amount} FRS</Text>
+            <Text style={{ color: "#777", fontSize: 11 }}>
+              ID: {p.id}</Text>
             <Text style={[styles.status, styles[p.status]]}>
               {p.status.toUpperCase()}
             </Text>
@@ -193,7 +222,10 @@ export default function PayoutsSection() {
                 <Text style={styles.modalTitle}>Payout Details</Text>
                 <Text style={styles.modalText}>User: {selected.userName}</Text>
                 <Text style={styles.modalText}>Amount: {selected.amount} FRS</Text>
-
+<Text style={styles.modalText}> Method: {selected.method}</Text>
+<Text style={styles.modalText}>  Wallet: {selected.wallet}</Text>
+<Text style={styles.modalText}>  Date: {selected.createdAt
+    ? new Date(selected.createdAt).toLocaleString()  : "No date"}</Text>
                 <View style={styles.modalBtns}>
                   <TouchableOpacity
                     style={styles.approveBtn}

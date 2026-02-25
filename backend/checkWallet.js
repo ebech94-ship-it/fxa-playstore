@@ -11,7 +11,7 @@ if (!admin.apps.length) {
 async function main() {
   try {
     const userSnap = await db.collection("users").doc("Kts84GS92lfV8s6J2tESjBeecQL2").get();
-    console.log("Wallet balance:", userSnap.data()?.walletBalance);
+    console.log("Wallet balance:", userSnap.data()?.realBalance);
   } catch (err) {
     console.error("Error reading wallet:", err);
   }

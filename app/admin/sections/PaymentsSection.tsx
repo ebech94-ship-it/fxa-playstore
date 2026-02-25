@@ -1,11 +1,10 @@
 // PaymentsSection.tsx
-import {  collection,  onSnapshot, } from "firebase/firestore";
+//import {  collection,  onSnapshot, } from "firebase/firestore";
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   Animated,
-  Image,
   Modal,
   ScrollView,
   StyleSheet,
@@ -14,7 +13,8 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { db } from "../../../firebaseConfig";
+//import { db } from "../../../firebaseConfig";
+import { getAuth } from "firebase/auth";
 
 type PaymentDoc = {
   id?: string;
@@ -35,6 +35,8 @@ const PaymentsSection = () => {
   const [loading, setLoading] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
   const [rejectModal, setRejectModal] = useState(false);
+  
+const auth = getAuth();
 
   const glow = useRef(new Animated.Value(0)).current;
    // 🔁 Glow animation (runs once)
@@ -56,12 +58,27 @@ const PaymentsSection = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    const ref = collection(db, "pendingPayments");
-    return onSnapshot(ref, (snap) => {
-      setPayments(snap.docs.map((d) => ({ id: d.id, ...(d.data() as any) })));
-    });
-  }, []);
+useEffect(() => {
+  const unsubscribe = auth.onAuthStateChanged(async (user) => {
+    if (user) {
+      try {
+        const token = await user.getIdToken();
+        const res = await fetch(
+        "https://forexapp2-backend.onrender.com/admin/transactions?type=deposit&status=pending",
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        const data = await res.json();
+        setPayments(data);
+      } catch (err) {
+        console.error("Failed to fetch payments:", err);
+      }
+    } else {
+      setPayments([]);
+    }
+  });
+
+  return () => unsubscribe();
+}, [auth]); // ✅ add auth here
 
  const approve = async () => {
   if (!selected || loading) return;
@@ -74,21 +91,31 @@ const PaymentsSection = () => {
   setLoading(true);
 
   try {
+    const user = auth.currentUser;
+    if (!user) throw new Error("Not authenticated");
+
+    const token = await user.getIdToken();
+
     const res = await fetch(
       "https://forexapp2-backend.onrender.com/admin/approve-payment",
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          paymentId: selected.id,
-        }),
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ transactionId: selected.id }),
       }
     );
 
     if (!res.ok) throw new Error("Approval failed");
 
     Alert.alert("Success", "Payment approved");
+    setPayments((prev) =>
+  prev.filter((p) => p.id !== selected.id)
+);
     setModalVisible(false);
+    setSelected(null);
   } catch (e: any) {
     Alert.alert("Error", e.message || "Approval error");
   } finally {
@@ -96,33 +123,43 @@ const PaymentsSection = () => {
   }
 };
 
-
- const reject = async () => {
+const reject = async () => {
   if (!selected || loading) return;
 
   setLoading(true);
 
   try {
+    const user = auth.currentUser;
+    if (!user) throw new Error("Not authenticated");
+
+    const token = await user.getIdToken();
+
     const res = await fetch(
       "https://forexapp2-backend.onrender.com/admin/reject-payment",
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({
-          paymentId: selected.id,
+          transactionId: selected.id,
           reason: rejectReason || "Rejected by admin",
         }),
       }
     );
 
     if (!res.ok) throw new Error("Reject failed");
-
+setPayments((prev) =>
+  prev.filter((p) => p.id !== selected?.id)
+);
     setRejectModal(false);
     setModalVisible(false);
+    setSelected(null);
     setRejectReason("");
   } catch (e: any) {
-  Alert.alert("Error", e?.message || "Rejection failed");
-}finally {
+    Alert.alert("Error", e?.message || "Rejection failed");
+  } finally {
     setLoading(false);
   }
 };
@@ -160,32 +197,31 @@ const PaymentsSection = () => {
         }}
       >
         <Text style={styles.username}>{p.username}</Text>
-        <Text style={styles.amount}>${p.amount}</Text>
+<Text style={styles.amount}>${p.amount}</Text>
+<Text style={{ color: "#aaa", fontSize: 12 }}>
+  {p.method || "Method"} • ID: {p.id}
+</Text>
       </TouchableOpacity>
     ))
   )}
 </ScrollView>
-
-
       <Modal visible={modalVisible} transparent>
         <View style={styles.overlay}>
           <View style={styles.box}>
             <Text style={styles.title}>Payment Details</Text>
             <Text style={styles.text}>User: {selected?.username}</Text>
             <Text style={styles.text}>Amount: ${selected?.amount}</Text>
+<Text style={styles.text}>  Method: {selected?.method || "N/A"}</Text>
+   <Text style={styles.text}>  Date: {selected?.date
+    ? new Date(selected.date).toLocaleString()  : "No date"}</Text>
 <Text style={[styles.text, { color: "#7cf" }]}> Type: Deposit</Text>
-            {selected?.screenshot && (
-              <Image source={{ uri: selected.screenshot }} style={styles.image} />
-            )}
-
             <TouchableOpacity
   style={styles.approve}
   onPress={approve}
-  disabled={loading || !selected?.screenshot}
+  disabled={loading}
 >
-
-
-              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btn}>Approve</Text>}
+ {loading ? <ActivityIndicator color="#fff" /> : <Text
+  style={styles.btn}>Approve</Text>}
             </TouchableOpacity>
 
             <TouchableOpacity

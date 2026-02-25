@@ -19,9 +19,10 @@ import PayoutsSection from "./sections/PayoutsSection";
 import SettingsSection from "./sections/SettingsSection";
 import TournamentsSection from "./sections/TournamentsSection";
 import UsersSection from "./sections/UsersSection";
+import TreasurySection from "./sections/TreasurySection";
 
 const AdminDashboard = () => {
-  const [active, setActive] = useState("Tournaments");
+  const [active, setActive] = useState("Treasury");
   const { width: screenWidth } = useWindowDimensions();
 const [exiting, setExiting] = useState(false);
 
@@ -99,6 +100,8 @@ const [exiting, setExiting] = useState(false);
         return <PaymentsSection />;
       case "Payouts":
         return <PayoutsSection />;
+        case "Treasury":
+  return <TreasurySection />;
       case "Notifications":
         return <NotificationsSection />;
       case "Settings":
@@ -118,6 +121,7 @@ const [exiting, setExiting] = useState(false);
             "Users",
             "Payments",
             "Payouts",
+            "Treasury", 
             "Notifications",
             "Settings",
           ].map((sec) => (

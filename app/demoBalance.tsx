@@ -1,22 +1,34 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-const DEMO_BALANCE_KEY = "DEMO_BALANCE_V1";
+export const loadDemoBalance = async (
+  uid: string
+): Promise<number | null> => {
+  if (!uid) return null;
 
-export const loadDemoBalance = async (): Promise<number | null> => {
   try {
-    const v = await AsyncStorage.getItem(DEMO_BALANCE_KEY);
-    return v ? Number(v) : null;
+    const value = await AsyncStorage.getItem(`demoBalance_${uid}`);
+    return value ? Number(value) : null;
   } catch {
     return null;
   }
 };
 
-export const saveDemoBalance = async (balance: number) => {
+export const saveDemoBalance = async (
+  uid: string,
+  balance: number
+): Promise<void> => {
+  if (!uid) return;
+
   try {
-    await AsyncStorage.setItem(DEMO_BALANCE_KEY, String(balance));
+    await AsyncStorage.setItem(`demoBalance_${uid}`, String(balance));
   } catch {}
 };
 
-export const resetDemoBalance = async (amount = 1000) => {
-  await saveDemoBalance(amount);
+export const resetDemoBalance = async (
+  uid: string,
+  amount = 1000
+): Promise<void> => {
+  if (!uid) return;
+
+  await saveDemoBalance(uid, amount);
 };

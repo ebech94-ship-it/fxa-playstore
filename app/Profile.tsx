@@ -119,27 +119,23 @@ const formHydratedRef = useRef(false);
 
 const { profile: appProfile,  setProfile, setProfileSubmitted, profile, profileLoaded, balances } = useApp();
 
-
 useEffect(() => {
-  if (!appProfile) return;
   if (formHydratedRef.current) return; // 🔒 only once
 
   setForm({
-    displayName: appProfile.displayName ?? "",
-    username: appProfile.username ?? "",
-    email: "",
-    phone: appProfile.phone ?? "",
-    country: appProfile.country ?? "",
-    dateOfBirth: appProfile.dateOfBirth ?? "",
-    avatarUrl: appProfile.avatarUrl ?? "",
+    displayName: user?.displayName ?? appProfile?.displayName ?? "", // ✅ signup name first
+    username: "", // keep empty for user to fill
+    email: "",    // email remains readonly, filled separately
+    phone: appProfile?.phone ?? "",
+    country: appProfile?.country ?? "",
+    dateOfBirth: appProfile?.dateOfBirth ?? "",
+    avatarUrl: appProfile?.avatarUrl ?? "",
     useHeikinAshi,
     compressWicks,
   });
 
   formHydratedRef.current = true;
-}, [appProfile, useHeikinAshi, compressWicks]);
-
-
+}, [user, appProfile, useHeikinAshi, compressWicks]);
 
 
 useEffect(() => {
@@ -666,7 +662,7 @@ if (!profileLoaded) {
 
 <TextInput
   style={styles.input}
-  placeholder="Username"
+  placeholder="Username e.g: King, Author"
   placeholderTextColor="#ccc"
   value={form.username}
   onChangeText={(t) =>

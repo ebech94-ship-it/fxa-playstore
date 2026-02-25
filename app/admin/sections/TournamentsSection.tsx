@@ -79,9 +79,9 @@ const computeStatus = (
 const TournamentsSection = () => {
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [search, setSearch] = useState("");
-{/*const [payouts, setPayouts] = useState<{ rank: number; amount: number }[]>([
+const [payouts, setPayouts] = useState<{ rank: number; amount: number }[]>([
   { rank: 1, amount: 0 },
-]);*/}
+]);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [leaderboardVisible, setLeaderboardVisible] = useState(false);
@@ -98,13 +98,14 @@ const [loadingPlayers, setLoadingPlayers] = useState(true);
   // FORM FIELDS
   const [formName, setFormName] = useState("");
   const [formSB, setFormSB] = useState("");
-  // const [formPrize, setFormPrize] = useState("");
+ const [formPrize, setFormPrize] = useState("");
   const [formEntryFee, setFormEntryFee] = useState(""); // new
 const [formRebuyFee, setFormRebuyFee] = useState("");
 
 const [saving, setSaving] = useState(false);
 
-const [formStartDelay, setFormStartDelay] = useState("0");
+const [startMode, setStartMode] = useState<"now" | "delay">("now");
+const [delayMinutes, setDelayMinutes] = useState("0");
   const [formDuration, setFormDuration] = useState("");
   const [formDesc, setFormDesc] = useState("");
  
@@ -322,8 +323,8 @@ useEffect(() => {
 
       setFormName(t.name);
       setFormSB(String(t.startingBalance ?? 0));
-      // setFormPrize(String(t.prizePool ?? 0));
-     // setPayouts(t.payoutStructure || [{ rank: 1, amount: 0 }]);
+       setFormPrize(String(t.prizePool ?? 0));
+     setPayouts(t.payoutStructure || [{ rank: 1, amount: 0 }]);
      setFormEntryFee(String(t.entryFee ?? 0));
 
      
@@ -423,7 +424,7 @@ if (isNaN(prizeNum) || prizeNum < 0)
     );
 
   // ✅ Validate payout distribution
- {/*
+ 
 const prizeNum = Number(formPrize);
 
 const payoutTotal = payouts.reduce(
@@ -437,37 +438,41 @@ if (Math.abs(payoutTotal - prizeNum) > 0.0001) {
     `Total payouts (${payoutTotal}) must equal prize pool (${prizeNum}).`
   );
 }
-*/}
+
 
   // Convert duration into timestamps
   // Manual start delay in minutes (admin input)
 // Empty or invalid → defaults to 0 (start immediately)
+// Compute start time
+let startTime: number;
 
-const delayMinutes = Number(formStartDelay);
-const now = Date.now();
-const startTime = now + delayMinutes * 60 * 1000; // convert minutes to milliseconds
-const endTime = startTime + durationNum * 60 * 1000; // duration in ms
+if (startMode === "now") {
+  startTime = Date.now();
+} else {
+  const delay = Number(delayMinutes);
 
-if (isNaN(delayMinutes) || delayMinutes < 0)
-  return fail(
-    "Invalid Start Delay",
-    "Start delay cannot be negative"
-  );
+  if (isNaN(delay) || delay < 0) {
+    return fail("Invalid Delay", "Delay must be 0 or a positive number");
+  }
+
+  startTime = Date.now() + delay * 60 * 1000;
+}
+
+const endTime = startTime + durationNum * 60 * 1000;
+
 
   // Unified tournament data
   const data = {
     name: formName.trim(),
     description: formDesc || "",
     startingBalance: sbNum,
- /*
-prizePool: prizeNum,
-*/
-    // payoutStructure: payouts,
+ prizePool: prizeNum,
+payoutStructure: payouts,
     entryFee: entryFeeNum,
     rebuyFee:formRebuyFee.trim() === ""? entryFeeNum
     : Number(formRebuyFee),
     durationMinutes: durationNum,
-    startDelayMinutes: delayMinutes,
+    
     startTime,   // ✅ add
   endTime,     // ✅ add
   status: computeStatus(startTime, endTime),  // ✅ compute now
@@ -680,18 +685,19 @@ setSaving(false);
 
      {/* CREATE / EDIT MODAL */}
 <Modal visible={modalVisible} transparent animationType="slide">
-  <View style={styles.modalWrap}>
-
-    <View style={styles.modalBox}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={10}
+  <KeyboardAvoidingView
+    style={{ flex: 1 }}
+    behavior={Platform.OS === "ios" ? "padding" : "height"}
+    keyboardVerticalOffset={Platform.OS === "ios" ? 40 : 0}
+  >
+    <View style={styles.modalWrap}>
+      <ScrollView
+        contentContainerStyle={{ flexGrow: 1, paddingBottom: 30 }}
+        keyboardShouldPersistTaps="handled"
+       showsVerticalScrollIndicator={true}      // ✅ make scrollbar visible
+  indicatorStyle="white"   
       >
-        <ScrollView 
-          showsVerticalScrollIndicator={false}
-          keyboardShouldPersistTaps="handled"
-          contentContainerStyle={{ paddingBottom: 30 }}
-        >
+        <View style={styles.modalBox}>
 
           <Text style={styles.modalHeader}>
             {isEditing ? "Edit Tournament" : "Create Tournament"}
@@ -713,7 +719,6 @@ setSaving(false);
             value={formSB}
             onChangeText={setFormSB}
           />
-{/*
 <TextInput
   placeholder="Prize Pool"
   placeholderTextColor="#666"
@@ -722,8 +727,8 @@ setSaving(false);
   value={formPrize}
   onChangeText={setFormPrize}
 />
-*/}
-{/*
+
+
 <Text style={styles.formLabel}>Prize Distribution</Text>
 
 {payouts.map((p, i) => (
@@ -779,7 +784,7 @@ setSaving(false);
     + Add Winner
   </Text>
 </TouchableOpacity>
-*/}
+
           <TextInput
             placeholder="Entry Fee"
             placeholderTextColor="#666"
@@ -806,12 +811,40 @@ setSaving(false);
             value={formDuration}
             onChangeText={setFormDuration}
           />
-          <TextInput
-  placeholder="Start after (minutes)"
-  keyboardType="numeric"
-  value={formStartDelay}
-  onChangeText={setFormStartDelay}
-          />
+          <Text style={styles.formLabel}>Start Time</Text>
+
+<View style={{ flexDirection: "row", gap: 10, marginBottom: 10 }}>
+  <TouchableOpacity
+    style={[
+      styles.modeButton,
+      startMode === "now" && styles.modeButtonActive,
+    ]}
+    onPress={() => setStartMode("now")}
+  >
+    <Text style={styles.modeText}>Start Now</Text>
+  </TouchableOpacity>
+
+  <TouchableOpacity
+    style={[
+      styles.modeButton,
+      startMode === "delay" && styles.modeButtonActive,
+    ]}
+    onPress={() => setStartMode("delay")}
+  >
+    <Text style={styles.modeText}>Start After</Text>
+  </TouchableOpacity>
+</View>
+
+{startMode === "delay" && (
+  <TextInput
+    placeholder="Delay in minutes (e.g. 10)"
+    placeholderTextColor="#666"
+    style={styles.input}
+    keyboardType="numeric"
+    value={delayMinutes}
+    onChangeText={setDelayMinutes}
+  />
+)}
 
           {/* Tournament Status */}
          <Text style={{ color: "#888", marginBottom: 12 }}>
@@ -863,11 +896,10 @@ setSaving(false);
             <Text style={styles.cancelText}>Cancel</Text>
           </TouchableOpacity>
 
-        </ScrollView>
-      </KeyboardAvoidingView>
+        </View>
+      </ScrollView>
     </View>
-
-  </View>
+  </KeyboardAvoidingView>
 </Modal>
 
       {/* LEADERBOARD */}
@@ -881,13 +913,25 @@ setSaving(false);
                 <Text style={styles.noResults}>Loading...</Text>
               ) : players.length > 0 ? (
                 players.map((p, i) => (
-                  <View key={p.id} style={styles.leaderCard}>
-                    <Text style={styles.rank}>{i + 1}</Text>
+                 <View key={p.id} style={styles.leaderCard}>
+  <Text style={styles.rank}>{i + 1}</Text>
 
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.pName}>{p.username}</Text>
-                      <Text style={styles.pBalance}>{getRankName(i + 1)}</Text>
-                    </View>
+  <View style={{ flex: 1 }}>
+    <Text style={styles.pName}>{p.username}</Text>
+    <Text style={styles.pBalance}>{getRankName(i + 1)}</Text>
+  </View>
+
+  <View style={{ alignItems: "flex-end" }}>
+    <Text style={{ color: "#00FF99", fontWeight: "bold" }}>
+      {(() => {
+        const payout =
+          selectedTournament?.payoutStructure?.find(
+            (r) => r.rank === i + 1
+          );
+        return payout ? `💰 ${payout.amount}` : "-";
+      })()}
+    </Text>
+  </View>
                   </View>
                 ))
               ) : (
@@ -911,14 +955,16 @@ export default TournamentsSection;
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#000", padding: 15 },
+  modeButton: { flex: 1, backgroundColor: "rgba(34, 34, 34, 1)", paddingVertical: 10,
+  borderRadius: 10, alignItems: "center",},
 
-  headerCard: {
-    backgroundColor: "#111",
-    padding: 18,
-    borderRadius: 12,
-    marginBottom: 20,
-    borderWidth: 1,
-  },
+modeButtonActive: {  backgroundColor: "#6A00FF",},
+
+modeText: {  color: "#fff",  fontWeight: "600",
+},
+
+  headerCard: { backgroundColor: "#111", padding: 18, borderRadius: 12,
+    marginBottom: 20, borderWidth: 1, },
   headerText: { color: "#fff", fontSize: 24, fontWeight: "bold", textAlign: "center" },
   topRow: { flexDirection: "row", marginBottom: 15, gap: 10 },
   searchInput: { flex: 1, backgroundColor: "#111", borderRadius: 10, paddingHorizontal: 12, color: "#fff" },
@@ -959,7 +1005,9 @@ modalBox: {
   borderRadius: 15,
   borderColor: "#333",
   borderWidth: 1,
-  height: "85%",        // ✅ FIX
+  // remove fixed height
+  // height: "85%",
+  minHeight: 300, // optional, just to make it look okay initially
 },
 
 

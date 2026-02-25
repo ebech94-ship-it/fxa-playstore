@@ -55,6 +55,7 @@ type Tournament = {
   rebuyFee?: number;
   prizePool?: number;
   prize?: number;
+   payoutStructure?: { rank: number; amount: number }[];
   participantsList?: any[];
   [key: string]: any;
 };
@@ -91,7 +92,7 @@ function getTierForRank(rank: number) {
   const tier = RANK_TIERS.find((t) => rank <= t.max);
   return tier ? tier.name : "💪 Novice"; // fallback
 }
-/*
+
 const getPrizeForRank = (
   rank: number,
   tournament: Tournament | null
@@ -99,12 +100,13 @@ const getPrizeForRank = (
   if (!tournament?.payoutStructure) return null;
 
   const entry = tournament.payoutStructure.find(
-    (p: any) => p.rank === rank
+   (p: any) => Number(p.rank) === Number(rank)
+
   );
 
   return entry ? Number(entry.amount) : null;
 };
-*/
+
 
 const NameWithFlag = ({
   username,
@@ -346,15 +348,15 @@ useEffect(() => {
 
 
   // ---------- Helper: read user's wallet balance ----------
-  const getUserWalletBalance = async (uid: string) => {
+  const getUserrealBalance = async (uid: string) => {
     try {
       const userRef = doc(db, "users", uid);
       const snap = await getDoc(userRef);
       if (!snap.exists()) return 0;
       const data = snap.data() as any;
-      return typeof data.walletBalance === "number" ? data.walletBalance : Number(data.walletBalance || 0);
+      return typeof data.realBalance === "number" ? data.realBalance : Number(data.realBalance || 0);
     } catch (err) {
-      console.error("getUserWalletBalance error:", err);
+      console.error("getUserrealBalanceerror:", err);
       return 0;
     }
   };
@@ -426,14 +428,14 @@ const handleRegister = async (tournamentId: string) => {
       const username = userSnap.data()?.username ?? "Unknown";
       const countryCode = userSnap.data()?.countryCode ?? null;
 
-      const rawWallet = userSnap.data()?.walletBalance;
-      const walletBalance = Number(rawWallet ?? 0);
+      const rawWallet = userSnap.data()?.realBalance;
+      const realBalance = Number(rawWallet ?? 0);
   
-      if (isNaN(walletBalance)) {
+      if (isNaN(realBalance)) {
         throw new Error("INVALID_WALLET");
       }
 
-      if (entryFee > 0 && walletBalance < entryFee) {
+      if (entryFee > 0 && realBalance < entryFee) {
         throw new Error("INSUFFICIENT_FUNDS");
       }
 
@@ -459,7 +461,7 @@ const handleRegister = async (tournamentId: string) => {
 transaction.set(
   userDocRef,
   {
-    walletBalance: entryFee > 0 ? walletBalance - entryFee : walletBalance,
+    realBalance: entryFee > 0 ? realBalance - entryFee : realBalance,
     accounts: {
       tournaments: {
         ...prevTournaments,
@@ -554,7 +556,7 @@ const handleRebuy = async (tournamentId: string) => {
     }
 
     // check wallet
-    const wallet = await getUserWalletBalance(currentUser.uid);
+    const wallet = await getUserrealBalance(currentUser.uid);
    if (wallet < rebuyCost) {
   if (!rebuyAlertShown.current[tournamentId]) {
     Alert.alert("Insufficient Funds", `Wallet: ${wallet} — Required: ${rebuyCost}`);
@@ -586,7 +588,7 @@ const handleRebuy = async (tournamentId: string) => {
 
     // ✅ SUCCESS
     Alert.alert("Rebuy Successful", "You have re-entered the tournament!");
-
+rebuyAlertShown.current[tournamentId] = false; // reset after successful rebuy
     // Firestore listeners will auto-update balance & rebuys
   } catch (error) {
     console.error("REBUY ERROR:", error);
@@ -651,15 +653,13 @@ const formatFullDate = (ms: number) => {
   const minutes = String(date.getMinutes()).padStart(2, "0");
 
   return `${ordinal} ${month} ${year}, ${hours}:${minutes}`;
-};
-  // Tournament card
- const TournamentCard = ({ item }: { item: Tournament }) => {
-  const status = getTournamentStatus(
-  item.startTime,
-  item.endTime,
-  now
-);
 
+}; // Tournament card
+ const TournamentCard = ({ item }: { item: Tournament }) => {
+if (!item.startTime || !item.endTime) return null;
+
+const status = getTournamentStatus(item.startTime, item.endTime, now);
+ 
   const duration = item.endTime - item.startTime;
   
 const progress =
@@ -681,10 +681,11 @@ const initialBalance = tAccount?.initialBalance ?? item.startingBalance ?? 1000;
 // 2. tournament ongoing
 // 3. current balance <= 50% of initial
 // ✅ no external map required, cleaner logic
+
 const allowRebuy =
   !!tAccount &&
-  tAccount.joined &&
-  tAccount.status === "ongoing" &&
+  !!joinedMap[item.id] &&
+  status === "ongoing" &&
   currentBalance < initialBalance / 2;
   // Step 5: Active tournament highlight
   const isActiveTournament =
@@ -731,7 +732,7 @@ const allowRebuy =
 
       {/* PRIZE + ENTRY */}
       <View style={styles.cardPrizeRow}>
-         {/* <Text style={styles.cardPrizeText}>🏆 Prize Pool: {item.prizePool} $</Text> */}
+     <Text style={styles.cardPrizeText}>  🏆 Prize Pool: {item.prizePool ?? 0} $</Text>
           <Text style={styles.cardPrizeText}>🏆🏅 Top Ranked Winners:{item.payoutStructure?.length ?? 0}</Text>
             <Text style={styles.cardFeeText}>🎟 Entry Fee: {item.entryFee} $</Text>
         <Text style={styles.cardFeeText}>♻️ Rebuy: {item.rebuyFee ?? item.entryFee} $</Text>
@@ -820,41 +821,25 @@ const allowRebuy =
     if (!currentUser) return null;
     const idx = list.findIndex((p) => p.id === currentUser.uid);
     if (idx === -1) return null;
-    const me = list[idx];
+ 
     return (
   <View style={styles.pinnedRow}>
     {/* "You" label */}
-    <Text style={[styles.tableColSmall, styles.pinnedCol]}>
-      You
-    </Text>
-
-    {/* Name + Flag column */}
-    <View style={styles.tableCol}>
-      <NameWithFlag
-        username={me.username || "You"}
-        countryCode={me.countryCode}
-      />
-    </View>
-
-    {/* Balance */}
-    <Text style={[styles.tableCol, styles.balanceLightBlue, styles.pinnedCol]}>
-      {me.balance ?? 0}T
-    </Text>
-
-    {/* Prize */}
+{/* Tier */}
 <Text style={[styles.tableCol, styles.priceGreen, styles.pinnedCol]}>
   {(() => {
-    if (!selectedTournament) return "-";
-
     const rank = list.findIndex((p) => p.id === currentUser?.uid) + 1;
+    return getTierForRank(rank);
+  })()}
+</Text>
 
-    // Old prize logic commented out
-    // const prize = getPrizeForRank(rank, selectedTournament);
-    // return prize ? `$${prize}` : "-";
-
-    // New logic: show tier instead of prize
-    const tier = getTierForRank(rank);
-    return tier;
+{/* Cash */}
+<Text style={[styles.tableCol, { color: "#22c55e", fontWeight: "900" }]}>
+  {(() => {
+    if (!selectedTournament) return "-";
+    const rank = list.findIndex((p) => p.id === currentUser?.uid) + 1;
+    const prize = getPrizeForRank(rank, selectedTournament);
+    return prize ? `${prize} $` : "-";
   })()}
 </Text>
   </View>
@@ -871,8 +856,8 @@ const allowRebuy =
           <Text style={[styles.tableColSmall, styles.headerText]}>#</Text>
           <Text style={[styles.tableCol, styles.headerText]}>Participant</Text>
           <Text style={[styles.tableCol, styles.headerText]}>Balance</Text>
-         {/* <Text style={[styles.tableCol, styles.headerText]}>Prize</Text>*/}
-                   <Text style={[styles.tableCol, styles.headerText]}>Tier</Text>
+<Text style={[styles.tableCol, styles.headerText]}>Tier</Text>
+<Text style={[styles.tableCol, styles.headerText]}>Prize</Text>
         </View>
         {list.map((row, i) => (
           <View
@@ -892,14 +877,17 @@ const allowRebuy =
 
             <Text style={[styles.tableCol, styles.balanceLightBlue]}>{row.balance ?? 0}T</Text>
             
-            <Text style={[styles.tableCol, styles.priceGreen]}>
+           {/* Tier */}
+<Text style={[styles.tableCol, styles.priceGreen]}>
+  {getTierForRank(i + 1)}
+</Text>
+
+{/* Cash Reward */}
+<Text style={[styles.tableCol, { color: "#22c55e", fontWeight: "800" }]}>
   {(() => {
     if (!selectedTournament) return "-";
-
-   {/* const prize = getPrizeForRank(i + 1, selectedTournament);
-    return prize ? `$${prize}` : "-";*/}
-     const rank = i + 1;
-    return getTierForRank(rank);
+    const prize = getPrizeForRank(i + 1, selectedTournament);
+    return prize ? `${prize} $` : "-";
   })()}
 </Text>
 
@@ -913,13 +901,24 @@ const allowRebuy =
     <View style={styles.container}>
       <Text style={styles.pageTitle}>💹 Forex Tournaments</Text>
 
-      <FlatList
-        data={tournaments}
-        renderItem={({ item }) => <TournamentCard item={item} />}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={{ paddingBottom: 20 }}
-        showsVerticalScrollIndicator={false}
-      />
+    <FlatList
+  data={tournaments}
+  renderItem={({ item }) => <TournamentCard item={item} />}
+  keyExtractor={(item) => item.id}
+  contentContainerStyle={{ paddingBottom: 20 }}
+  showsVerticalScrollIndicator={false}
+  ListEmptyComponent={
+    <Text
+      style={{
+        color: "#9ca3af",
+        textAlign: "center",
+        marginTop: 40,
+      }}
+    >
+      No tournaments available yet.
+    </Text>
+  }
+/>
       {/* admin button */}
 {adminLoaded && isAdmin && (
   <View style={styles.adminSection}>
@@ -980,14 +979,11 @@ const allowRebuy =
               <View>
                 <Text style={styles.modalTitle}>
   {selectedTournament.title || selectedTournament.name || "Tournament"} </Text>
-                {/*<View style={styles.modalMetaRow}>
-                  <Text style={styles.modalPrize}>💰 {selectedTournament.prizePool}</Text>
-                  <Text style={styles.modalInfo}>⏰ {formatTime(selectedTournament.endTime - now)}</Text>
-                </View>*/}
-                <View style={styles.modalMetaRow}>
+                           
+                                <View style={styles.modalMetaRow}>
   <Text style={styles.modalPrize}>
-    🏆 {selectedTournament.payoutStructure?.length ?? 0} Ranked Positions
-  </Text>
+  🏆 Prize Pool: {selectedTournament.prizePool ?? 0} $
+</Text>
   <Text style={styles.modalInfo}>
     ⏰ {formatTime(selectedTournament.endTime - now)}
   </Text>
@@ -1018,7 +1014,7 @@ const allowRebuy =
                   </TouchableOpacity>
                 </View>
 
-                <ScrollView style={{ marginTop: 8 }}>
+              <ScrollView  showsVerticalScrollIndicator={false}>
                   {viewTab === "info" ? (
                     <View>
                       <Text style={styles.sectionTitle}>📖 Information</Text>
@@ -1042,20 +1038,50 @@ const allowRebuy =
   <View>
     {/*<Text style={styles.sectionTitle}>🏆 Prize Distribution</Text>*/}
 <Text style={styles.sectionTitle}>🏆 RANKINGS </Text>
+<View style={{
+  flexDirection: "row",
+  justifyContent: "space-between",
+  marginTop: 8,
+  borderBottomWidth: 1,
+  borderBottomColor: "#2b2b3a",
+  paddingBottom: 6
+}}>
+  <Text style={{ color: "#94a3b8", fontWeight: "900", flex: 1 }}>
+    Position
+  </Text>
+  <Text style={{ color: "#94a3b8", fontWeight: "900", flex: 1, textAlign: "center" }}>
+    Tier
+  </Text>
+  <Text style={{ color: "#94a3b8", fontWeight: "900", flex: 1, textAlign: "right" }}>
+    Prize
+  </Text>
+</View>
+
     {selectedTournament.payoutStructure.map((p: any) => (
       <View
-        key={p.rank}
-        style={{ flexDirection: "row", justifyContent: "space-between", marginTop: 6 }}
-      >
-        <Text style={{ color: "#cbd5e1" }}>
-          {p.rank === 1 ? "🥇" : p.rank === 2 ? "🥈" : p.rank === 3 ? "🥉" : `#${p.rank}`}
-          {" "}Place
-        </Text>
-        <Text style={{ color: "#86efac", fontWeight: "800" }}>
-         {getTierForRank(p.rank)}
-          {/*${p.amount}*/}
-        </Text>
-      </View>
+  key={p.rank}
+  style={{
+    flexDirection: "row",
+    marginTop: 8,
+    alignItems: "center"
+  }}
+>
+  <Text style={{ color: "#cbd5e1", flex: 1 }}>
+    {p.rank === 1 ? "🥇" :
+     p.rank === 2 ? "🥈" :
+     p.rank === 3 ? "🥉" :
+     `#${p.rank}`}
+  </Text>
+
+  <Text style={{ color: "#facc15", fontWeight: "800", flex: 1, textAlign: "center" }}>
+    {getTierForRank(p.rank)}
+  </Text>
+
+  <Text style={{ color: "#22c55e", fontWeight: "900", flex: 1, textAlign: "right" }}>
+    {p.amount} $
+  </Text>
+</View>
+        
     ))}
   </View>
 ) : null}
@@ -1128,7 +1154,7 @@ disabledBtn: { opacity: 0.45 },
   pinnedRow: { backgroundColor: "rgba(34,211,238,0.06)", padding: 10, borderRadius: 10, marginBottom: 8, flexDirection: "row", alignItems: "center" },
   pinnedCol: { color: "#fff", fontWeight: "900" },
   currentRowHighlight: { backgroundColor: "rgba(34,197,94,0.06)" },
-  balanceLightBlue: { color: "#1806b6ff", fontWeight: "700" }, priceGreen: { color: "#facc15", fontWeight: "700" },
+  balanceLightBlue: { color: "#38bdf8" , fontWeight: "700" }, priceGreen: { color: "#facc15", fontWeight: "700" },
 
   headerText: { color: "#cbd5e1", fontWeight: "900" },
   adminSection: { marginTop: 10, alignItems: "center", justifyContent: "center",  },

@@ -14,6 +14,7 @@ import {
   Animated, Dimensions, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
 } from "react-native";
 
+
 import AboutScreen from "./About";
 import AccountSwitcher from "./AccountSwitcher";
 import AlertScreen from "./Alert";
@@ -24,13 +25,14 @@ import LeaderboardBar from "./LeaderboardBar";
 import ProfileScreen from "./Profile";
 import TournamentScreen from "./Tournament";
 import TradeSummaryBar from "./TradeSummaryBar";
-import { loadDemoBalance, saveDemoBalance } from "./demoBalance";
 
 
 import { getAuth } from "firebase/auth";
 import {
-  doc, increment, onSnapshot, runTransaction,
-  serverTimestamp, setDoc, updateDoc,
+  doc,
+
+  increment, onSnapshot, runTransaction,
+  serverTimestamp, setDoc, updateDoc
 } from "firebase/firestore";
 import { db } from "../firebaseConfig";
 
@@ -80,7 +82,7 @@ const updateAccountBalance = async (
     const userRef = doc(db, "users", userId);
 
    await updateDoc(userRef, {
-  walletBalance: increment(delta),
+  realBalance: increment(delta),
 });
   } catch (e) {
     console.error("❌ Failed to update account balance:", e);
@@ -126,16 +128,25 @@ export default function TradingLayout() {
   const [expiration, setExpiration] = useState<string>("15s");
   const [profitPercent] = useState<number>(PAYOUT);
 
-  const [balances, setBalances] = useState({
+ const [balances, setBalances] = useState({
   real: 0,
-  demo: 1000,
   tournament: 0,
 });
+
 const [tournamentBalances, setTournamentBalances] = useState<
   Record<string, number>
 >({});
 
-const { profile, tournaments, activeAccount, setActiveAccount, activeTournament, balances: ctxBalances, } = useApp();
+const { 
+  profile, 
+  tournaments, 
+  activeAccount, 
+  setActiveAccount, 
+  activeTournament, 
+  balances: ctxBalances,
+  demoBalance,
+  setDemoBalance
+} = useApp();
 
 // -------- Chart Settings --------
 const [useHeikinAshi, setUseHeikinAshi] = useState(false);
@@ -145,51 +156,32 @@ const [tournamentMeta, setTournamentMeta] = useState<
 >({});
 
 useEffect(() => {
+  // 🔐 Only run if activeAccount is a tournament account
   if (!activeAccount || activeAccount.type !== "tournament") return;
-  if (!activeAccount.tournamentId) return;
+
+  const tid = activeAccount.tournamentId; // TS knows this exists now
+  if (!tid) return;
 
   const uid = auth.currentUser?.uid;
   if (!uid) return;
 
-  const playerRef = doc(
-    db,
-    "tournaments",
-    activeAccount.tournamentId,
-    "players",
-    uid
-  );
+  const playerRef = doc(db, "tournaments", tid, "players", uid);
 
+  let isSubscribed = true; // guard to prevent updates after unmount
 
   const unsub = onSnapshot(playerRef, (snap) => {
-    if (!snap.exists()) return;
+    if (!snap.exists() || !isSubscribed) return;
 
-    const data = snap.data();
-
-   const newBalance = data.balance ?? 0;
-
-setBalances((prev) => ({
-  ...prev,
-  tournament: newBalance,
-}));
-
-
-
+    const newBalance = snap.data()?.balance ?? 0;
+    setBalances((prev) => ({ ...prev, tournament: newBalance }));
   });
 
-  return () => unsub();
+  return () => {
+    isSubscribed = false;
+    unsub(); // clean up listener
+  };
 }, [activeAccount]);
 
-useEffect(() => {
-  (async () => {
-    const savedDemo = await loadDemoBalance();
-    if (savedDemo !== null) {
-      setBalances((b) => ({ ...b, demo: savedDemo }));
-    }
-  })();
-}, []);
-useEffect(() => {
-  saveDemoBalance(balances.demo);
-}, [balances.demo]);
 
 useEffect(() => {
   if (!tournaments || tournaments.length === 0) return;
@@ -370,17 +362,12 @@ const handleTrade = async (type: "buy" | "sell") => {
 
   // ---------------- DEMO ACCOUNT ----------------
   if (activeAccount.type === "demo") {
-    setBalances((prev) => {
-      if (prev.demo < stake) {
-        alert("Not enough demo balance, top up your demo account to trade more");
-        return prev;
-      }
-      return {
-        ...prev,
-        demo: prev.demo - stake,
-      };
-    });
+  if (demoBalance < stake) {
+    alert("Not enough demo balance, top up your demo account to trade more");
+    return;
   }
+setDemoBalance((prev: number) => prev - stake);
+}
 
   const now = Date.now();
   const id = uuid.v4() as string;
@@ -460,9 +447,9 @@ useEffect(() => {
       const uid = auth.currentUser?.uid;
       if (!uid) return;
 
-      if (t.account.type === "demo") {
-        setBalances((b) => ({ ...b, demo: b.demo + payout }));
-      }
+if (t.account.type === "demo") {
+setDemoBalance((prev: number) => prev + payout);
+}
 
       if (t.account.type === "real") {
         updateAccountBalance(uid, t.account, payout);
@@ -502,7 +489,7 @@ useEffect(() => {
   }, 1000);
 
   return () => clearInterval(timer);
-}, [profitPercent]);
+}, [profitPercent, setDemoBalance]);
 
 
 
@@ -634,17 +621,11 @@ useEffect(() => {
 {/* 🔥 FLOATING ACCOUNT SWITCHER – top-right */}
 <AccountSwitcher
   balances={{
-    demo: balances.demo,
+     demo: demoBalance,
    real: ctxBalances.real, 
     tournament: balances.tournament,
   }}
-  onTopUp={() => {
-    // demo reset / refill
-    setBalances((prev) => ({
-      ...prev,
-      demo: 10000, // or whatever demo start balance
-    }));
-  }}
+  onTopUp={() => setDemoBalance(10000)}
   tournamentBalances={tournamentBalances}
   activeAccount={activeAccount}
   tournamentMeta={tournamentMeta}

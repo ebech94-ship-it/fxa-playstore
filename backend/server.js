@@ -9,7 +9,7 @@ const cors = require("cors");
 // ---------------------------------------------------------------------
 const { db } = require("./firebaseAdmin");
 const treasury = require("./treasury");
-const { getCampayToken } = require("./campayAuth");
+//const { getCampayToken } = require("./campayAuth");
 const admin = require("firebase-admin");
 const { Buffer } = require("buffer"); 
 
@@ -149,6 +149,61 @@ app.get("/api/treasury/balances", authenticate, requireAdmin, async (req, res) =
   }
 });
 
+// ----------------------
+// TRANSACTIONS (MERGED)
+// ----------------------
+
+// USER: create deposit/withdrawal
+app.post("/transactions", authenticate, async (req, res) => {
+  try {
+    const { type, amount, momoNumber, operator } = req.body;
+
+    if (!["deposit", "withdrawal"].includes(type)) {
+      return res.status(400).json({
+        success: false,
+        error: "Invalid transaction type",
+      });
+    }
+
+    const parsedAmount = Number(amount);
+    if (isNaN(parsedAmount) || parsedAmount <= 0) {
+      return res.status(400).json({ success: false, error: "Invalid amount" });
+    }
+
+    const txId = await treasury.createTransaction(
+      req.user.uid,
+      type,
+      parsedAmount,
+      momoNumber,operator
+    );
+
+    res.json({ success: true, txId });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// ADMIN: approve transaction
+app.post("/transactions/approve", authenticate, requireAdmin, async (req, res) => {
+  try {
+    const { txId } = req.body;
+    await treasury.approveTransaction(txId, req.user.uid);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// ADMIN: reject transaction
+app.post("/transactions/reject", authenticate, requireAdmin, async (req, res) => {
+  try {
+    const { txId } = req.body;
+    await treasury.rejectTransaction(txId, req.user.uid);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
 // ---------------------------------------------------------------------
 // TOURNAMENTS HANDLING
 // ---------------------------------------------------------------------
@@ -195,14 +250,14 @@ t.update(userRef, {
       const startingBalance = tournament.startingBalance || 0;
       
 
-      if (entryFee > 0 && (user.walletBalance || 0) < entryFee) {
+      if (entryFee > 0 && (user.realBalance || 0) < entryFee) {
         throw new Error("Insufficient wallet balance");
       }
 
       // 🔻 Deduct entry fee
       if (entryFee > 0) {
         t.update(userRef, {
-          walletBalance: admin.firestore.FieldValue.increment(-entryFee),
+          realBalance: admin.firestore.FieldValue.increment(-entryFee),
         });
 
         t.update(tournamentRef, {
@@ -354,36 +409,62 @@ if (!tournamentId) {
 });
 
 
+app.post("/deposit/manual", authenticate, async (req, res) => {
+  try {
+    const userId = req.user.uid;
+    const amount = Number(req.body.amount);
 
-// ---------------------------------------------------------------------
+    if (!amount || amount <= 0) {
+      return res.status(400).json({ error: "Invalid deposit amount" });
+    }
+
+    const txId = `DEP_${userId}_${Date.now()}`;
+
+    // Save transaction as PENDING (manual approval by admin)
+    await db.collection("transactions").doc(txId).set({
+      reference: txId,
+      userId,
+      amount,
+      status: "PENDING",
+      method: "manual",
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    res.json({
+      success: true,
+      message: "Manual deposit recorded, pending approval",
+      reference: txId,
+    });
+  } catch (err) {
+    console.error("Manual deposit error:", err.message);
+    res.status(500).json({ error: "Deposit failed" });
+  }
+});
+
+/*(// ---------------------------------------------------------------------
 // TOURNAMENT SETTLEMENT
 // ---------------------------------------------------------------------
+/*
 app.post("/campay/create-payment", authenticate, async (req, res) => {
- 
   try {
     const { amount, phone, method } = req.body;
 
-     // ✅ ADD THIS BLOCK
     if (!amount || Number(amount) <= 0) {
       return res.status(400).json({ error: "Invalid amount" });
     }
     if (method === "mobile" && !/^2376\d{8}$/.test(phone)) {
       return res.status(400).json({ error: "Invalid phone format" });
     }
-const amountNum = Number(amount);
 
-if (!Number.isInteger(amountNum) || amountNum < 1000 || amountNum > 500000) {
-  return res.status(400).json({ error: "Invalid deposit amount" });
-}
+    const amountNum = Number(amount);
 
-    // Use the userId from verified Firebase token (safer!)
+    if (!Number.isInteger(amountNum) || amountNum < 1000 || amountNum > 500000) {
+      return res.status(400).json({ error: "Invalid deposit amount" });
+    }
+
     const userId = req.user.uid;
 
-    
-
-    // Mobile money validation
     if (method === "mobile" && (!phone || !req.body.operator)) {
-
       return res.status(400).json({ error: "Phone and operator are required for mobile money" });
     }
 
@@ -393,36 +474,32 @@ if (!Number.isInteger(amountNum) || amountNum < 1000 || amountNum > 500000) {
     const bodyPayload = {
       amount: Number(amount),
       currency: req.body.currency || "XAF",
-
       description: "Forex Tournament Deposit",
       external_reference: txId,
-       metadata: { userId },
+      metadata: { userId },
     };
 
     if (method === "mobile") {
       bodyPayload.from = phone;
-     bodyPayload.operator = req.body.operator;
-
+      bodyPayload.operator = req.body.operator;
     }
-await db.collection("transactions").doc(txId).set({
-  reference: txId,
-  userId,
-  amount: Number(amount),
-  currency: req.body.currency || "XAF",
 
-  status: "PENDING",
-  createdAt: admin.firestore.Timestamp.now(),
-});
+    await db.collection("transactions").doc(txId).set({
+      reference: txId,
+      userId,
+      amount: Number(amount),
+      currency: req.body.currency || "XAF",
+      status: "PENDING",
+      createdAt: admin.firestore.Timestamp.now(),
+    });
 
-  /* 🚫 CARD PAYMENTS DISABLED */
-if (method === "card") {
-  return res
-    .status(400)
-    .json({ error: "Card payments not enabled" });
-}
+    if (method === "card") {
+      return res
+        .status(400)
+        .json({ error: "Card payments not enabled" });
+    }
 
-/* 📞 MOBILE MONEY ONLY */
-const endpoint = `${process.env.CAMPAY_BASE_URL}/collect/`;
+    const endpoint = `${process.env.CAMPAY_BASE_URL}/collect/`;
 
     const response = await fetch(endpoint, {
       method: "POST",
@@ -452,6 +529,7 @@ const endpoint = `${process.env.CAMPAY_BASE_URL}/collect/`;
     res.status(500).json({ error: "CamPay payment failed" });
   }
 });
+*/
 
 
 
@@ -577,7 +655,7 @@ app.post("/admin/add-funds", authenticate, requireAdmin, async (req, res) => {
 
       // 💰 Credit wallet
       t.update(userRef, {
-        walletBalance: admin.firestore.FieldValue.increment(Number(amount)),
+        realBalance: admin.firestore.FieldValue.increment(Number(amount)),
         lastBalanceUpdate: admin.firestore.FieldValue.serverTimestamp(),
       });
 
@@ -613,7 +691,7 @@ app.post("/admin/subtract-funds", authenticate, requireAdmin, async (req, res) =
       const userSnap = await t.get(userRef);
       if (!userSnap.exists) throw new Error("User not found");
 
-      const currentBalance = userSnap.data().walletBalance || 0;
+      const currentBalance = userSnap.data().realBalance || 0;
 
       if (currentBalance < amount) {
         throw new Error("Insufficient user balance");
@@ -621,7 +699,7 @@ app.post("/admin/subtract-funds", authenticate, requireAdmin, async (req, res) =
 
       // 💸 Debit wallet
       t.update(userRef, {
-        walletBalance: admin.firestore.FieldValue.increment(-Number(amount)),
+        realBalance: admin.firestore.FieldValue.increment(-Number(amount)),
         lastBalanceUpdate: admin.firestore.FieldValue.serverTimestamp(),
       });
 
@@ -737,7 +815,7 @@ app.post("/admin/reject-payout", authenticate, requireAdmin, async (req, res) =>
    const userRef = db.collection("users").doc(snap.data().userId);
 
 t.update(userRef, {
-  walletBalance: admin.firestore.FieldValue.increment(snap.data().amount),
+  realBalance: admin.firestore.FieldValue.increment(snap.data().amount),
 });
 
 t.update(payoutRef, {

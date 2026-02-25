@@ -1,5 +1,6 @@
 // app/AppContext.tsx
 import { auth, db } from "@/lib/firebase";
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { onAuthStateChanged, User } from "firebase/auth";
 import { doc, onSnapshot } from "firebase/firestore";
 import {
@@ -87,7 +88,7 @@ type FirestoreUserDoc = {
   verified?: boolean;
 
   accounts?: Accounts;
-    walletBalance?: number;
+    realBalance?: number;
     
   // 🔐 admin / roles
   isAdmin?: boolean;
@@ -111,6 +112,8 @@ type AppContextType = {
   accounts: Accounts | null;
 
   tournaments: PlayerTournament[];
+  demoBalance: number;
+setDemoBalance: React.Dispatch<React.SetStateAction<number>>;
 
   // UI / trading
   activeAccount: AccountType;
@@ -138,6 +141,7 @@ setProfileSubmitted: React.Dispatch<React.SetStateAction<boolean>>;
 
   tournamentAccounts: TournamentAccount[];
   rebuyUnlockedMap: Record<string, boolean>;
+  
 
 };
 
@@ -176,7 +180,7 @@ const AppContext = createContext<AppContextType>({
   tournaments: [],
   activeAccount: { type: "demo" },
   activeTournament: null,
-
+   
   setActiveAccount: () => {},
   setActiveTournament: () => {},
 
@@ -184,6 +188,9 @@ const AppContext = createContext<AppContextType>({
 setAppReady: () => {},
 
 
+  // 🔥 ADD THESE TWO LINES
+  demoBalance: 1000,
+  setDemoBalance: () => {},
   loading: true,
 
   balances: { demo: 1000, real: 0, tournament: 0 },
@@ -245,7 +252,7 @@ const activeBalance = (() => {
   }
 
   if (activeAccount.type === "real") {
-    return userDoc?.walletBalance?? 0;
+    return userDoc?.realBalance?? 0;
   }
 
   // ✅ tournament → LIVE source
@@ -256,9 +263,11 @@ const activeBalance = (() => {
   );
 })();
 
+const [demoBalance, setDemoBalance] = useState<number>(1000);
+
 const balancesState = {
-  demo: accounts?.demo?.balance ?? 1000,
-   real: userDoc?.walletBalance ?? 0,
+ demo: demoBalance,  // <-- use local demoBalance
+   real: userDoc?.realBalance ?? 0,
   tournament: activeTournament
   ? liveTournamentBalances[activeTournament.tournamentId] ??
     activeTournament.balance
@@ -293,6 +302,7 @@ const switchAccount = (account: AccountType) => {
 const [profile, setProfile] = useState<UserProfile | null>(null);
 const [profileLoaded, setProfileLoaded] = useState(false);
 const [profileSubmitted, setProfileSubmitted] = useState(false);
+
 
 const tournamentAccounts = useMemo(() => 
   tournaments.map(t => ({
@@ -341,6 +351,32 @@ useEffect(() => {
 
   return () => clearInterval(timer);
 }, []);
+
+useEffect(() => {
+  if (!authUser?.uid) return;
+
+  const key = `demoBalance_${authUser.uid}`;
+
+  AsyncStorage.getItem(key)
+    .then((val) => {
+      if (val !== null) {
+        setDemoBalance(parseFloat(val));
+      } else {
+        // First time user → default demo balance
+        setDemoBalance(1000);
+      }
+    })
+    .catch(console.error);
+}, [authUser?.uid]);
+
+useEffect(() => {
+  if (!authUser?.uid) return;
+
+  const key = `demoBalance_${authUser.uid}`;
+
+  AsyncStorage.setItem(key, demoBalance.toString())
+    .catch(console.error);
+}, [demoBalance, authUser?.uid]);
 
 useEffect(() => {
   if (
@@ -463,7 +499,7 @@ useEffect(() => {
 
   setProfile(prev => ({
     publicId: userDoc.publicId,
-    username: userDoc.username ?? prev?.username ?? "Guest",
+    username: userDoc.username ?? prev?.username ?? "New User",
     displayName: userDoc.displayName ?? prev?.displayName,
     email: userDoc.email ?? prev?.email,
     phone: userDoc.phone ?? prev?.phone,
@@ -564,12 +600,16 @@ useEffect(() => {
   setAppReady,
 appSettings,
     isAdmin,
+    
     adminLoaded,
 
     authUser,
   
     userDoc,
     accounts,
+     // 🔥 ADD THESE TWO
+    demoBalance,
+    setDemoBalance,
   
     tournaments,
     activeAccount,

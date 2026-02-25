@@ -1,6 +1,9 @@
-// firebaseConfig.tsx (RE-EXPORT ONLY)
-import app from "@/lib/firebase";
+// firebaseConfig.tsx
+import  {app, auth, db } from "@/lib/firebase";
 import { getStorage } from "firebase/storage";
-export { default as app, auth, db } from "@/lib/firebase";
 
+// ✅ now `app` is a modular FirebaseApp
 export const storage = getStorage(app);
+
+export { app, auth, db };
+

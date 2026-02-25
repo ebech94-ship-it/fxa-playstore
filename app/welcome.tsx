@@ -6,7 +6,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 
 import PasswordInput from "../components/PasswordInput";
 
-import { makeRedirectUri } from "expo-auth-session";
+
 import * as Google from "expo-auth-session/providers/google";
 import * as Localization from "expo-localization";
 import { useRouter } from "expo-router";
@@ -20,37 +20,25 @@ import {
   fetchSignInMethodsForEmail,
   GoogleAuthProvider,
   linkWithCredential,
- 
+  RecaptchaVerifier,
   signInWithCredential,
   signInWithEmailAndPassword,
-   signInWithPhoneNumber
+  signInWithPhoneNumber
 } from "firebase/auth";
-import { FirebaseRecaptchaVerifierModal } from "expo-firebase-recaptcha";
+
 
 import { collection, doc, getDoc, getDocs, query, runTransaction, serverTimestamp, setDoc, where } from "firebase/firestore";
 import { useEffect, useRef, useState } from "react";
 
 
 import {
-  ActivityIndicator,
-  Animated,
-  ImageBackground,
-  Keyboard,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  TouchableWithoutFeedback,
-  View,
+  ActivityIndicator, Animated, ImageBackground, Keyboard, KeyboardAvoidingView, Modal, Platform,
+  ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View,
 } from "react-native";
-
 
 import { auth, db, } from "../firebaseConfig";
 
+import { makeRedirectUri } from "expo-auth-session";
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -172,11 +160,16 @@ const { setActiveAccount, setProfile } = useApp();
 
 // 🔐 GOOGLE LOGIN SETUP (MOBILE / NATIVE)
 // 🔐 GOOGLE LOGIN SETUP (WEB COMPATIBLE)
-const redirectUri = makeRedirectUri();
+
+
+// Web: use proxy
+// Mobile: use scheme
+const redirectUri =
+  Platform.OS === "web"
+    ? makeRedirectUri({ useProxy: true } as any) // cast to any to silence TS
+    : makeRedirectUri({ scheme: "com.ebeh.forextournamentsarena" });
 
 console.log("REDIRECT URI:", redirectUri);
-
-
 
 const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
   clientId: Platform.select({
@@ -201,7 +194,8 @@ const [verificationId, setVerificationId] = useState<string | null>(null);
 const [otp, setOtp] = useState("");
 const googleHandledRef = useRef(false);
    // 🔑 WEB + MOBILE OTP
-  const recaptchaVerifier = useRef<FirebaseRecaptchaVerifierModal>(null);
+  const recaptchaRef = useRef<RecaptchaVerifier | null>(null);
+
 
 const COUNTRIES = [
   // 🇨🇲 Central & West Africa
@@ -243,7 +237,6 @@ const COUNTRIES = [
   { code: "DE", name: "Germany", callingCode: "49" },
 ];
 
-
 const sendOTP = async () => {
   if (!name.trim()) {
     alert("Please enter your full name");
@@ -251,37 +244,39 @@ const sendOTP = async () => {
   }
 
   const cleanedPhone = phone.replace(/\s+/g, "");
-  const minLength = 7;
-  const maxLength = 14;
-
-  if (cleanedPhone.length < minLength || cleanedPhone.length > maxLength) {
-    alert("Please enter a valid phone number");
-    return;
-  }
 
   try {
     setLoading(true);
 
- 
-const result = await signInWithPhoneNumber(
-  auth,
-  `+${callingCode}${cleanedPhone}`,
-  recaptchaVerifier.current!
-);
+    if (!recaptchaRef.current) {
+      recaptchaRef.current = new RecaptchaVerifier(
+        auth,
+        "recaptcha-container",
+        {
+          size: "invisible",
+        }
+      );
+    }
 
+    const result = await signInWithPhoneNumber(
+      auth,
+      `+${callingCode}${cleanedPhone}`,
+      recaptchaRef.current
+    );
 
-setConfirmationResult(result);
-setVerificationId("sent");  // ✅ store the whole object
-alert("OTP sent to your phone");
+    setConfirmationResult(result);
+    setVerificationId("sent");
 
+    alert("OTP sent to your phone");
 
   } catch (e) {
     console.error(e);
-    alert((e as Error).message || "Failed to send OTP");
+    alert("Failed to send OTP");
   } finally {
     setLoading(false);
   }
 };
+
 
 const verifyOTP = async () => {
   if (!verificationId || otp.length < 6) {
@@ -412,39 +407,42 @@ useEffect(() => {
 
   // 📧 Email Signup
   const handleSignupEmail = async () => {
-    try {
-      if (!isValidPassword(password)) {
-  return alert("Password must be at least 6 characters/digits. Example: 123456");
-}
+  try {
+    if (!name.trim()) return alert("Enter your full name");
+    if (!isValidPassword(password)) return alert("Password must be at least 6 characters");
+    if (password !== confirmPassword) return alert("Passwords do not match");
 
-if (password !== confirmPassword) {
-  return alert("Passwords do not match");
-}
+    setLoading(true);
 
-      setLoading(true);
- const userCred = await createUserWithEmailAndPassword(
-  auth,
-  email.trim().toLowerCase(),
-  password
-);
+    // 1️⃣ Create Firebase Auth user
+    const userCred = await createUserWithEmailAndPassword(
+      auth,
+      email.trim().toLowerCase(),
+      password
+    );
 
-await createUserAccounts(
-  userCred.user.uid,
-  name,
-  email,
-  
-);
-
-await AsyncStorage.setItem("isLoggedIn", "true");
-router.replace("/tradinglayout");
-
-
-    } catch (e) {
-      alert((e as Error).message);
-    } finally {
-      setLoading(false);
+    // 2️⃣ Make sure user is signed in (auth.currentUser should now exist)
+    if (!auth.currentUser) {
+      alert("Something went wrong with authentication. Try again.");
+      return;
     }
-  };
+
+    // 3️⃣ Create Firestore profile (users/{uid}) AFTER user exists
+    await createUserAccounts(userCred.user.uid, name, email);
+
+    // 4️⃣ Mark user as logged in
+    await AsyncStorage.setItem("isLoggedIn", "true");
+
+    // 5️⃣ Route immediately
+    router.replace("/tradinglayout");
+
+  } catch (e) {
+    console.error("Signup error:", e);
+    alert((e as Error).message);
+  } finally {
+    setLoading(false);
+  }
+};
 
   // 🔑 Email Login
   // 🔑 Email Login (RETURNING USERS ONLY)
@@ -568,12 +566,12 @@ const handleLinkPassword = async () => {
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.overlay}>
-        <FirebaseRecaptchaVerifierModal
-  ref={recaptchaVerifier}
-  firebaseConfig={auth.app.options}
-/>
-
-
+  
+{Platform.OS === "web" && (
+  <View>
+    <div id="recaptcha-container"></div>
+  </View>
+)}
           <Text style={styles.title}>Welcome to Forex Tournaments Arena</Text>
           {inviteRef && (
   <View style={{ marginBottom: 16 }}>
@@ -735,7 +733,7 @@ onPress={() => accepted && !loading && request && promptAsync()}
 <PasswordInput
   value={linkConfirmPassword}
   onChangeText={setLinkConfirmPassword}
- placeholder="Confirm PIN"
+ placeholder="Confirm password"
 
 />
      <TouchableOpacity
@@ -744,7 +742,7 @@ onPress={() => accepted && !loading && request && promptAsync()}
   disabled={loading}
 >
   <Text style={styles.buttonText}>
-    {loading ? "Saving..." : "Save PIN"}
+    {loading ? "Saving..." : "Save password"}
   </Text>
 </TouchableOpacity>
 
@@ -989,7 +987,7 @@ onPress={() => accepted && !loading && request && promptAsync()}
                   <PasswordInput
   value={password}
   onChangeText={setPassword}
-  placeholder="Enter 5-digit PIN"
+  placeholder="Enter password (min 6 characters/digits)"
 />
 <TouchableOpacity
   style={[styles.button, { opacity: !loading ? 1 : 0.4 }]}

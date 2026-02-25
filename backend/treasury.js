@@ -5,7 +5,7 @@ module.exports = {
      1️⃣  DEPOSITS
   --------------------------------------------------- */
   
-  async processCampayDeposit(userId, amount, txRef) {
+  async processManualDeposit(userId, amount, txRef) {
   if (!amount || amount <= 0) {
   throw new Error("Invalid deposit amount");
 }
@@ -15,47 +15,50 @@ module.exports = {
   const txRefDoc = db.collection("transactions").doc(txRef);
 
   await db.runTransaction(async (t) => {
-    // 1️⃣ Check if already processed
-    const txSnap = await t.get(txRefDoc);
-    if (!txSnap.exists) {
-  throw new Error("Transaction missing");
-}
+  const txSnap = await t.get(txRefDoc);
 
- if (txSnap.exists && txSnap.data().creditedAt) {
-  return; // already processed
-}
-
-    // 2️⃣ Credit user wallet
-    t.update(userRef, {
-      walletBalance: admin.firestore.FieldValue.increment(amount),
-      lastUpdated: admin.firestore.Timestamp.now(),
+  if (!txSnap.exists) {
+    // Create transaction as PENDING first
+    t.set(txRefDoc, {
+      userId,
+      amount,
+      type: "manual_deposit",
+      status: "PENDING",
+      createdAt: admin.firestore.Timestamp.now(),
     });
+  } else if (txSnap.data().creditedAt) {
+    // Already credited, skip
+    return;
+  }
 
-    // 3️⃣ Credit treasury
-    t.set(
-      treasuryRef,
-      {
-        balance: admin.firestore.FieldValue.increment(amount),
-        lastUpdated: admin.firestore.Timestamp.now(),
-      },
-      { merge: true }
-    );
-
-    // 4️⃣ Save transaction USING SAME REF
-  // 4️⃣ Mark transaction as successful (do NOT overwrite)
-t.set(
-  txRefDoc,
-  {
-      status: "COMPLETED",
-    creditedAt: admin.firestore.Timestamp.now(),
-  },
-  { merge: true }
-);
-
-
+  // 1️⃣ Credit user wallet
+  t.update(userRef, {
+    realBalance: admin.firestore.FieldValue.increment(amount),
+    lastUpdated: admin.firestore.Timestamp.now(),
   });
 
-  console.log(`💰 Campay deposit processed safely: ${txRef}`);
+  // 2️⃣ Credit treasury
+  t.set(
+    treasuryRef,
+    {
+      balance: admin.firestore.FieldValue.increment(amount),
+      lastUpdated: admin.firestore.Timestamp.now(),
+    },
+    { merge: true }
+  );
+
+  // 3️⃣ Mark transaction as COMPLETED
+  t.set(
+    txRefDoc,
+    {
+      status: "COMPLETED",
+      creditedAt: admin.firestore.Timestamp.now(),
+    },
+    { merge: true }
+  );
+});
+
+  console.log(`💰 Manual deposit processed safely: ${txRef}`);
 },
 
 
@@ -73,12 +76,12 @@ t.set(
       if (!userSnap.exists) throw new Error("User not found");
       if (!tournamentSnap.exists) throw new Error("Tournament not found");
 
-      const wallet = userSnap.data().walletBalance || 0;
+      const wallet = userSnap.data().realBalance || 0;
       
 
       if (wallet < amount) throw new Error("Insufficient balance");
 
-      t.update(userRef, {   walletBalance: admin.firestore.FieldValue.increment(-amount),});
+      t.update(userRef, {   realBalance: admin.firestore.FieldValue.increment(-amount),});
       t.update(tournamentRef, {
          prizePool: admin.firestore.FieldValue.increment(amount),
         collectedFunds: admin.firestore.FieldValue.increment(amount), // 💰 real money
@@ -116,7 +119,7 @@ t.set(
     if (!userSnap.exists) throw new Error("User not found");
     if (!tournamentSnap.exists) throw new Error("Tournament not found");
     if (!playerSnap.exists) throw new Error("Player not in tournament");
-const wallet = userSnap.data().walletBalance || 0;
+const wallet = userSnap.data().realBalance || 0;
 
 const tournament = tournamentSnap.data();
 
@@ -149,7 +152,7 @@ if (player.balance >= initialBalance * 0.5) {
 
     // 🔻 deduct fixed rebuy fee
     t.update(userRef, {
-      walletBalance: admin.firestore.FieldValue.increment(-rebuyFee),
+      realBalance: admin.firestore.FieldValue.increment(-rebuyFee),
     });
 
     // 🔺 top up tournament balance
@@ -201,7 +204,7 @@ t.update(userRef, {
 
       if (!userSnap.exists) throw new Error("User not found");
 
-      const wallet = userSnap.data().walletBalance || 0;
+      const wallet = userSnap.data().realBalance || 0;
       
 
       if (wallet < amount)
@@ -210,7 +213,7 @@ t.update(userRef, {
       
 
       t.update(userRef, {
-  walletBalance: admin.firestore.FieldValue.increment(-amount),
+  realBalance: admin.firestore.FieldValue.increment(-amount),
 });
 
       // ✅ log inside transaction
@@ -298,7 +301,7 @@ async adminAdjustBalance(userId, amount, mode) {
 
   await db.runTransaction(async (t) => {
     t.update(userRef, {
-      walletBalance: admin.firestore.FieldValue.increment(delta),
+      realBalance: admin.firestore.FieldValue.increment(delta),
     });
 
     t.update(treasuryRef, {
@@ -395,7 +398,7 @@ async adminAdjustBalance(userId, amount, mode) {
       const userRef = db.collection("users").doc(winner.userId);
 
       t.update(userRef, {
-        walletBalance: admin.firestore.FieldValue.increment(
+        realBalance: admin.firestore.FieldValue.increment(
           winner.payout.amount
         ),
         lastUpdated: admin.firestore.Timestamp.now(),
