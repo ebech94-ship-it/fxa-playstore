@@ -13,13 +13,18 @@ import {
 } from "react-native";
 
 // Sections
+import LogsAndActivitySection from "./sections/LogsAndActivitySection";
 import NotificationsSection from "./sections/NotificationsSection";
 import PaymentsSection from "./sections/PaymentsSection";
 import PayoutsSection from "./sections/PayoutsSection";
 import SettingsSection from "./sections/SettingsSection";
+import SystemControlSection from "./sections/SystemControlSection";
+import TournamentCoffersSection from "./sections/TournamentCoffersSection";
+import TournamentPayoutSection from "./sections/TournamentPayoutSection";
 import TournamentsSection from "./sections/TournamentsSection";
-import UsersSection from "./sections/UsersSection";
 import TreasurySection from "./sections/TreasurySection";
+import UsersSection from "./sections/UsersSection";
+
 
 const AdminDashboard = () => {
   const [active, setActive] = useState("Treasury");
@@ -90,26 +95,44 @@ const [exiting, setExiting] = useState(false);
     },
   });
 
-  const renderSection = () => {
-    switch (active) {
-      case "Tournaments":
-        return <TournamentsSection />;
-      case "Users":
-        return <UsersSection />;
-      case "Payments":
-        return <PaymentsSection />;
-      case "Payouts":
-        return <PayoutsSection />;
-        case "Treasury":
-  return <TreasurySection />;
-      case "Notifications":
-        return <NotificationsSection />;
-      case "Settings":
-        return <SettingsSection />;
-      default:
-        return <TournamentsSection />;
-    }
-  };
+const renderSection = () => {
+  switch (active) {
+    case "Tournaments":
+      return <TournamentsSection />;
+
+    case "Tournament Coffers":
+      return <TournamentCoffersSection />;
+
+    case "Users":
+      return <UsersSection />;
+
+    case "Payments":
+      return <PaymentsSection />;
+
+    case "Payouts":
+      return <PayoutsSection />;
+
+    case "Tournament Payouts":
+      return <TournamentPayoutSection />;
+
+    case "Treasury":
+      return <TreasurySection />;
+
+    case "Notifications":
+      return <NotificationsSection />;
+
+    case "Settings":
+      return <SettingsSection />;
+      case "Logs & Activity": 
+      return <LogsAndActivitySection />;
+
+      case "System Control":
+       return <SystemControlSection />;
+
+    default:
+      return <TournamentsSection />;
+  }
+};
 
   return (
     <View style={styles.container}>
@@ -118,9 +141,13 @@ const [exiting, setExiting] = useState(false);
         <ScrollView contentContainerStyle={styles.sidebarScroll}>
           {[
             "Tournaments",
+            "Tournament Coffers",
             "Users",
             "Payments",
             "Payouts",
+             "Tournament Payouts",
+              "Logs & Activity",
+            "System Control",
             "Treasury", 
             "Notifications",
             "Settings",

@@ -15,6 +15,18 @@ import { auth } from "../../../firebaseConfig";
 
 type PayoutStatus = "pending" | "paid" | "rejected";
 
+
+// ✅ Define API response type here
+interface TransactionResponse {
+  transactionId: string;
+  uid: string;
+  userName: string;
+  amount: number;
+  method: string;
+  phoneNumber?: string;  // optional, use if backend returns it
+  status: PayoutStatus;
+  createdAt?: any;
+}
 interface Payout {
   id: string;
   uid: string;
@@ -74,7 +86,12 @@ export default function PayoutsSection() {
           { headers: { Authorization: `Bearer ${token}` } }
         );
         const data = await res.json();
-        setPayouts(data);
+    setPayouts(
+  data.map((p: TransactionResponse) => ({
+    ...p,
+    id: p.transactionId,
+  }))
+);
       } catch (err) {
         console.error("Failed to fetch payouts:", err);
       }
@@ -224,8 +241,10 @@ export default function PayoutsSection() {
                 <Text style={styles.modalText}>Amount: {selected.amount} FRS</Text>
 <Text style={styles.modalText}> Method: {selected.method}</Text>
 <Text style={styles.modalText}>  Wallet: {selected.wallet}</Text>
-<Text style={styles.modalText}>  Date: {selected.createdAt
-    ? new Date(selected.createdAt).toLocaleString()  : "No date"}</Text>
+<Text style={styles.modalText}>
+  Date: {selected.createdAt   ? new Date(selected.createdAt.seconds 
+    ? selected.createdAt.seconds * 1000 : selected.createdAt).toLocaleString()
+    : "No date"}</Text>
                 <View style={styles.modalBtns}>
                   <TouchableOpacity
                     style={styles.approveBtn}

@@ -130,42 +130,6 @@ useEffect(() => {
     setModalVisible(true);
   };
 
-
-  /* -------------------- CamPay Deposit (UNCHANGED) -------------------- */
- /*{ const handleCampayPayment = async () => {
-    const token = await getAuth().currentUser?.getIdToken();
-
-    const res = await fetch(`${API_BASE}/campay/create-payment`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-  userId: currentUser?.uid,
-  amount: Number(formData.amount),
-  currency: formData.currency,
-  method: isMobileMoney ? "mobile" : "card",
-  operator: activeMethod,
-  phone: isMobileMoney ? formData.phone : undefined,
-}),
-
-    });
-
-    const data = await res.json();
-
-    if (!res.ok) {
-      Alert.alert("Payment Error", data.error || "Failed");
-      return;
-    }
-
-    Alert.alert(
-  "Payment Pending",
-  "Confirm on your phone. Balance will update after confirmation."
-);
-
-  };}*/ 
-
   //* -------------------- Withdrawal -------------------- */
 const handleWithdrawal = async () => {
   const numericAmount = Number(formData.amount);

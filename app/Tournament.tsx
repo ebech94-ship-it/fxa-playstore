@@ -11,9 +11,9 @@ import { useApp } from "./AppContext"; // <-- add this at the top
 
 
 import {
-  collection, doc, getDoc, limit, onSnapshot, orderBy, query, runTransaction, serverTimestamp
+  collection, doc, getDoc, limit, onSnapshot, orderBy, query
 } from "firebase/firestore";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Alert, FlatList, LayoutAnimation, Modal, Platform, Pressable, ScrollView, StyleSheet,
   Text, TextInput, TouchableOpacity, UIManager, View,
@@ -146,7 +146,6 @@ const [tournamentRebuys, setTournamentRebuys] = useState<Record<string, number>>
   const [adminModal, setAdminModal] = useState(false);
 
   const [joinedMap, setJoinedMap] = useState<Record<string, boolean>>({});
-const rebuyAlertShown = useRef<Record<string, boolean>>({});
 
   const [adminCode, setAdminCode] = useState("");
  type LoadingState = {
@@ -346,32 +345,16 @@ useEffect(() => {
 }, [players, currentUser, selectedTournament]);
 
 
-
-  // ---------- Helper: read user's wallet balance ----------
-  const getUserrealBalance = async (uid: string) => {
-    try {
-      const userRef = doc(db, "users", uid);
-      const snap = await getDoc(userRef);
-      if (!snap.exists()) return 0;
-      const data = snap.data() as any;
-      return typeof data.realBalance === "number" ? data.realBalance : Number(data.realBalance || 0);
-    } catch (err) {
-      console.error("getUserrealBalanceerror:", err);
-      return 0;
-    }
-  };
-
-
 // ---------- REGISTER USER TO TOURNAMENT ----------
 const handleRegister = async (tournamentId: string) => {
- // 🔒 PREVIEW MODE BLOCK
+  // 🔒 PREVIEW MODE BLOCK
   if (profile?.preview) {
-  Alert.alert(
-    "Preview Mode",
-    "You are in preview mode. Registration is temporary and will not affect real accounts."
-  );
-  // Do NOT return; allow registration to proceed
-}
+    Alert.alert(
+      "Preview Mode",
+      "You are in preview mode. Registration is temporary and will not affect real accounts."
+    );
+    // Do NOT return; allow registration to proceed
+  }
 
   // 🚫 DOUBLE TAP GUARD
   if (loadingActions[tournamentId]?.register) return;
@@ -404,127 +387,57 @@ const handleRegister = async (tournamentId: string) => {
   setLoadingFor(tournamentId, "register", true);
 
   try {
-    const userDocRef = doc(db, "users", user.uid);
-    const participantRef = doc(
-      db,
-      "tournaments",
-      tournamentId,
-      "players",
-      user.uid
-    );
+    const token = await user.getIdToken();
 
-    await runTransaction(db, async (transaction) => {
-      const userSnap = await transaction.get(userDocRef);
-      const participantSnap = await transaction.get(participantRef);
-
-      if (participantSnap.exists()) {
-        throw new Error("ALREADY_REGISTERED");
-      }
-
-      if (!userSnap.exists()) {
-        throw new Error("USER_NOT_FOUND");
-      }
-
-      const username = userSnap.data()?.username ?? "Unknown";
-      const countryCode = userSnap.data()?.countryCode ?? null;
-
-      const rawWallet = userSnap.data()?.realBalance;
-      const realBalance = Number(rawWallet ?? 0);
-  
-      if (isNaN(realBalance)) {
-        throw new Error("INVALID_WALLET");
-      }
-
-      if (entryFee > 0 && realBalance < entryFee) {
-        throw new Error("INSUFFICIENT_FUNDS");
-      }
-
-      const startingBalance = Number(tour.startingBalance);
-      const finalStartingBalance = isNaN(startingBalance)
-        ? 1000
-        : startingBalance;
-
-      // ✅ CREATE PLAYER
-      transaction.set(participantRef, {
-        uid: user.uid,
-        username,
-        countryCode,
-        balance: finalStartingBalance,
-        initialBalance: finalStartingBalance,
-
-        joinedAt: serverTimestamp(),
-        rebuys: [],
-      });
-
-    const prevTournaments = userSnap.data()?.accounts?.tournaments ?? {};
-
-transaction.set(
-  userDocRef,
-  {
-    realBalance: entryFee > 0 ? realBalance - entryFee : realBalance,
-    accounts: {
-      tournaments: {
-        ...prevTournaments,
-        [tournamentId]: {
-          name: tour.name || tour.title || "Tournament",
-          symbol: tour.symbol || "🏆",
-          balance: finalStartingBalance,
-          initialBalance: finalStartingBalance,
-          startTime: tour.startTime,
-          endTime: tour.endTime,
-          joinedAt: serverTimestamp(),
+    const response = await fetch(
+      "https://forexapp2-backend.onrender.com/tournament-register",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
         },
-      },
-    },
-  },
-  { merge: true }
-);
-
-
-    });
-
-    // ✅ VERIFY PLAYER EXISTS (IMPORTANT FOR UI)
-    const snap = await getDoc(
-      doc(db, "tournaments", tournamentId, "players", user.uid)
+        body: JSON.stringify({
+          tournamentId,
+        }),
+      }
     );
 
-    if (snap.exists()) {
-      setJoinedMap((prev) => ({
-        ...prev,
-        [tournamentId]: true,
-      }));
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.message || "Registration failed");
     }
 
-    Alert.alert("Success", "You have successfully registered!");
-  } catch (err: any) {
-    console.error("REGISTRATION ERROR:", err);
+    Alert.alert("Success", "Registered successfully!");
+  } catch (error: any) {
+    let message = "Registration failed.";
 
-    if (err?.message === "ALREADY_REGISTERED") {
-      Alert.alert("Already Registered", "You are already registered.");
-    } else if (err?.message === "USER_NOT_FOUND") {
-      Alert.alert("Error", "User account not found.");
-    } else if (err?.message === "INSUFFICIENT_FUNDS") {
-      Alert.alert("Insufficient Funds", "Not enough balance.");
-    } else if (err?.message === "INVALID_WALLET") {
-      Alert.alert(
-        "Account Error",
-        "Your wallet data is invalid. Please contact support."
-      );
-    } else {
-      Alert.alert("Error", err?.message || "Registration failed.");
+    if (error.message === "ALREADY_REGISTERED") {
+      message = "You are already registered in this tournament.";
+    } else if (error.message === "USER_NOT_FOUND") {
+      message = "User profile not found.";
+    } else if (error.message === "INSUFFICIENT_FUNDS") {
+      message = "Insufficient balance to register.";
+    } else if (error.message === "INVALID_WALLET") {
+      message = "Wallet error. Contact support.";
+    } else if (error.message) {
+      message = error.message;
     }
+
+    Alert.alert("Error", message);
   } finally {
     setLoadingFor(tournamentId, "register", false);
   }
 };
 
-
 // ----------- REBUY ACTION (CLEAN + BACKEND-MATCHED) -----------
+// ----------- REBUY ACTION (SECURE BACKEND VERSION) -----------
 const handleRebuy = async (tournamentId: string) => {
   // 🚫 DOUBLE TAP GUARD
   if (loadingActions[tournamentId]?.rebuy) return;
 
-  if (!currentUser?.uid) {
+  if (!currentUser) {
     Alert.alert("Error", "You must be logged in.");
     return;
   }
@@ -541,60 +454,35 @@ const handleRebuy = async (tournamentId: string) => {
     return;
   }
 
-  const rebuyCost = Number(tour.rebuyFee ?? 0);
-
-  // 🔥 TURN LOADING ON
   setLoadingFor(tournamentId, "rebuy", true);
 
   try {
-    // check if user is registered
-    const playerRef = doc(db, `tournaments/${tournamentId}/players`, currentUser.uid);
-    const playerSnap = await getDoc(playerRef);
-    if (!playerSnap.exists()) {
-      Alert.alert("Not Registered", "Register before performing a rebuy.");
-      return;
-    }
+    const token = await currentUser.getIdToken();
 
-    // check wallet
-    const wallet = await getUserrealBalance(currentUser.uid);
-   if (wallet < rebuyCost) {
-  if (!rebuyAlertShown.current[tournamentId]) {
-    Alert.alert("Insufficient Funds", `Wallet: ${wallet} — Required: ${rebuyCost}`);
-    rebuyAlertShown.current[tournamentId] = true; // mark shown
-  }
-  return;
-}
-
-    // 🌐 CALL BACKEND
     const response = await fetch(
       "https://forexapp2-backend.onrender.com/tournament-rebuy",
       {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`, // ✅ VERY IMPORTANT
+        },
         body: JSON.stringify({
-          userId: currentUser.uid,
-          tournamentId,
-          amount: rebuyCost,
+          tournamentId, // ✅ ONLY send tournamentId
         }),
       }
     );
 
-    const result = await response.json().catch(() => null);
+    const result = await response.json();
 
-    if (!response.ok || result?.success === false) {
-      Alert.alert("Rebuy Failed", result?.message || "Server rejected the rebuy.");
-      return;
+    if (!response.ok) {
+      throw new Error(result?.message || "Server rejected the rebuy.");
     }
 
-    // ✅ SUCCESS
     Alert.alert("Rebuy Successful", "You have re-entered the tournament!");
-rebuyAlertShown.current[tournamentId] = false; // reset after successful rebuy
-    // Firestore listeners will auto-update balance & rebuys
-  } catch (error) {
-    console.error("REBUY ERROR:", error);
-    Alert.alert("Error", "Could not complete rebuy. Try again.");
+  } catch (error: any) {
+    Alert.alert("Rebuy Failed", error.message || "Could not complete rebuy.");
   } finally {
-    // ✅ TURN OFF LOADING
     setLoadingFor(tournamentId, "rebuy", false);
   }
 };

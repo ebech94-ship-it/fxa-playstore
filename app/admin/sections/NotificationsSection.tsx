@@ -6,7 +6,8 @@ import {
   onSnapshot,
   orderBy,
   query,
-  updateDoc,
+  serverTimestamp,
+  updateDoc
 } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import {
@@ -108,11 +109,30 @@ useEffect(() => {
 
   return () => unsub();
 }, []);
+const [threadMessages, setThreadMessages] = useState<any[]>([]);
+
+useEffect(() => {
+  if (!activeThread) return;
+
+  const q = query(
+    collection(db, "supportThreads", activeThread.id, "messages"),
+    orderBy("createdAt", "asc")
+  );
+
+  const unsub = onSnapshot(q, (snap) => {
+    const list: any[] = [];
+    snap.forEach((doc) => list.push({ id: doc.id, ...doc.data() }));
+    setThreadMessages(list);
+  });
+
+  return () => unsub();
+}, [activeThread]);
 
 const sendReply = async () => {
   if (!replyText.trim() || !activeThread) return;
 
   setLoadingReply(true);
+
   try {
     const user = getAuth().currentUser;
     if (!user) {
@@ -122,7 +142,7 @@ const sendReply = async () => {
 
     const token = await user.getIdToken(true);
 
-    // 1️⃣ Send to backend
+    // 1️⃣ Send email/notification via backend
     const res = await fetch(`${API_URL}/admin/reply-support`, {
       method: "POST",
       headers: {
@@ -140,26 +160,16 @@ const sendReply = async () => {
       throw new Error(text || "Failed");
     }
 
-    // 2️⃣ Persist reply in Firestore
-    const threadRef = doc(db, "supportThreads", activeThread.id);
+  
 
-    await updateDoc(threadRef, {
-      messages: [
-        ...(activeThread.messages || []), // keep old messages
-        {
-          sender: "admin",
-          message: replyText,
-          createdAt: new Date(),
-        },
-      ],
+    // 3️⃣ Update thread metadata only
+    await updateDoc(doc(db, "supportThreads", activeThread.id), {
       lastMessage: replyText,
-      status: "open", // or "replied" if you want
+      lastUpdated: serverTimestamp(),
+      status: "open",
     });
 
-    // 3️⃣ Reset state
     setReplyText("");
-    setActiveThread(null);
-
   } catch (err) {
     console.log("REPLY ERROR:", err);
     Alert.alert("Error", "Failed to send reply");
@@ -317,7 +327,7 @@ const sendReply = async () => {
         >
           {/* Header line (replaces title, but same hierarchy) */}
           <Text style={styles.supportMeta}>
-            {thread.userEmail}
+  {thread.username || "Unknown"} ({thread.userEmail})
           </Text>
 
           {/* Main message (same as notification msg) */}
@@ -381,23 +391,39 @@ const sendReply = async () => {
   <View style={styles.modalBg}>
     <View style={styles.modalBox}>
       <Text style={styles.modalHeader}>
-        Reply to {activeThread?.userEmail}
-      </Text>
+  Reply to {activeThread?.username || "Unknown"} ({activeThread?.userEmail})
+</Text>
+<Text style={{ color: "#888", fontSize: 12 }}>
+  User ID: {activeThread?.userId}
+</Text>
 
-      {/* ===== FULL THREAD VIEW ===== */}
-      <ScrollView style={{ maxHeight: 200, marginBottom: 10 }}>
-  {activeThread?.messages?.map(
-    (msg: { sender: string; message: string; createdAt: Date }, index: number) => (
+
+{/* ===== FULL THREAD VIEW ===== */}
+<ScrollView style={{ maxHeight: 200, marginBottom: 10 }}>
+  {threadMessages.map(
+    (
+      msg: {
+        id?: string;
+        sender: string;
+        text: string;
+        createdAt: any;
+      },
+      index: number
+    ) => (
       <Text
-        key={index}
-        style={{ color: msg.sender === "admin" ? "#4e2cff" : "white", marginBottom: 4 }}
+        key={msg.id || index}
+        style={{
+          color: msg.sender === "admin" ? "#4e2cff" : "white",
+          marginBottom: 6,
+        }}
       >
-        {msg.sender === "admin" ? "You: " : "User: "} {msg.message}
+        {msg.sender === "admin"
+          ? `You: ${msg.text}`
+          : `${activeThread?.username || activeThread?.userEmail || "User"}: ${msg.text}`}
       </Text>
     )
   )}
 </ScrollView>
-
 
       <TextInput
         style={styles.modalInput}

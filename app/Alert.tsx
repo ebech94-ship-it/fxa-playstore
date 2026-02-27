@@ -1,6 +1,7 @@
 import { useRouter } from "expo-router";
 import {
   collection,
+  deleteDoc,
   doc,
   onSnapshot,
   orderBy,
@@ -10,6 +11,7 @@ import {
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
   Animated,
   Easing,
   FlatList,
@@ -51,6 +53,24 @@ export default function AlertScreen() {
     );
   };
 
+  const deleteAlert = async (id: string) => {
+    Alert.alert(
+      "Delete Alert",
+      "Are you sure you want to delete this alert?",
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            await deleteDoc(doc(db, "alerts", id));
+            setAlerts((prev) => prev.filter((a) => a.id !== id));
+          },
+        },
+      ]
+    );
+  };
+
   if (loading) return <ActivityIndicator size="large" color="#7cf" />;
 
   return (
@@ -67,14 +87,20 @@ export default function AlertScreen() {
               setExpandedId(expandedId === item.id ? null : item.id)
             }
             onRead={markRead}
+            onDelete={deleteAlert}
           />
         )}
+        ListEmptyComponent={
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyText}>No alerts yet</Text>
+          </View>
+        }
       />
     </View>
   );
 }
 
-const AlertCard = ({ item, router, expanded, onToggle, onRead }: any) => {
+const AlertCard = ({ item, router, expanded, onToggle, onRead, onDelete }: any) => {
   const glow = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -105,21 +131,20 @@ const AlertCard = ({ item, router, expanded, onToggle, onRead }: any) => {
     inputRange: [0, 1],
     outputRange: ["#333", "#7cf"],
   });
-const handlePress = () => {
-  onRead(item.id);
 
-  if (item.type === "tournament" && item.tournamentId) {
-    router.push({
-      pathname: "/Tournament",
-      params: { tournamentId: item.tournamentId },
-    });
-    return; // 🛑 STOP here
-  }
+  const handlePress = () => {
+    onRead(item.id);
 
-  // 📩 Only non-tournament alerts expand
-  onToggle();
-};
+    if (item.type === "tournament" && item.tournamentId) {
+      router.push({
+        pathname: "/Tournament",
+        params: { tournamentId: item.tournamentId },
+      });
+      return;
+    }
 
+    onToggle();
+  };
 
   const typeColor: any = {
     admin: "#7cf",
@@ -138,33 +163,38 @@ const handlePress = () => {
   };
 
   return (
-    <TouchableOpacity style={styles.card} onPress={handlePress}>
-      <View style={styles.header}>
-        <Text style={[styles.title, { color: typeColor[item.type] || "#7cf" }]}>
-          {typeLabel[item.type] || "Notification"}
+    <View style={styles.card}>
+      <TouchableOpacity onPress={handlePress}>
+        <View style={styles.header}>
+          <Text style={[styles.title, { color: typeColor[item.type] || "#7cf" }]}>
+            {typeLabel[item.type] || "Notification"}
+          </Text>
+
+          {!item.read && (
+            <Animated.View style={[styles.dot, { backgroundColor: glowColor }]} />
+          )}
+        </View>
+
+        <Text style={styles.msg} numberOfLines={expanded ? undefined : 2}>
+          {item.message}
         </Text>
 
-        {!item.read && (
-          <Animated.View
-            style={[styles.dot, { backgroundColor: glowColor }]}
-          />
+        <Text style={styles.date}>
+          {item.createdAt?.toDate?.().toLocaleString?.() || "—"}
+        </Text>
+
+        {item.type !== "tournament" && (
+          <Text style={styles.expandHint}>
+            {expanded ? "Tap to collapse" : "Tap to read"}
+          </Text>
         )}
-      </View>
+      </TouchableOpacity>
 
-      <Text style={styles.msg} numberOfLines={expanded ? undefined : 2}>
-        {item.message}
-      </Text>
-
-      <Text style={styles.date}>
-        {item.createdAt?.toDate?.().toLocaleString?.() || "—"}
-      </Text>
-
-      {item.type !== "tournament" && (
-        <Text style={styles.expandHint}>
-          {expanded ? "Tap to collapse" : "Tap to read"}
-        </Text>
-      )}
-    </TouchableOpacity>
+      {/* DELETE BUTTON */}
+      <TouchableOpacity style={styles.deleteButton} onPress={() => onDelete(item.id)}>
+        <Text style={styles.deleteText}>Delete</Text>
+      </TouchableOpacity>
+    </View>
   );
 };
 
@@ -205,5 +235,29 @@ const styles = StyleSheet.create({
     shadowColor: "#7cf",
     shadowOpacity: 0.8,
     shadowRadius: 6,
+  },
+
+  emptyContainer: {
+    padding: 30,
+    alignItems: "center",
+  },
+
+  emptyText: {
+    color: "#777",
+    fontSize: 16,
+  },
+
+  deleteButton: {
+    marginTop: 8,
+    backgroundColor: "#ef4444",
+    padding: 6,
+    borderRadius: 6,
+    alignItems: "center",
+  },
+
+  deleteText: {
+    color: "#fff",
+    fontWeight: "bold",
+    fontSize: 13,
   },
 });

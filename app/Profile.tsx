@@ -21,13 +21,14 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  KeyboardAvoidingView, Platform,
   ScrollView,
   StyleSheet,
   Switch,
   Text,
   TextInput,
   TouchableOpacity,
-  View,
+  View
 } from "react-native";
 import { db } from "../firebaseConfig";
 
@@ -438,7 +439,8 @@ const handleLogout = async () => {
 
 // handleSupportSend
 const handleSupportSend = async () => {
-  if (!supportMessage) {
+  // Ensure message is not empty
+  if (!supportMessage.trim()) {
     Alert.alert("Incomplete", "Please enter a message.");
     return;
   }
@@ -453,6 +455,23 @@ const handleSupportSend = async () => {
   try {
     const token = await user.getIdToken();
 
+    // Create payload with all user details + timestamp
+    const payload = {
+  threadId: userThread?.id ?? null,
+  userId: user.uid,
+  userEmail: user.email || supportEmail || "No Email",
+  name: supportName || appProfile?.displayName || "Unknown User",
+  message: supportMessage,
+  timestamp: new Date().toISOString(),
+  profileSnapshot: profile ? {
+    displayName: profile.displayName,
+    username: profile.username,
+    phone: profile.phone,
+    country: profile.country,
+    avatarUrl: profile.avatarUrl,
+  } : undefined,
+} as any;
+
     const res = await fetch(
       "https://forexapp2-backend.onrender.com/support/send",
       {
@@ -461,28 +480,19 @@ const handleSupportSend = async () => {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-       body: JSON.stringify({
-  threadId: userThread?.id ?? null,
-
-  // ⭐ CRITICAL IDENTIFICATION
-  userId: user.uid,
-  userEmail: user.email || supportEmail || "No Email",
-
-  // optional but useful for admin UI
-  name: supportName || appProfile?.displayName || "Unknown User",
-
-  message: supportMessage,
-}),
+        body: JSON.stringify(payload),
       }
     );
 
     if (!res.ok) {
-      throw new Error("Support send failed");
+      throw new Error("Failed to send support message");
     }
 
+    // Clear message input after send
     setSupportMessage("");
-  } catch (error) {
-    console.error("Support send error:", error);
+
+  } catch (err) {
+    console.error("Support send error:", err);
     Alert.alert("Error", "Failed to send message.");
   } finally {
     setSendingSupport(false);
@@ -852,7 +862,16 @@ if (!profileLoaded) {
 
         {/* Support Section */}
 {activeSection === "support" && (
-  <ScrollView style={styles.section}>
+  <KeyboardAvoidingView
+    style={{ flex: 1 }}
+    behavior={Platform.OS === "ios" ? "padding" : "height"}
+    keyboardVerticalOffset={80} // adjust if needed
+  >
+    <ScrollView
+      style={styles.section}
+      keyboardShouldPersistTaps="handled"
+      contentContainerStyle={{ paddingBottom: 120 }}
+    >
     <Text style={styles.sectionTitle}>Support</Text>
 
     {/* 🟢 CHAT MODE (thread exists) */}
@@ -966,7 +985,8 @@ if (!profileLoaded) {
     >
       <Text style={styles.backText}>Back</Text>
     </TouchableOpacity>
-  </ScrollView>
+ </ScrollView>
+  </KeyboardAvoidingView>
 )}
 
 

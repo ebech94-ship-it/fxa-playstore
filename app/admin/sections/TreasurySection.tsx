@@ -22,13 +22,12 @@ interface Transaction {
   amount: number;
   createdAt?: any;
 }
-
 export default function TreasurySection() {
   const [treasury, setTreasury] = useState<TreasuryData | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loadingTx, setLoadingTx] = useState(true);
+  const [displayedTx, setDisplayedTx] = useState<Transaction[]>([]);
 
-  // 💡 Glow animation for balance
   const glowAnim = useRef(new Animated.Value(0)).current;
   useEffect(() => {
     Animated.loop(
@@ -37,21 +36,17 @@ export default function TreasurySection() {
         Animated.timing(glowAnim, { toValue: 0, duration: 1200, useNativeDriver: false }),
       ])
     ).start();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const glowColor = glowAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ["rgba(0,255,204,0.3)", "rgba(255,0,150,0.3)"],
-  });
+  
+  }, [glowAnim]);
 
   useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged(async (user) => {
+    const fetchTreasury = async () => {
+      const user = auth.currentUser;
       if (!user) return;
       try {
         const token = await user.getIdToken();
 
-        // Fetch treasury balance
+        // Fetch treasury
         const treasuryRes = await fetch(
           "https://forexapp2-backend.onrender.com/api/treasury/balances",
           { headers: { Authorization: `Bearer ${token}` } }
@@ -59,29 +54,29 @@ export default function TreasurySection() {
         const treasuryData = await treasuryRes.json();
         setTreasury(treasuryData);
 
-        // Fetch all transactions
+        // Fetch transactions
         const txRes = await fetch(
           "https://forexapp2-backend.onrender.com/admin/transactions",
           { headers: { Authorization: `Bearer ${token}` } }
         );
         const txData = await txRes.json();
         setTransactions(txData);
-      } catch (error) {
-        console.log("Treasury fetch error:", error);
+
+        // Show first 10 immediately
+        setDisplayedTx(txData.slice(0, 10));
+      } catch (e) {
+        console.log(e);
       } finally {
-        setLoading(false);
+        setLoadingTx(false);
       }
-    });
-    return () => unsubscribe();
+    };
+    fetchTreasury();
   }, []);
 
-  if (loading) {
-    return (
-      <View style={styles.loader}>
-        <ActivityIndicator size="large" color="#6f00d6" />
-      </View>
-    );
-  }
+  const glowColor = glowAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: ["rgba(0,255,204,0.3)", "rgba(255,0,150,0.3)"],
+  });
 
   const getStatusColor = (status: string) => {
     switch (status.toLowerCase()) {
@@ -98,15 +93,38 @@ export default function TreasurySection() {
     }
   };
 
+  const loadMoreTx = () => {
+    const next = transactions.slice(displayedTx.length, displayedTx.length + 10);
+    if (next.length > 0) setDisplayedTx([...displayedTx, ...next]);
+  };
+
+  if (!treasury) {
+    return (
+      <View style={styles.loader}>
+        <ActivityIndicator size="large" color="#6f00d6" />
+      </View>
+    );
+  }
+
+  // Skeleton row for placeholders
+  const skeletonRow = Array.from({ length: 5 }).map((_, i) => (
+    <View key={i} style={[styles.tableRow, { opacity: 0.3 }]}>
+      {["", "", "", "", ""].map((_, idx) => (
+        <Text key={idx} style={[styles.tableCell, { backgroundColor: "#333", borderRadius: 4 }]}>
+          {" "}
+        </Text>
+      ))}
+    </View>
+  ));
+
   return (
     <View style={styles.container}>
-      {/* Glowing Treasury Balance */}
+      {/* Treasury Balance */}
       <Animated.View style={[styles.balanceCard, { shadowColor: glowColor }]}>
         <Text style={styles.balanceTitle}>Treasury Balance</Text>
-        <Text style={styles.balanceAmount}>{treasury?.balance ?? 0} FRS</Text>
+        <Text style={styles.balanceAmount}>{treasury.balance} FRS</Text>
         <Text style={styles.lastUpdated}>
-          Last Updated:{" "}
-          {treasury?.lastUpdated ? new Date(treasury.lastUpdated).toLocaleString() : "N/A"}
+          Last Updated: {treasury.lastUpdated ? new Date(treasury.lastUpdated).toLocaleString() : "N/A"}
         </Text>
       </Animated.View>
 
@@ -119,9 +137,19 @@ export default function TreasurySection() {
         <Text style={[styles.tableCell, styles.colDate]}>Date</Text>
       </View>
 
-      {/* Transactions Table */}
-      <ScrollView contentContainerStyle={{ paddingBottom: 20 }}>
-        {transactions.map((tx) => (
+      <ScrollView
+        contentContainerStyle={{ paddingBottom: 20 }}
+        onScroll={({ nativeEvent }) => {
+          if (
+            nativeEvent.contentOffset.y + nativeEvent.layoutMeasurement.height >=
+            nativeEvent.contentSize.height - 20
+          ) {
+            loadMoreTx();
+          }
+        }}
+        scrollEventThrottle={100}
+      >
+        {loadingTx ? skeletonRow : displayedTx.map((tx) => (
           <View key={tx.id} style={styles.tableRow}>
             <Text style={[styles.tableCell, styles.colType]}>{tx.type.toUpperCase()}</Text>
             <Text style={[styles.tableCell, styles.colStatus, { color: getStatusColor(tx.status) }]}>
@@ -137,14 +165,13 @@ export default function TreasurySection() {
           </View>
         ))}
 
-        {/* Total Balance Row */}
         <View style={[styles.tableRow, styles.totalRow]}>
           <Text style={[styles.tableCell, styles.colType]}>TOTAL</Text>
           <Text style={[styles.tableCell, styles.colStatus]}></Text>
           <Text style={[styles.tableCell, styles.colUser]}></Text>
           <Text style={[styles.tableCell, styles.colAmount]}></Text>
           <Text style={[styles.tableCell, styles.colDate, styles.totalBalance]}>
-            {treasury?.balance ?? 0} FRS
+            {treasury.balance} FRS
           </Text>
         </View>
       </ScrollView>

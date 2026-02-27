@@ -17,14 +17,14 @@ import {
 import { getAuth } from "firebase/auth";
 
 type PaymentDoc = {
-  id?: string;
-  uid?: string;
+  id: string;
+  userId: string;
   username?: string;
-  amount?: number;
+  amount: number;
   method?: string;
-  screenshot?: string;
-   transactionId?: string;
-  date?: any;
+   type: "deposit" | "withdrawal";
+  status: "pending" | "deposit completed" | "REJECTED";
+  createdAt: any;
   processing?: boolean;
 };
 
@@ -97,14 +97,14 @@ useEffect(() => {
     const token = await user.getIdToken();
 
     const res = await fetch(
-      "https://forexapp2-backend.onrender.com/admin/approve-payment",
+      "https://forexapp2-backend.onrender.com/transactions/approve",
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ transactionId: selected.id }),
+        body: JSON.stringify({ txId: selected.id }),
       }
     );
 
@@ -135,16 +135,14 @@ const reject = async () => {
     const token = await user.getIdToken();
 
     const res = await fetch(
-      "https://forexapp2-backend.onrender.com/admin/reject-payment",
+      "https://forexapp2-backend.onrender.com/transactions/reject",
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          transactionId: selected.id,
-          reason: rejectReason || "Rejected by admin",
+        body: JSON.stringify({ txId: selected.id, reason: rejectReason|| "Rejected by admin",
         }),
       }
     );
@@ -212,8 +210,11 @@ setPayments((prev) =>
             <Text style={styles.text}>User: {selected?.username}</Text>
             <Text style={styles.text}>Amount: ${selected?.amount}</Text>
 <Text style={styles.text}>  Method: {selected?.method || "N/A"}</Text>
-   <Text style={styles.text}>  Date: {selected?.date
-    ? new Date(selected.date).toLocaleString()  : "No date"}</Text>
+<Text style={styles.text}>
+  Date: {selected?.createdAt
+    ? new Date(selected.createdAt).toLocaleString()
+    : "No date"}
+</Text>
 <Text style={[styles.text, { color: "#7cf" }]}> Type: Deposit</Text>
             <TouchableOpacity
   style={styles.approve}

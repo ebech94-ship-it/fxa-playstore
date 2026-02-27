@@ -1,6 +1,6 @@
 import { db } from "@/lib/firebase"; // adjust path if needed
 import { Ionicons } from "@expo/vector-icons";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, serverTimestamp} from "firebase/firestore";
 import { useEffect, useRef, useState } from "react";
 import {
   Alert,
@@ -12,8 +12,6 @@ import {
   TouchableOpacity,
   View
 } from "react-native";
-
-
 
 const SettingsSection = () => {
   // GLOW ANIMATION

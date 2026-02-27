@@ -10,7 +10,7 @@ export interface Transaction {
   type: TransactionType;
   amount: number;
   momoNumber?: string | null;
-  status: "pending" | "approved" | "rejected";
+  status: "pending" | "completed" | "rejected";
   reference: string;
   createdAt: any; // Firestore timestamp
   processedAt?: any;
@@ -61,7 +61,7 @@ export async function approveTransaction(txId: string, adminId: string): Promise
 
     t.update(userRef, { realBalance: newBalance });
     t.update(txRef, {
-      status: "approved",
+      status: "completed",
       processedAt: FieldValue.serverTimestamp(),
       processedBy: adminId,
     });

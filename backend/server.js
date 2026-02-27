@@ -9,37 +9,16 @@ const cors = require("cors");
 // ---------------------------------------------------------------------
 const { db } = require("./firebaseAdmin");
 const treasury = require("./treasury");
-//const { getCampayToken } = require("./campayAuth");
+
 const admin = require("firebase-admin");
-const { Buffer } = require("buffer"); 
+
 
 // If your Node version < 18, uncomment next two lines
  const fetch = require("node-fetch");
  global.fetch = fetch;
 
 const app = express();
-function verifySignature(req) {
-  const secret = process.env.CAMPAY_WEBHOOK_SECRET;
-  if (!secret) return true; // CamPay hasn't given secret yet
 
-  const signature =
-    req.headers["x-campay-signature"] ||
-    req.headers["x-signature"];
-
-  if (!signature) return false;
-
-  const crypto = require("crypto");
-
-  const expected = crypto
-    .createHmac("sha256", secret)
-    .update(req.rawBody) // ✅ MUST be raw body
-    .digest("hex");
-
-  return crypto.timingSafeEqual(
-    Buffer.from(signature),
-    Buffer.from(expected)
-  );
-}
 
 
 // ---------------------------------------------------------------------
@@ -104,14 +83,11 @@ console.log("USER CLAIMS:", req.user);
 };
 
 // ---------------------------------------------------------------------
-// HEALTH CHECK ROUTE (CamPay reachability depends on server being up)
+// HEALTH CHECK ROUTE (backend reachability depends on server being up)
 // ---------------------------------------------------------------------
 app.get("/health", (req, res) => {
   res.send("Backend running");
 });
-const { initiateCampayPayment } = require("./campay");
-
-app.post("/api/campay/initiate", initiateCampayPayment);
 
 
 // ---------------------------------------------------------------------
@@ -158,26 +134,39 @@ app.post("/transactions", authenticate, async (req, res) => {
   try {
     const { type, amount, momoNumber, operator } = req.body;
 
-    if (!["deposit", "withdrawal"].includes(type)) {
-      return res.status(400).json({
-        success: false,
-        error: "Invalid transaction type",
-      });
-    }
-
     const parsedAmount = Number(amount);
     if (isNaN(parsedAmount) || parsedAmount <= 0) {
       return res.status(400).json({ success: false, error: "Invalid amount" });
     }
 
-    const txId = await treasury.createTransaction(
-      req.user.uid,
-      type,
-      parsedAmount,
-      momoNumber,operator
-    );
+    if (type === "deposit") {
 
-    res.json({ success: true, txId });
+      const txRef = await db.collection("transactions").add({
+        userId: req.user.uid,
+        amount: parsedAmount,
+        type: "deposit",
+        status: "pending",
+        momoNumber,
+        operator,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      return res.json({ success: true, txId: txRef.id });
+    }
+
+    if (type === "withdrawal") {
+
+      await treasury.processWithdrawal(
+        req.user.uid,
+        parsedAmount,
+        momoNumber
+      );
+
+      return res.json({ success: true });
+    }
+
+    return res.status(400).json({ success: false, error: "Invalid type" });
+
   } catch (err) {
     res.status(400).json({ success: false, error: err.message });
   }
@@ -245,6 +234,17 @@ t.update(userRef, {
 });
 
       const tournament = tournamentSnap.data();
+      // ✅ ADD THIS BLOCK TO ENSURE COFFERS EXIST
+  const cofferRef = db.collection("tournamentCoffers").doc(tournamentId);
+  t.set(
+    cofferRef,
+    {
+      registration: { count: 0, totalAmount: 0 },
+      rebuys: { count: 0, totalAmount: 0 },
+      lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
 
       const entryFee = tournament.entryFee || 0;
       const startingBalance = tournament.startingBalance || 0;
@@ -311,9 +311,19 @@ t.set(
   }
   
 });
-// ---------------------------------------------------------------------
-// USER — SEND SUPPORT MESSAGE
-// ---------------------------------------------------------------------
+
+
+app.get("/admin/transactions", authenticate, requireAdmin, async (req, res) => {
+  const { type, status } = req.query;
+  const snapshot = await db.collection("transactions")
+    .where("type", "==", type)
+    .where("status", "==", status)
+    .get();
+  const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+  res.json(data);
+});
+
+
 app.post("/support/send", authenticate, async (req, res) => {
   try {
     const userId = req.user.uid;
@@ -323,29 +333,42 @@ app.post("/support/send", authenticate, async (req, res) => {
       return res.status(400).json({ error: "Message required" });
     }
 
+    // 🔍 Fetch user profile
+    const profileSnap = await db.collection("users").doc(userId).get();
+    const profile = profileSnap.exists ? profileSnap.data() : {};
+
+    // ✅ GUARANTEED identity resolution (never empty)
+    const resolvedEmail =
+      profile?.email ||
+      req.user.email ||
+      "No Email";
+
+    const resolvedUsername =
+      profile?.username ||
+      profile?.displayName ||
+      req.user.name ||
+      "Unknown User";
+
     let threadRef;
 
-    // 🧵 CREATE THREAD IF NONE
-   if (!threadId) {
-  // 📥 Get user profile for identification
-  const userSnap = await db.collection("users").doc(userId).get();
-  const userData = userSnap.data() || {};
+    // 🧵 CREATE NEW THREAD
+    if (!threadId) {
+      threadRef = await db.collection("supportThreads").add({
+        userId,
+        userEmail: resolvedEmail,
+        username: resolvedUsername,
 
-  threadRef = await db.collection("supportThreads").add({
-    userId,
-    userEmail: req.user.email || userData.email || "No Email",
-    username: userData.username || "Unknown User",
+        status: "open",
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
 
-    status: "open",
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    lastMessage: message,
-    lastMessageAt: admin.firestore.FieldValue.serverTimestamp(),
-  });
-} else {
+        lastMessage: message,
+        lastMessageAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    } else {
       threadRef = db.collection("supportThreads").doc(threadId);
     }
 
-    // 💬 ADD MESSAGE
+    // 💬 ADD MESSAGE (clean — no need to repeat email every time)
     await threadRef.collection("messages").add({
       sender: "user",
       text: message,
@@ -353,7 +376,7 @@ app.post("/support/send", authenticate, async (req, res) => {
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    // 🔄 UPDATE THREAD META
+    // 🔄 Update thread metadata
     await threadRef.update({
       lastMessage: message,
       lastMessageAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -361,32 +384,12 @@ app.post("/support/send", authenticate, async (req, res) => {
     });
 
     res.json({ success: true, threadId: threadRef.id });
+
   } catch (err) {
     console.error("USER SUPPORT ERROR:", err.message);
     res.status(500).json({ error: "Failed to send message" });
   }
 });
-
-// ---------------------------------------------------------------------
-// WITHDRAWAL
-// ---------------------------------------------------------------------
-app.post("/withdraw", authenticate, async (req, res) => {
-
-  try {
-    const userId = req.user.uid;
-const amount = Number(req.body.amount);
-
-if (!amount || amount <= 0) {
-  return res.status(400).json({ error: "Invalid withdrawal amount" });
-}
-    await treasury.processWithdrawal(userId, amount);
-
-    res.json({ success: true, message: "Withdrawal request created" });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
 // ---------------------------------------------------------------------
 // TOURNAMENT REBUY
 // ---------------------------------------------------------------------
@@ -409,209 +412,6 @@ if (!tournamentId) {
 });
 
 
-app.post("/deposit/manual", authenticate, async (req, res) => {
-  try {
-    const userId = req.user.uid;
-    const amount = Number(req.body.amount);
-
-    if (!amount || amount <= 0) {
-      return res.status(400).json({ error: "Invalid deposit amount" });
-    }
-
-    const txId = `DEP_${userId}_${Date.now()}`;
-
-    // Save transaction as PENDING (manual approval by admin)
-    await db.collection("transactions").doc(txId).set({
-      reference: txId,
-      userId,
-      amount,
-      status: "PENDING",
-      method: "manual",
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
-
-    res.json({
-      success: true,
-      message: "Manual deposit recorded, pending approval",
-      reference: txId,
-    });
-  } catch (err) {
-    console.error("Manual deposit error:", err.message);
-    res.status(500).json({ error: "Deposit failed" });
-  }
-});
-
-/*(// ---------------------------------------------------------------------
-// TOURNAMENT SETTLEMENT
-// ---------------------------------------------------------------------
-/*
-app.post("/campay/create-payment", authenticate, async (req, res) => {
-  try {
-    const { amount, phone, method } = req.body;
-
-    if (!amount || Number(amount) <= 0) {
-      return res.status(400).json({ error: "Invalid amount" });
-    }
-    if (method === "mobile" && !/^2376\d{8}$/.test(phone)) {
-      return res.status(400).json({ error: "Invalid phone format" });
-    }
-
-    const amountNum = Number(amount);
-
-    if (!Number.isInteger(amountNum) || amountNum < 1000 || amountNum > 500000) {
-      return res.status(400).json({ error: "Invalid deposit amount" });
-    }
-
-    const userId = req.user.uid;
-
-    if (method === "mobile" && (!phone || !req.body.operator)) {
-      return res.status(400).json({ error: "Phone and operator are required for mobile money" });
-    }
-
-    const token = await getCampayToken();
-    const txId = `DEP_${userId}_${Date.now()}`;
-
-    const bodyPayload = {
-      amount: Number(amount),
-      currency: req.body.currency || "XAF",
-      description: "Forex Tournament Deposit",
-      external_reference: txId,
-      metadata: { userId },
-    };
-
-    if (method === "mobile") {
-      bodyPayload.from = phone;
-      bodyPayload.operator = req.body.operator;
-    }
-
-    await db.collection("transactions").doc(txId).set({
-      reference: txId,
-      userId,
-      amount: Number(amount),
-      currency: req.body.currency || "XAF",
-      status: "PENDING",
-      createdAt: admin.firestore.Timestamp.now(),
-    });
-
-    if (method === "card") {
-      return res
-        .status(400)
-        .json({ error: "Card payments not enabled" });
-    }
-
-    const endpoint = `${process.env.CAMPAY_BASE_URL}/collect/`;
-
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Token ${token}`,
-      },
-      body: JSON.stringify(bodyPayload),
-    });
-
-    const data = await response.json();
-
-    if (!response.ok) {
-      console.error("CamPay collect/card error:", data);
-      return res.status(400).json(data);
-    }
-
-    res.json({
-      success: true,
-      message: "Payment request sent to CamPay",
-      reference: data.reference || null,
-      status: data.status || "PENDING",
-    });
-
-  } catch (err) {
-    console.error("CamPay create-payment error:", err.message);
-    res.status(500).json({ error: "CamPay payment failed" });
-  }
-});
-*/
-
-
-
-// ---------------------------------------------------------------------
-// CAMPAY WEBHOOK (CALLBACK URL)
-// ---------------------------------------------------------------------
-
-
-app.post("/webhook/campay", async (req, res) => {
-
-
-if (!verifySignature(req)) {
-    console.error("❌ Invalid CamPay webhook signature");
-    return res.status(401).json({ error: "Invalid signature" });
-  }
-  try {
-    console.log("📩 CamPay webhook received:", req.body);
-
-    const {reference, status, amount,  metadata  } = req.body;
-    
-const userId = metadata?.userId;
-
-if (!reference || !status || amount == null || !userId)
- {
-      return res.status(400).json({ error: "Invalid webhook payload" });
-    }
-
-    const txRef = String(reference);
-    const txDoc = db.collection("transactions").doc(txRef);
-    const txSnap = await txDoc.get();
-
-if (!txSnap.exists) {
-  return res.status(404).json({ error: "Unknown transaction reference" });
-}
-
-if (Number(txSnap.data().amount) !== Number(amount)) {
-  return res.status(400).json({ error: "Amount mismatch" });
-}
-
-    // ⛔ Already processed
-  if (txSnap.exists && txSnap.data().creditedAt) {
-  console.log("⚠️ Duplicate CamPay webhook ignored:", txRef);
-  return res.status(200).json({ success: true });
-}
-const successStates = ["SUCCESS", "SUCCESSFUL", "COMPLETED"];
-const failureStates = ["FAILED", "CANCELLED", "EXPIRED"];
-
-if (![...successStates, ...failureStates].includes(status)) {
-  console.warn("⚠️ Unknown CamPay status:", status);
-  return res.status(200).json({ ignored: true });
-}
-
-
-
-    // Save transaction record
-  await txDoc.set({
-  rawStatus: req.body,
-  updatedAt: admin.firestore.Timestamp.now(),
-}, { merge: true });
-
-
-
-    // Credit ONLY on success
-
-
-if (successStates.includes(status)) {
-   await treasury.processCampayDeposit(
-  userId,
-  Number(amount),
-  txRef
-);
-
-
-      console.log("💰 CamPay deposit credited:", txRef);
-    }
-
-    res.status(200).json({ success: true });
-  } catch (err) {
-    console.error("CamPay webhook error:", err.message);
-    res.status(500).json({ success: false });
-  }
-});
 // ---------------------------------------------------------------------
 // ADMIN — SEND NOTIFICATION
 // ---------------------------------------------------------------------
@@ -720,12 +520,6 @@ app.post("/admin/subtract-funds", authenticate, requireAdmin, async (req, res) =
     res.status(500).json({ error: err.message });
   }
 });
-// ---------------------------------------------------------------------
-// ADMIN — REPLY SUPPORT THREAD
-// ---------------------------------------------------------------------
-// ---------------------------------------------------------------------
-// ADMIN — REPLY SUPPORT THREAD
-// ---------------------------------------------------------------------
 app.post("/admin/reply-support", authenticate, requireAdmin, async (req, res) => {
   try {
     const { threadId, message } = req.body;
@@ -735,106 +529,226 @@ app.post("/admin/reply-support", authenticate, requireAdmin, async (req, res) =>
     }
 
     const threadRef = db.collection("supportThreads").doc(threadId);
+    const threadSnap = await threadRef.get();
 
-    const snap = await threadRef.get();
-    if (!snap.exists) {
+    if (!threadSnap.exists) {
       return res.status(404).json({ error: "Support thread not found" });
     }
 
-    // ✅ Add admin message
+    const threadData = threadSnap.data();
+
+    // ✅ Add admin reply
     await threadRef.collection("messages").add({
       sender: "admin",
-      text: message,
+      text: message.trim(),
       read: false,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      adminId: req.user.uid, // 🔥 track which admin replied
     });
 
     // ✅ Update thread metadata
     await threadRef.update({
-      lastMessage: message,
+      lastMessage: message.trim(),
       lastMessageAt: admin.firestore.FieldValue.serverTimestamp(),
       status: "answered",
+      answeredBy: req.user.uid, // 🔥 track responder
     });
 
-    res.json({ success: true });
+    res.json({
+      success: true,
+      repliedTo: threadData.username || "Unknown User",
+    });
 
   } catch (err) {
-    console.error("REPLY SUPPORT ERROR:", err);
+    console.error("REPLY SUPPORT ERROR:", err.message);
     res.status(500).json({ error: "Failed to send reply" });
   }
 });
 
 app.post("/admin/approve-payout", authenticate, requireAdmin, async (req, res) => {
-  const { payoutId } = req.body;
-  if (!payoutId) return res.status(400).json({ error: "Missing payoutId" });
-const treasuryRef = db.collection("treasury").doc("main");
-  const payoutRef = db.collection("payouts").doc(payoutId);
+  const { transactionId } = req.body;
+  if (!transactionId) return res.status(400).json({ error: "Missing transactionId" });
+
+  const treasuryRef = db.collection("treasury").doc("main");
+
+  // 🔍 Find payout by transactionId
+  const payoutsQuery = await db.collection("payouts")
+    .where("transactionId", "==", transactionId)
+    .limit(1)
+    .get();
+
+  if (payoutsQuery.empty) return res.status(404).json({ error: "Payout not found" });
+
+  const payoutRef = payoutsQuery.docs[0].ref;
 
   await db.runTransaction(async (t) => {
     const snap = await t.get(payoutRef);
-    if (!snap.exists) throw new Error("Payout not found");
     const treasurySnap = await t.get(treasuryRef);
-const balance = treasurySnap.data()?.balance || 0;
+    const balance = treasurySnap.data()?.balance || 0;
 
-if (balance < snap.data().amount) {
-  throw new Error("Treasury insufficient");
+    if (balance < snap.data().amount) throw new Error("Treasury insufficient");
+    if (snap.data().status !== "pending") throw new Error("Already processed");
+
+    // ✅ Deduct treasury
+    t.update(treasuryRef, {
+      balance: admin.firestore.FieldValue.increment(-snap.data().amount),
+    });
+
+    // ✅ Mark payout as paid
+    t.update(payoutRef, {
+      status: "paid",
+      paidAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    // ✅ Update original transaction status
+    t.update(
+      db.collection("transactions").doc(transactionId),
+      {
+        status: "PAID",
+        paidAt: admin.firestore.FieldValue.serverTimestamp(),
+      }
+    );
+  });
+
+  res.json({ success: true });
+});
+
+app.post("/admin/reject-payout", authenticate, requireAdmin, async (req, res) => {
+  const { transactionId, reason } = req.body;
+  if (!transactionId) return res.status(400).json({ error: "Missing transactionId" });
+
+  // 🔍 Find payout by transactionId
+  const payoutsQuery = await db.collection("payouts")
+    .where("transactionId", "==", transactionId)
+    .limit(1)
+    .get();
+
+  if (payoutsQuery.empty) return res.status(404).json({ error: "Payout not found" });
+
+  const payoutRef = payoutsQuery.docs[0].ref;
+
+  await db.runTransaction(async (t) => {
+    const snap = await t.get(payoutRef);
+    const userRef = db.collection("users").doc(snap.data().userId);
+
+    // ✅ Refund user
+    t.update(userRef, {
+      realBalance: admin.firestore.FieldValue.increment(snap.data().amount),
+    });
+
+    // ✅ Mark payout as rejected
+    t.update(payoutRef, {
+      status: "rejected",
+      reason: reason || "Rejected by admin",
+      rejectedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    // ✅ Update original transaction
+    t.update(
+      db.collection("transactions").doc(transactionId),
+      {
+        status: "REJECTED",
+        rejectedAt: admin.firestore.FieldValue.serverTimestamp(),
+      }
+    );
+  });
+
+  res.json({ success: true });
+});
+
+app.post("/admin/pay-tournament-winner", authenticate, requireAdmin, async (req, res) => {
+  const { tournamentId, userId, amount, rank } = req.body;
+
+  if (!tournamentId || !userId || !amount || !rank) {
+    return res.status(400).json({ error: "Missing fields" });
+  }
+
+  const userRef = db.collection("users").doc(userId);
+  const tournamentRef = db.collection("tournaments").doc(tournamentId);
+  const treasuryRef = db.collection("treasury").doc("main");
+
+  const payoutRef = db
+    .collection("tournaments")
+    .doc(tournamentId)
+    .collection("payouts")
+    .doc(userId); // one payout per user per tournament
+
+  const txRef = db.collection("transactions").doc();
+
+  try {
+    await db.runTransaction(async (t) => {
+      const [userSnap, tournamentSnap, treasurySnap, payoutSnap] =
+        await Promise.all([
+          t.get(userRef),
+          t.get(tournamentRef),
+          t.get(treasuryRef),
+          t.get(payoutRef),
+        ]);
+
+      if (!userSnap.exists) throw new Error("User not found");
+      if (!tournamentSnap.exists) throw new Error("Tournament not found");
+
+      const tournament = tournamentSnap.data();
+      const treasuryBalance = treasurySnap.data()?.balance || 0;
+
+      // ✅ Ensure tournament is completed
+      const now = Date.now();
+
+if (now <= tournament.endTime) {
+  throw new Error("Tournament not finished yet");
 }
 
+      // ✅ Prevent double payout
+      if (payoutSnap.exists) {
+        throw new Error("Winner already paid");
+      }
 
-    if (snap.data().status !== "pending")
-      throw new Error("Already processed");
+      // ✅ Treasury check
+      if (treasuryBalance < amount) {
+        throw new Error("Treasury insufficient");
+      }
 
+      // 💰 Credit user wallet
+      t.update(userRef, {
+        realBalance: admin.firestore.FieldValue.increment(amount),
+        lastBalanceUpdate: admin.firestore.FieldValue.serverTimestamp(),
+      });
 
+      // 💸 Deduct treasury
       t.update(treasuryRef, {
-  balance: admin.firestore.FieldValue.increment(-snap.data().amount),
-});
+        balance: admin.firestore.FieldValue.increment(-amount),
+        lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+      });
 
-   t.update(payoutRef, {
-  status: "paid",
-  paidAt: admin.firestore.FieldValue.serverTimestamp(),
-});
+      // 🏆 Store payout record (anti-double-pay protection)
+      t.set(payoutRef, {
+        userId,
+        tournamentId,
+        rank,
+        amount,
+        paidBy: req.user.uid,
+        paidAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
 
-t.update(
-  db.collection("transactions").doc(snap.data().transactionId),
-  { status: "PAID", paidAt: admin.firestore.FieldValue.serverTimestamp() }
-);
+      // 🧾 Log transaction
+      t.set(txRef, {
+        transactionId: txRef.id,
+        userId,
+        tournamentId,
+        amount,
+        type: "tournament_payout",
+        rank,
+        status: "PAID",
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        paidAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    });
 
-  });
-
-  res.json({ success: true });
-});
-app.post("/admin/reject-payout", authenticate, requireAdmin, async (req, res) => {
-  const { payoutId, reason } = req.body;
-
-  const payoutRef = db.collection("payouts").doc(payoutId);
-
-  await db.runTransaction(async (t) => {
-    const snap = await t.get(payoutRef);
-    if (!snap.exists) throw new Error("Payout not found");
-
-   const userRef = db.collection("users").doc(snap.data().userId);
-
-t.update(userRef, {
-  realBalance: admin.firestore.FieldValue.increment(snap.data().amount),
-});
-
-t.update(payoutRef, {
-  status: "rejected",
-  reason: reason || "Rejected by admin",
-  rejectedAt: admin.firestore.FieldValue.serverTimestamp(),
-});
-t.update(
-  db.collection("transactions").doc(snap.data().transactionId),
-  {
-    status: "REJECTED",
-    rejectedAt: admin.firestore.FieldValue.serverTimestamp(),
+    res.json({ success: true, message: "Winner paid successfully" });
+  } catch (err) {
+    console.error("Tournament payout error:", err.message);
+    res.status(400).json({ success: false, error: err.message });
   }
-);
-
-
-  });
-
-  res.json({ success: true });
 });
 
 app.post("/admin/toggle-freeze", authenticate, requireAdmin, async (req, res) => {
@@ -864,6 +778,105 @@ app.post("/admin/delete-user", authenticate, requireAdmin, async (req, res) => {
   res.json({ success: true });
 });
 
+// ---------------------------------------------------------------------
+// ADMIN — MOVE TO TREASURY
+// ---------------------------------------------------------------------
+app.post("/admin/moveTournamentFundsToTreasury", authenticate, requireAdmin, async (req, res) => {
+  try {
+    const { tournamentId, amount } = req.body;
+
+    if (!tournamentId || !amount || Number(amount) <= 0) {
+      return res.status(400).json({ success: false, error: "Invalid request" });
+    }
+
+    const cofferRef = db.collection("tournamentCoffers").doc(tournamentId);
+    const treasuryRef = db.collection("treasury").doc("main");
+
+    await db.runTransaction(async (t) => {
+      const cofferSnap = await t.get(cofferRef);
+      const treasurySnap = await t.get(treasuryRef);
+
+      if (!cofferSnap.exists) throw new Error("Tournament coffer not found");
+
+      const cofferData = cofferSnap.data() || {};
+      const totalFunds =
+        (cofferData.registration?.totalAmount || 0) +
+        (cofferData.rebuys?.totalAmount || 0);
+
+      const transferredAlready = cofferData.transferredToTreasury || 0;
+      const remaining = totalFunds - transferredAlready;
+
+      if (Number(amount) > remaining) {
+        throw new Error("Transfer amount exceeds available funds");
+      }
+
+      const currentTreasury = treasurySnap.exists ? treasurySnap.data()?.balance || 0 : 0;
+
+      // ✅ Update treasury balance
+      t.set(
+        treasuryRef,
+        { 
+          balance: currentTreasury + Number(amount),
+          lastUpdated: admin.firestore.FieldValue.serverTimestamp()
+        },
+        { merge: true }
+      );
+
+      // ✅ Update coffer with transferred amount
+      t.update(cofferRef, {
+        transferredToTreasury: admin.firestore.FieldValue.increment(Number(amount)),
+        lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    });
+
+    res.json({ success: true, message: `Transferred ${amount} FRS to treasury` });
+  } catch (err) {
+    console.error("Move to treasury error:", err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+// ---------------------------------------------------------------------
+// ADMIN — SYSTEM LOGS & ACTIVITY HISTORY
+// ---------------------------------------------------------------------
+
+// Example system logs endpoint
+app.get("/admin/system-logs", authenticate, requireAdmin, async (req, res) => {
+  try {
+    const snapshot = await db.collection("adminLogs").orderBy("createdAt", "desc").limit(100).get();
+    const logs = snapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        message: `${data.adminId || "Unknown"} → ${data.action || data.reason || "Performed action"}`,
+        timestamp: data.createdAt?.toMillis() || Date.now(),
+      };
+    });
+    res.json(logs);
+  } catch (err) {
+    console.error("Fetch system logs error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Example admin activity history endpoint
+app.get("/admin/activity-history", authenticate, requireAdmin, async (req, res) => {
+  try {
+    const snapshot = await db.collection("adminLogs").orderBy("createdAt", "desc").limit(100).get();
+    const activities = snapshot.docs.map(doc => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        admin: data.adminId || "Unknown",
+        action: data.action || data.reason || "Performed action",
+        timestamp: data.createdAt?.toMillis() || Date.now(),
+      };
+    });
+    res.json(activities);
+  } catch (err) {
+    console.error("Fetch admin activity error:", err.message);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // ---------------------------------------------------------------------
 // START SERVER
