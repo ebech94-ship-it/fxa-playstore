@@ -1,8 +1,10 @@
 // app/AppContext.tsx
 import { auth, db } from "@/lib/firebase";
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { onAuthStateChanged, User } from "firebase/auth";
-import { doc, onSnapshot } from "firebase/firestore";
+import { onAuthStateChanged, User, getAuth} from "firebase/auth";
+import {doc, collection, onSnapshot, query, where } from "firebase/firestore";
+
+
 import {
   createContext,
   ReactNode,
@@ -125,7 +127,9 @@ setDemoBalance: React.Dispatch<React.SetStateAction<number>>;
    appReady: boolean;
 setAppReady: (value: boolean) => void;
 
-
+ // 🔔 Alerts
+  unreadCount: number;
+  setUnreadCount: React.Dispatch<React.SetStateAction<number>>;
   loading: boolean;
 
   // ✅ New additions
@@ -207,6 +211,8 @@ setAppReady: () => {},
   tournamentAccounts: [],
   rebuyUnlockedMap: {},
   
+   unreadCount: 0,             // ✅ default
+  setUnreadCount: () => {},   // ✅ noop default
 });
 
 /* ---------------- PROVIDER ---------------- */ 
@@ -278,7 +284,7 @@ const balancesState = {
 
   const [loading, setLoading] = useState(true);
   const [appReady, setAppReady] = useState(false);
-
+const [unreadCount, setUnreadCount] = useState(0);
 
 
   // ✅ ADD FUNCTION RIGHT HERE ⬇⬇⬇
@@ -592,12 +598,36 @@ useEffect(() => {
 
   return () => unsubs.forEach((u) => u());
 }, [tournaments]);
+
+  useEffect(() => {
+  const auth = getAuth();
+  const user = auth.currentUser;
+
+  if (!user) return;
+
+  // Listen to userAlerts where read=false and deleted=false
+  const q = query(
+    collection(db, "userAlerts"),
+    where("userId", "==", user.uid),
+    where("read", "==", false),
+    where("deleted", "==", false)
+  );
+
+  const unsub = onSnapshot(q, (snap) => {
+    setUnreadCount(snap.size);
+  });
+
+  return () => unsub();
+}, []);
+
   
   return (
     <AppContext.Provider
   value={{
     appReady,
   setAppReady,
+     unreadCount,
+    setUnreadCount,
 appSettings,
     isAdmin,
     

@@ -8,7 +8,10 @@ import {
 import * as Linking from "expo-linking";
 import { Stack, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, } from "react";
+
+
+
 
 import "react-native-reanimated";
 
@@ -21,6 +24,7 @@ function AuthGate() {
   const { authUser, loading, appReady } = useApp();
   const router = useRouter();
   const hasRedirected = useRef(false);
+
 
   useEffect(() => {
     if (loading || !appReady) return;
@@ -45,6 +49,7 @@ export default function RootLayout() {
   const router = useRouter();
   const handledRef = useRef(false);
   const routerRef = useRef(router);
+    const { unreadCount, setUnreadCount } = useApp();
   
 
 

@@ -127,6 +127,7 @@ export default function TradingLayout() {
   const [amount, setAmount] = useState<number>(10);
   const [expiration, setExpiration] = useState<string>("15s");
   const [profitPercent] = useState<number>(PAYOUT);
+  const { unreadCount } = useApp();
 
  const [balances, setBalances] = useState({
   real: 0,
@@ -652,16 +653,26 @@ useEffect(() => {
 
   {/* Menu Items */}
       {menuItems.map((item) => (
-        <TouchableOpacity
-          key={item.label}
-          style={styles.menuItem}
-
-          onPress={() => setActivePage(item.label)}
-        >
-          <Ionicons name={item.icon as any} size={28} color={item.color} />
-          <Text style={styles.menuText}>{item.label}</Text>
-        </TouchableOpacity>
-      ))}
+  <TouchableOpacity
+    key={item.label}
+    style={styles.menuItem}
+    onPress={() => setActivePage(item.label)}
+  >
+    {item.label === "Alerts" ? (
+      <View style={{ width: 28, height: 28 }}>
+        <Ionicons name={item.icon as any} size={28} color={item.color} />
+        {unreadCount > 0 && (
+          <View style={styles.badge}>
+            <Text style={styles.badgeText}>{unreadCount}</Text>
+          </View>
+        )}
+      </View>
+    ) : (
+      <Ionicons name={item.icon as any} size={28} color={item.color} />
+    )}
+    <Text style={styles.menuText}>{item.label}</Text>
+  </TouchableOpacity>
+))}
     </ScrollView>
 
     {/* Top Marquee */}
@@ -843,5 +854,20 @@ profitGlowRed: { shadowColor: "#ff2222",  shadowOffset: { width: 0, height: 0 },
     justifyContent: "center",
      flexDirection: "row",
   },
+  badge: {
+  position: "absolute",
+  top: -5,
+  right: -5,
+  backgroundColor: "red",
+  borderRadius: 10,
+  paddingHorizontal: 6,
+  paddingVertical: 2,
+  zIndex: 100,
+},
+badgeText: {
+  color: "#fff",
+  fontSize: 10,
+  fontWeight: "bold",
+},
 
 });
