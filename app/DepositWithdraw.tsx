@@ -158,21 +158,23 @@ const handleWithdrawal = async () => {
 
   try {
     const token = await auth.currentUser?.getIdToken();
-const res = await fetch("https://forexapp2-backend.onrender.com/transactions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        type: "withdrawal",
-        amount: numericAmount,
-        momoNumber: formData.phone,
-        operator: activeMethod,  
-        userId: currentUser!.uid,
-fullName: currentUser!.displayName,
-      }),
-    });
+const API_BASE = process.env.BACKEND_URL;
+
+const res = await fetch(`${API_BASE}/transactions`, {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${token}`,
+  },
+  body: JSON.stringify({
+    type: "withdrawal",          // or "deposit" depending on the action
+    amount: numericAmount,
+    momoNumber: formData.phone,
+    operator: activeMethod,
+    userId: currentUser!.uid,
+    fullName: currentUser!.displayName,
+  }),
+});
 
     const data = await res.json();
 
@@ -205,23 +207,24 @@ const handleManualDeposit = async () => {
       );
       return;
     }
+const token = await auth.currentUser?.getIdToken();
+const API_BASE = process.env.BACKEND_URL;
 
-    const token = await auth.currentUser?.getIdToken();
-const res = await fetch("https://forexapp2-backend.onrender.com/transactions", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-     body: JSON.stringify({
-  type: "deposit",
-  amount: numericAmount,
-  momoNumber: formData.phone,
-  operator: activeMethod,   // ADD THIS
-  userId: currentUser!.uid,
-  fullName: currentUser!.displayName,
-}),
-    });
+const res = await fetch(`${API_BASE}/transactions`, {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${token}`,
+  },
+  body: JSON.stringify({
+    type: "deposit",
+    amount: numericAmount,
+    momoNumber: formData.phone,
+    operator: activeMethod,  
+    userId: currentUser!.uid,
+    fullName: currentUser!.displayName,
+  }),
+});
 
     const data = await res.json();
 

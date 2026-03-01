@@ -1,4 +1,3 @@
-import { } from "firebase/firestore";
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -15,272 +14,228 @@ import { auth } from "../../../firebaseConfig";
 
 type PayoutStatus = "pending" | "paid" | "rejected";
 
-
-// ✅ Define API response type here
 interface TransactionResponse {
   transactionId: string;
   uid: string;
   userName: string;
   amount: number;
   method: string;
-  phoneNumber?: string;  // optional, use if backend returns it
+  wallet?: string;
   status: PayoutStatus;
   createdAt?: any;
 }
+
 interface Payout {
   id: string;
   uid: string;
   userName: string;
   amount: number;
   method: string;
-  wallet: string;
+  wallet?: string;
   status: PayoutStatus;
   createdAt?: any;
-  processing?: boolean;
 }
 
 export default function PayoutsSection() {
+  const API_BASE = process.env.BACKEND_URL as string;
+
   const [payouts, setPayouts] = useState<Payout[]>([]);
-  const [filter, setFilter] =
-    useState<"all" | "pending" | "paid" | "rejected">("all");
   const [selected, setSelected] = useState<Payout | null>(null);
   const [modalVisible, setModalVisible] = useState(false);
-  const [reasonModal, setReasonModal] = useState(false);
+  const [rejectModal, setRejectModal] = useState(false);
   const [rejectReason, setRejectReason] = useState("");
-  const [busy, setBusy] = useState(false);
+  const [loading, setLoading] = useState(false);
 
-  // glow
-  const glowAnim = useRef(new Animated.Value(0)).current;
+  const glow = useRef(new Animated.Value(0)).current;
+
+  // Glow animation
   useEffect(() => {
-  Animated.loop(
-    Animated.sequence([
-      Animated.timing(glowAnim, {
-        toValue: 1,
-        duration: 1200,
-        useNativeDriver: false,
-      }),
-      Animated.timing(glowAnim, {
-        toValue: 0,
-        duration: 1200,
-        useNativeDriver: false,
-      }),
-    ])
-  ).start();
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(glow, { toValue: 1, duration: 1200, useNativeDriver: false }),
+        Animated.timing(glow, { toValue: 0, duration: 1200, useNativeDriver: false }),
+      ])
+    ).start();
+  }, [glow]);
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, []);
-
-  const glowColor = glowAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: ["rgba(30, 58, 66, 0.4)", "rgba(255,0,120,0.4)"],
-  });
-
-  // fetch payouts
+  // Fetch pending withdrawals
   useEffect(() => {
-  const unsubscribe = auth.onAuthStateChanged(async (user) => {
-    if (user) {
+    const unsubscribe = auth.onAuthStateChanged(async (user) => {
+      if (!user) {
+        setPayouts([]);
+        return;
+      }
+
       try {
         const token = await user.getIdToken();
+
         const res = await fetch(
-          "https://forexapp2-backend.onrender.com/admin/transactions?type=withdrawal&status=pending",
-          { headers: { Authorization: `Bearer ${token}` } }
+          `${API_BASE}/admin/transactions?type=withdrawal&status=pending`,
+          {
+            headers: { Authorization: `Bearer ${token}` },
+          }
         );
+
         const data = await res.json();
-    setPayouts(
-  data.map((p: TransactionResponse) => ({
-    ...p,
-    id: p.transactionId,
-  }))
-);
+
+        setPayouts(
+          data.map((p: TransactionResponse) => ({
+            id: p.transactionId,
+            uid: p.uid,
+            userName: p.userName,
+            amount: p.amount,
+            method: p.method,
+            wallet: p.wallet,
+            status: p.status,
+            createdAt: p.createdAt,
+          }))
+        );
       } catch (err) {
         console.error("Failed to fetch payouts:", err);
       }
-    } else {
-      setPayouts([]);
+    });
+
+    return () => unsubscribe();
+  }, [API_BASE]);
+
+  // Approve payout
+  const approve = async () => {
+    if (!selected || loading) return;
+
+    setLoading(true);
+    try {
+      const user = auth.currentUser;
+      if (!user) throw new Error("Not authenticated");
+
+      const token = await user.getIdToken();
+
+      const res = await fetch(`${API_BASE}/admin/approve-payout`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ transactionId: selected.id }),
+      });
+
+      if (!res.ok) throw new Error("Approval failed");
+
+      setPayouts((prev) => prev.filter((p) => p.id !== selected.id));
+      setModalVisible(false);
+      setSelected(null);
+      alert("Payout approved");
+    } catch (e: any) {
+      alert(e.message || "Approval error");
+    } finally {
+      setLoading(false);
     }
-  });
+  };
 
-  return () => unsubscribe();
-}, []);
+  // Reject payout
+  const reject = async () => {
+    if (!selected || loading) return;
 
-  const filtered =
-    filter === "all" ? payouts : payouts.filter((p) => p.status === filter);
+    setLoading(true);
+    try {
+      const user = auth.currentUser;
+      if (!user) throw new Error("Not authenticated");
 
-  // approve payout
- const markPaid = async () => {
-  if (!selected || busy) return;
+      const token = await user.getIdToken();
 
-  setBusy(true);
-
-  try {
-    const user = auth.currentUser;
-    if (!user) throw new Error("Not authenticated");
-
-    const token = await user.getIdToken();
-
-    const res = await fetch(
-      "https://forexapp2-backend.onrender.com/admin/approve-payout",
-      {
+      const res = await fetch(`${API_BASE}/admin/reject-payout`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
-         transactionId: selected.id,
-        }),
-      }
-    );
-
-    if (!res.ok) throw new Error("Payout approval failed");
-
-    alert("Payout marked as paid");
-    setPayouts((prev) =>
-  prev.filter((p) => p.id !== selected.id)
-);
-    setModalVisible(false);
-    setSelected(null);
-  } catch (e: any) {
-    alert(e.message || "Error approving payout");
-  } finally {
-    setBusy(false);
-  }
-};
-
-  // reject payout
- const rejectPayout = async () => {
-  if (!selected || busy) return;
-
-  setBusy(true);
-
-  try {
-    const user = auth.currentUser;
-    if (!user) throw new Error("Not authenticated");
-
-    const token = await user.getIdToken();
-
-    const res = await fetch(
-      "https://forexapp2-backend.onrender.com/admin/reject-payout",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-         transactionId: selected.id,
+          transactionId: selected.id,
           reason: rejectReason || "Rejected by admin",
         }),
-      }
-    );
+      });
 
-    if (!res.ok) throw new Error("Rejection failed");
-    setPayouts((prev) =>
-  prev.filter((p) => p.id !== selected.id)
-);
+      if (!res.ok) throw new Error("Reject failed");
 
-    setRejectReason("");
-    setReasonModal(false);
-    setModalVisible(false);
-    setSelected(null);
-  } catch (e: any) {
-    alert(e.message || "Error rejecting payout");
-  } finally {
-    setBusy(false);
-  }
-};
-
+      setPayouts((prev) => prev.filter((p) => p.id !== selected.id));
+      setRejectModal(false);
+      setModalVisible(false);
+      setSelected(null);
+      setRejectReason("");
+    } catch (e: any) {
+      alert(e?.message || "Rejection failed");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <View style={styles.container}>
-      <Animated.View style={[styles.header, { shadowColor: glowColor }]}>
-        <Text style={styles.headerText}>Withdrawal Payouts</Text>
-      </Animated.View>
+      <Text style={styles.header}>💸 Withdrawal Approvals</Text>
 
-      <View style={styles.filters}>
-        {["all", "pending", "paid", "rejected"].map((f) => (
-          <TouchableOpacity
-            key={f}
-            style={[styles.filterBtn, filter === f && styles.filterActive]}
-            onPress={() => setFilter(f as any)}
-          >
-            <Text style={styles.filterText}>{f.toUpperCase()}</Text>
-          </TouchableOpacity>
-        ))}
-      </View>
-
-      <ScrollView>
-        {filtered.map((p) => (
-          <TouchableOpacity
-            key={p.id}
-            style={styles.card}
-           onPress={() => {
-  if (p.status !== "pending") return;
-  setSelected(p);
-  setModalVisible(true);
-}}
-  >
-            <Text style={styles.name}>{p.userName}</Text>
-            <Text style={styles.amount}>Amount: {p.amount} FRS</Text>
-            <Text style={{ color: "#777", fontSize: 11 }}>
-              ID: {p.id}</Text>
-            <Text style={[styles.status, styles[p.status]]}>
-              {p.status.toUpperCase()}
-            </Text>
-          </TouchableOpacity>
-        ))}
+      <ScrollView contentContainerStyle={{ flexGrow: 1 }}>
+        {payouts.length === 0 ? (
+          <View style={styles.emptyWrap}>
+            <Text style={styles.emptyText}>No pending withdrawals</Text>
+          </View>
+        ) : (
+          payouts.map((p) => (
+            <TouchableOpacity
+              key={p.id}
+              style={styles.card}
+              onPress={() => {
+                setSelected(p);
+                setModalVisible(true);
+              }}
+            >
+              <Text style={styles.username}>{p.userName}</Text>
+              <Text style={styles.amount}>{p.amount} FRS</Text>
+              <Text style={{ color: "#aaa", fontSize: 12 }}>
+                {p.method} • ID: {p.id}
+              </Text>
+            </TouchableOpacity>
+          ))
+        )}
       </ScrollView>
 
-      <Modal transparent visible={modalVisible}>
-        <View style={styles.modalWrap}>
-          <View style={styles.modalBox}>
-            {selected && (
-              <>
-                <Text style={styles.modalTitle}>Payout Details</Text>
-                <Text style={styles.modalText}>User: {selected.userName}</Text>
-                <Text style={styles.modalText}>Amount: {selected.amount} FRS</Text>
-<Text style={styles.modalText}> Method: {selected.method}</Text>
-<Text style={styles.modalText}>  Wallet: {selected.wallet}</Text>
-<Text style={styles.modalText}>
-  Date: {selected.createdAt   ? new Date(selected.createdAt.seconds 
-    ? selected.createdAt.seconds * 1000 : selected.createdAt).toLocaleString()
-    : "No date"}</Text>
-                <View style={styles.modalBtns}>
-                  <TouchableOpacity
-                    style={styles.approveBtn}
-                    onPress={markPaid}
-                    disabled={busy}
-                  >
-                    {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.btnText}>MARK PAID</Text>}
-                  </TouchableOpacity>
+      {/* Details Modal */}
+      <Modal visible={modalVisible} transparent>
+        <View style={styles.overlay}>
+          <View style={styles.box}>
+            <Text style={styles.title}>Payout Details</Text>
+            <Text style={styles.text}>User: {selected?.userName}</Text>
+            <Text style={styles.text}>Amount: {selected?.amount} FRS</Text>
+            <Text style={styles.text}>Method: {selected?.method}</Text>
+            <Text style={styles.text}>Wallet: {selected?.wallet || "N/A"}</Text>
 
-                  <TouchableOpacity
-                    style={styles.rejectBtn}
-                    onPress={() => setReasonModal(true)}
-                    disabled={busy}
-                  >
-                    <Text style={styles.btnText}>REJECT</Text>
-                  </TouchableOpacity>
-                </View>
-              </>
-            )}
+            <TouchableOpacity style={styles.approve} onPress={approve} disabled={loading}>
+              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btn}>MARK PAID</Text>}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.reject}
+              onPress={() => setRejectModal(true)}
+              disabled={loading}
+            >
+              <Text style={styles.btn}>REJECT</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
-      <Modal transparent visible={reasonModal}>
-        <View style={styles.modalWrap}>
-          <View style={styles.reasonBox}>
+      {/* Reject Modal */}
+      <Modal visible={rejectModal} transparent>
+        <View style={styles.overlay}>
+          <View style={styles.box}>
             <TextInput
-              placeholder="Reason..."
-              placeholderTextColor="#777"
               value={rejectReason}
               onChangeText={setRejectReason}
+              placeholder="Reason"
+              placeholderTextColor="#777"
               style={styles.input}
               multiline
             />
-            <TouchableOpacity style={styles.rejectConfirmBtn} onPress={rejectPayout}>
-              <Text style={styles.btnText}>CONFIRM</Text>
+            <TouchableOpacity style={styles.reject} onPress={reject}>
+              <Text style={styles.btn}>CONFIRM REJECT</Text>
             </TouchableOpacity>
           </View>
         </View>
@@ -290,29 +245,19 @@ export default function PayoutsSection() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, padding: 12 },
-  header: { padding: 18, borderRadius: 14, backgroundColor: "#141427", marginBottom: 14 },
-  headerText: { fontSize: 22, color: "white", fontWeight: "bold", textAlign: "center" },
-  filters: { flexDirection: "row", justifyContent: "space-around", marginBottom: 12 },
-  filterBtn: { padding: 8, backgroundColor: "#2a2a3d", borderRadius: 12 },
-  filterActive: { backgroundColor: "#6f00d6" },
-  filterText: { color: "white", fontSize: 12 },
-  card: { padding: 16, backgroundColor: "#1a1a29", borderRadius: 14, marginBottom: 12 },
-  name: { color: "white", fontWeight: "bold" },
-  amount: { color: "#ccc" },
-  status: { marginTop: 6, fontWeight: "bold" },
-  pending: { color: "orange" },
-  paid: { color: "#00ff88" },
-  rejected: { color: "#ff0044" },
-  modalWrap: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", padding: 20 },
-  modalBox: { backgroundColor: "#111", padding: 20, borderRadius: 14 },
-  modalTitle: { color: "white", fontSize: 18, marginBottom: 10 },
-  modalText: { color: "#ddd", marginBottom: 6 },
-  modalBtns: { flexDirection: "row", marginTop: 12 },
-  approveBtn: { flex: 1, backgroundColor: "#00cc66", padding: 12, borderRadius: 10, marginRight: 6 },
-  rejectBtn: { flex: 1, backgroundColor: "#cc0033", padding: 12, borderRadius: 10, marginLeft: 6 },
-  btnText: { textAlign: "center", color: "#fff", fontWeight: "bold" },
-  reasonBox: { backgroundColor: "#111", padding: 20, borderRadius: 14 },
-  input: { backgroundColor: "#1d1d1d", color: "white", borderRadius: 10, padding: 12 },
-  rejectConfirmBtn: { backgroundColor: "#ff0044", padding: 12, borderRadius: 10, marginTop: 12 },
+  container: { flex: 1, padding: 16, backgroundColor: "#07070a" },
+  header: { color: "#fff", fontSize: 22, fontWeight: "800", textAlign: "center", marginBottom: 12 },
+  card: { backgroundColor: "#111", padding: 14, borderRadius: 12, marginBottom: 10 },
+  username: { color: "#fff", fontWeight: "700" },
+  amount: { color: "#7cf" },
+  overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "center", padding: 20 },
+  box: { backgroundColor: "#0b0c10", padding: 18, borderRadius: 14 },
+  title: { color: "#fff", fontSize: 18, fontWeight: "800", marginBottom: 10 },
+  text: { color: "#ddd", marginBottom: 6 },
+  approve: { backgroundColor: "#19a974", padding: 12, borderRadius: 10, marginTop: 10 },
+  reject: { backgroundColor: "#b00020", padding: 12, borderRadius: 10, marginTop: 10 },
+  btn: { color: "#fff", fontWeight: "800", textAlign: "center" },
+  input: { backgroundColor: "#111", color: "#fff", borderRadius: 8, padding: 10 },
+  emptyWrap: { flex: 1, alignItems: "center", justifyContent: "center", paddingTop: 40 },
+  emptyText: { color: "#6b7280", fontSize: 14, fontWeight: "600" },
 });

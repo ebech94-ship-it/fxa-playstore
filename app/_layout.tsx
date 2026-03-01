@@ -49,7 +49,7 @@ export default function RootLayout() {
   const router = useRouter();
   const handledRef = useRef(false);
   const routerRef = useRef(router);
-    const { unreadCount, setUnreadCount } = useApp();
+   
   
 
 

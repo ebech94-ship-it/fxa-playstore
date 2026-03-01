@@ -663,7 +663,7 @@ useEffect(() => {
         <Ionicons name={item.icon as any} size={28} color={item.color} />
         {unreadCount > 0 && (
           <View style={styles.badge}>
-            <Text style={styles.badgeText}>{unreadCount}</Text>
+            <Text style={styles.badgeText}> {unreadCount > 99 ? "99+" : unreadCount}</Text>
           </View>
         )}
       </View>

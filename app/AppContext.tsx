@@ -1,8 +1,8 @@
 // app/AppContext.tsx
 import { auth, db } from "@/lib/firebase";
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { onAuthStateChanged, User, getAuth} from "firebase/auth";
-import {doc, collection, onSnapshot, query, where } from "firebase/firestore";
+import { onAuthStateChanged, User } from "firebase/auth";
+import { collection, doc, getDoc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 
 
 import {
@@ -324,6 +324,36 @@ const tournamentAccounts = useMemo(() =>
     joined: t.joined,
   })), [tournaments, tournamentMeta, liveTournamentBalances]);
 
+
+/* ---------------- HELPERS ---------------- */
+
+// Generate a new unique publicId for a user
+const generateUserId = async (): Promise<string> => {
+  const counterRef = doc(db, "meta", "userCounter");
+
+  try {
+    let newId = await (async () => {
+      // Simple transaction to increment a counter
+      const snap = await getDoc(counterRef);
+      if (!snap.exists()) {
+        // initialize counter if missing
+        await updateDoc(counterRef, { count: 1 }).catch(() => {});
+        return `USR-000001`;
+      }
+      const current = snap.data()?.count ?? 0;
+      const next = current + 1;
+
+      await updateDoc(counterRef, { count: next });
+
+      return `USR-${String(next).padStart(6, "0")}`;
+    })();
+
+    return newId;
+  } catch (err) {
+    console.error("Failed to generate userId:", err);
+    return `USR-${Date.now()}`; // fallback
+  }
+};
 useEffect(() => {
   const ref = doc(db, "settings", "app");
 
@@ -338,6 +368,43 @@ useEffect(() => {
   });
 
   return unsub;
+}, []);
+useEffect(() => {
+  const fetchUserProfile = async () => {
+    if (!auth.currentUser) return;
+
+    const userRef = doc(db, "users", auth.currentUser.uid);
+    const userSnap = await getDoc(userRef);
+
+    if (userSnap.exists()) {
+      const data = userSnap.data();
+
+      // Generate missing publicId
+      if (!data.publicId) {
+        const newId = await generateUserId();
+        await updateDoc(userRef, { publicId: newId });
+        data.publicId = newId;
+      }
+
+      const mappedProfile: UserProfile = {
+  publicId: data.publicId,
+  username: data.username ?? "New User",
+  displayName: data.displayName ?? data.username ?? "New User",
+  email: data.email ?? "",
+  phone: data.phone ?? "",
+  country: data.country ?? "",
+  dateOfBirth: data.dateOfBirth ?? "",
+  avatarUrl: data.avatarUrl ?? "",
+  preview: false,
+  verified: !!data.username && !!data.country && !!data.avatarUrl, // only true if all filled
+  profileCompleted: data.profileCompleted ?? false,
+};
+
+      setProfile(mappedProfile);
+    }
+  };
+
+  fetchUserProfile();
 }, []);
 
 
@@ -434,21 +501,22 @@ useEffect(() => {
     const acc: Accounts = data.accounts ?? {};
     setAccounts(acc);
 
-    // ✅ NO TIME LOGIC HERE
+    // Build tournament list from user accounts, only include joined tournaments
     const tournamentList = acc.tournaments
-      ? Object.entries(acc.tournaments).map(([id, t]) => ({
-          ...t,
-          tournamentId: id,
-           status: "upcoming" as const, // temporary, real status calculated elsewhere
-        }))
+      ? Object.entries(acc.tournaments)
+          .map(([id, t]) => ({
+            ...t,
+            tournamentId: id,
+            status: "upcoming" as const, // will be updated by your time-based effect
+          }))
+          .filter(t => t.joined) // ✅ only include joined tournaments
       : [];
 
     setTournaments(tournamentList);
 
-    // ✅ Active tournament safety check
+    // ✅ Reset active tournament if it was deleted
     if (activeAccountRef.current.type === "tournament") {
       const activeTournamentId = activeAccountRef.current.tournamentId;
-
       const stillExists = tournamentList.find(
         (t) => t.tournamentId === activeTournamentId
       );
@@ -482,7 +550,26 @@ useEffect(() => {
     });
   });
 }, [now]);
+useEffect(() => {
+  // Remove balances and meta for deleted tournaments
+  const validIds = tournaments.map(t => t.tournamentId);
 
+  setLiveTournamentBalances(prev => {
+    const updated: Record<string, number> = {};
+    Object.entries(prev).forEach(([id, bal]) => {
+      if (validIds.includes(id)) updated[id] = bal;
+    });
+    return updated;
+  });
+
+  setTournamentMeta(prev => {
+    const updated: Record<string, { name: string; symbol: string }> = {};
+    Object.entries(prev).forEach(([id, meta]) => {
+      if (validIds.includes(id)) updated[id] = meta;
+    });
+    return updated;
+  });
+}, [tournaments]);
 
 useEffect(() => {
   if (!userDoc) {
@@ -598,28 +685,38 @@ useEffect(() => {
 
   return () => unsubs.forEach((u) => u());
 }, [tournaments]);
+useEffect(() => {
+  if (!authUser?.uid) {
+    setUnreadCount(0);
+    return;
+  }
 
-  useEffect(() => {
-  const auth = getAuth();
-  const user = auth.currentUser;
+  let totalAlerts = 0;
+  let readCount = 0;
 
-  if (!user) return;
-
-  // Listen to userAlerts where read=false and deleted=false
-  const q = query(
-    collection(db, "userAlerts"),
-    where("userId", "==", user.uid),
-    where("read", "==", false),
-    where("deleted", "==", false)
+  const unsubAlerts = onSnapshot(
+    collection(db, "alerts"),
+    (snap) => {
+      totalAlerts = snap.size;
+      setUnreadCount(Math.max(totalAlerts - readCount, 0));
+    }
   );
 
-  const unsub = onSnapshot(q, (snap) => {
-    setUnreadCount(snap.size);
+  const q = query(
+    collection(db, "userAlertReads"),
+    where("userId", "==", authUser.uid)
+  );
+
+  const unsubReads = onSnapshot(q, (snap) => {
+    readCount = snap.size;
+    setUnreadCount(Math.max(totalAlerts - readCount, 0));
   });
 
-  return () => unsub();
-}, []);
-
+  return () => {
+    unsubAlerts();
+    unsubReads();
+  };
+}, [authUser?.uid]);
   
   return (
     <AppContext.Provider

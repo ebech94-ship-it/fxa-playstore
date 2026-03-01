@@ -16,7 +16,7 @@ import {
   where,
 } from "firebase/firestore";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -120,24 +120,35 @@ const formHydratedRef = useRef(false);
 
 const { profile: appProfile,  setProfile, setProfileSubmitted, profile, profileLoaded, balances } = useApp();
 
+const safeProfile = useMemo(() => ({
+  publicId: appProfile?.publicId ?? "Not assigned",
+  displayName: appProfile?.displayName ?? "",
+  username: appProfile?.username ?? "",
+  phone: appProfile?.phone ?? "",
+  country: appProfile?.country ?? "",
+  dateOfBirth: appProfile?.dateOfBirth ?? "",
+  avatarUrl: appProfile?.avatarUrl ?? "",
+  profileCompleted: appProfile?.profileCompleted ?? false,
+  verified: !!appProfile?.username && !!appProfile?.country && !!appProfile?.avatarUrl,
+}), [appProfile]);
+
 useEffect(() => {
-  if (formHydratedRef.current) return; // 🔒 only once
+  if (formHydratedRef.current) return;
 
   setForm({
-    displayName: user?.displayName ?? appProfile?.displayName ?? "", // ✅ signup name first
-    username: "", // keep empty for user to fill
-    email: "",    // email remains readonly, filled separately
-    phone: appProfile?.phone ?? "",
-    country: appProfile?.country ?? "",
-    dateOfBirth: appProfile?.dateOfBirth ?? "",
-    avatarUrl: appProfile?.avatarUrl ?? "",
+    displayName: safeProfile.displayName,
+    username: safeProfile.username,
+    email: user?.email ?? "",
+    phone: safeProfile.phone,
+    country: safeProfile.country,
+    dateOfBirth: safeProfile.dateOfBirth,
+    avatarUrl: safeProfile.avatarUrl,
     useHeikinAshi,
     compressWicks,
   });
 
   formHydratedRef.current = true;
-}, [user, appProfile, useHeikinAshi, compressWicks]);
-
+}, [user, useHeikinAshi, compressWicks, safeProfile]);
 
 useEffect(() => {
   if (!user) return;
