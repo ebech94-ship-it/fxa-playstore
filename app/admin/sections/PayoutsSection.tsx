@@ -37,7 +37,7 @@ interface Payout {
 }
 
 export default function PayoutsSection() {
-  const API_BASE = process.env.BACKEND_URL as string;
+ const API_BASE = process.env.EXPO_PUBLIC_BACKEND_URL as string;
 
   const [payouts, setPayouts] = useState<Payout[]>([]);
   const [selected, setSelected] = useState<Payout | null>(null);
