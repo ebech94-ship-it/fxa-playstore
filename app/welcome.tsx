@@ -4,8 +4,8 @@ import { AntDesign, Ionicons } from "@expo/vector-icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
 
+import * as Linking from "expo-linking";
 import PasswordInput from "../components/PasswordInput";
-
 
 import * as Google from "expo-auth-session/providers/google";
 import * as Localization from "expo-localization";
@@ -39,6 +39,20 @@ import {
 import { auth, db, } from "../firebaseConfig";
 
 import { makeRedirectUri } from "expo-auth-session";
+
+
+// Create demo balance document for leaderboard
+const createDemoBalance = async (uid: string, username: string) => {
+  const demoRef = doc(db, "demoBalances", uid);
+
+  await setDoc(demoRef, {
+    username,
+    balance: 1000, // default demo balance
+    avatar: "",     // optional
+    country: "",    // optional
+    createdAt: serverTimestamp(),
+  });
+};
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -91,7 +105,8 @@ const publicUserId = await generateUserId();
     tournament: { balance: 0, type: "tournament" },
   },
 });
-
+// ➕ Add this immediately after the above
+await createDemoBalance(uid, name || "Player");
 
     // 🧹 Clear referral after use
     if (inviteRef) {
@@ -188,7 +203,7 @@ const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
 const [inviteRef, setInviteRef] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [confirmationResult, setConfirmationResult] = useState<any>(null);  // ✅ add this
-
+const [referrerName, setReferrerName] = useState<string | null>(null);
 
 const [verificationId, setVerificationId] = useState<string | null>(null);
 const [otp, setOtp] = useState("");
@@ -248,20 +263,24 @@ const sendOTP = async () => {
   try {
     setLoading(true);
 
-    if (!recaptchaRef.current) {
-      recaptchaRef.current = new RecaptchaVerifier(
-        auth,
-        "recaptcha-container",
-        {
-          size: "invisible",
-        }
-      );
+    // ✅ Only create Recaptcha for web
+    let appVerifier: RecaptchaVerifier | undefined = undefined;
+    if (Platform.OS === "web") {
+      if (!recaptchaRef.current) {
+        recaptchaRef.current = new RecaptchaVerifier(
+          auth,
+          "recaptcha-container",
+          { size: "invisible" }
+        );
+      }
+      appVerifier = recaptchaRef.current;
     }
 
+    // 🔑 signInWithPhoneNumber
     const result = await signInWithPhoneNumber(
       auth,
       `+${callingCode}${cleanedPhone}`,
-      recaptchaRef.current
+      appVerifier as any // undefined on Android → native verification
     );
 
     setConfirmationResult(result);
@@ -311,7 +330,37 @@ const verifyOTP = async () => {
   }
 };
 
+useEffect(() => {
+  const handleDeepLink = ({ url }: { url: string }) => {
+    const { queryParams } = Linking.parse(url);
+    if (queryParams?.ref) {
+      AsyncStorage.setItem("inviteRef", queryParams.ref as string);
+      setInviteRef(queryParams.ref as string); // update state to show ref UI
+    }
+  };
 
+  // Subscribe to deep links
+  const subscription = Linking.addEventListener("url", handleDeepLink);
+
+  // Check if the app was opened from a link
+  Linking.getInitialURL().then((url) => {
+    if (url) handleDeepLink({ url });
+  });
+
+  return () => subscription.remove();
+}, []);
+useEffect(() => {
+  if (!inviteRef) return;
+
+  const fetchReferrer = async () => {
+    const refSnap = await getDoc(doc(db, "users", inviteRef));
+    if (refSnap.exists()) {
+      setReferrerName(refSnap.data().displayName || "a friend");
+    }
+  };
+
+  fetchReferrer();
+}, [inviteRef]);
 
 useEffect(() => {
   AsyncStorage.getItem("inviteRef").then((ref) => {
@@ -405,15 +454,21 @@ useEffect(() => {
     });
   };
 
-  // 📧 Email Signup
-  const handleSignupEmail = async () => {
+// 📧 Email Signup
+const handleSignupEmail = async () => {
+  if (!name.trim()) {
+    return alert("Enter your full name");
+  }
+  if (!isValidPassword(password)) {
+    return alert("Password must be at least 6 characters");
+  }
+  if (password !== confirmPassword) {
+    return alert("Passwords do not match");
+  }
+
+  setLoading(true);
+
   try {
-    if (!name.trim()) return alert("Enter your full name");
-    if (!isValidPassword(password)) return alert("Password must be at least 6 characters");
-    if (password !== confirmPassword) return alert("Passwords do not match");
-
-    setLoading(true);
-
     // 1️⃣ Create Firebase Auth user
     const userCred = await createUserWithEmailAndPassword(
       auth,
@@ -421,19 +476,23 @@ useEffect(() => {
       password
     );
 
-    // 2️⃣ Make sure user is signed in (auth.currentUser should now exist)
+    // 2️⃣ Force token refresh to ensure auth propagation
+    await auth.currentUser?.getIdToken(true);
+
     if (!auth.currentUser) {
       alert("Something went wrong with authentication. Try again.");
       return;
     }
 
-    // 3️⃣ Create Firestore profile (users/{uid}) AFTER user exists
-    await createUserAccounts(userCred.user.uid, name, email);
+    // 3️⃣ Create Firestore profile
+    try {
+      await createUserAccounts(userCred.user.uid, name, email);
+    } catch (e) {
+      console.warn("Firestore profile creation failed but continuing navigation", e);
+    }
 
-    // 4️⃣ Mark user as logged in
+    // 4️⃣ Mark user as logged in and navigate
     await AsyncStorage.setItem("isLoggedIn", "true");
-
-    // 5️⃣ Route immediately
     router.replace("/tradinglayout");
 
   } catch (e) {
@@ -573,10 +632,10 @@ const handleLinkPassword = async () => {
   </View>
 )}
           <Text style={styles.title}>Welcome to Forex Tournaments Arena</Text>
-          {inviteRef && (
+       {inviteRef && (
   <View style={{ marginBottom: 16 }}>
     <Text style={{ color: "#21e6c1", textAlign: "center" }}>
-      🎁 You were invited by a friend
+      🎁 You were invited by {referrerName || "a friend"}!
     </Text>
   </View>
 )}

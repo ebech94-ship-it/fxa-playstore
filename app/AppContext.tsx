@@ -2,7 +2,7 @@
 import { auth, db } from "@/lib/firebase";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { onAuthStateChanged, User } from "firebase/auth";
-import { collection, doc, getDoc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
+import { collection, doc, getDoc, onSnapshot, query, setDoc, updateDoc, where } from "firebase/firestore";
 
 
 import {
@@ -252,22 +252,11 @@ const [rebuyUnlockedMap, setRebuyUnlockedMap] =
   useState<Record<string, boolean>>({});
 
 
-const activeBalance = (() => {
-  if (activeAccount.type === "demo") {
-    return accounts?.demo?.balance ?? 1000;
-  }
-
-  if (activeAccount.type === "real") {
-    return userDoc?.realBalance?? 0;
-  }
-
-  // ✅ tournament → LIVE source
-  return (
-    liveTournamentBalances[activeAccount.tournamentId] ??
-    activeTournament?.balance ??
-    0
-  );
-})();
+const activeBalance = useMemo(() => {
+  if (activeAccount.type === "demo") return accounts?.demo?.balance ?? 1000;
+  if (activeAccount.type === "real") return userDoc?.realBalance ?? 0;
+  return liveTournamentBalances[activeAccount.tournamentId] ?? activeTournament?.balance ?? 0;
+}, [activeAccount, accounts, userDoc, liveTournamentBalances, activeTournament]);
 
 const [demoBalance, setDemoBalance] = useState<number>(1000);
 
@@ -608,6 +597,30 @@ useEffect(() => {
 
   setProfileLoaded(true);
 }, [userDoc, profileSubmitted]);
+
+
+useEffect(() => {
+  if (!authUser?.uid || demoBalance == null) return;
+
+  const ref = doc(db, "demoBalances", authUser.uid);
+
+  const payload = {
+    balance: demoBalance,
+    username: profile?.username ?? "Demo User",
+    countryCode: profile?.country ?? "CM",
+    avatar: profile?.avatarUrl ?? "",
+    updatedAt: Date.now(),
+  };
+
+  setDoc(ref, payload, { merge: true }).catch(console.error);
+
+}, [
+  authUser?.uid,
+  demoBalance,
+  profile?.username,
+  profile?.country,
+  profile?.avatarUrl
+]);
 
 useEffect(() => {
   if (!authUser || tournaments.length === 0) {

@@ -27,6 +27,7 @@ export default function AlertScreen() {
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const router = useRouter();
+  
 
   useEffect(() => {
     const q = query(collection(db, "alerts"), orderBy("createdAt", "desc"));

@@ -24,6 +24,7 @@ export type LeaderboardBarProps = {
   username?: string;
   countryCode?: string;
   tournamentBalance?: number;
+  demoBalance?: number; // NEW
 };
 
 
@@ -34,8 +35,8 @@ type PlayerRowProps = {
 
 const PlayerRow = ({ username, countryCode }: PlayerRowProps) => (
   <View style={{ flexDirection: "row", alignItems: "center" }}>
-    <CountryFlag isoCode={countryCode} size={18} />
-    <Text style={{ marginLeft: 6, color: "#fff", fontWeight: "600" }}>{username}</Text>
+    <CountryFlag isoCode={countryCode} size={14} />
+    <Text style={{ marginLeft: 6, color: "#fff", fontWeight: "600",fontSize: 12 }}>{username}</Text>
   </View>
 );
 
@@ -143,7 +144,7 @@ const toISO2 = (country?: string) => {
 
 const LeaderboardBar = ({
   activeAccount,
-  tournamentBalance
+  tournamentBalance, demoBalance
 }: LeaderboardBarProps) => {
 
 
@@ -162,7 +163,30 @@ const activeTourney =
 
 const [loadingLive, setLoadingLive] = useState(false);
 
+useEffect(() => {
+  if (activeAccount.type !== "demo") return;
 
+  setLoadingLive(true);
+
+  const q = query(
+    collection(db, "demoBalances"),
+    orderBy("balance", "desc")
+  );
+
+  const unsub = onSnapshot(q, (snap) => {
+    const players: Player[] = snap.docs.map((d) => {
+      const data = d.data() as Omit<Player, "id">;
+      return {
+        id: d.id,
+        ...data,
+      };
+    });
+    setLivePlayers(players);
+    setLoadingLive(false);
+  });
+
+  return () => unsub();
+}, [activeAccount.type]);
 
 useEffect(() => {
   if (activeAccount.type !== "tournament" || !activeAccount.tournamentId) {
@@ -208,12 +232,29 @@ const isTournamentLive =
   activeAccount.type === "tournament" && !!activeTourney?.tournamentId;
 
 
-const players: Player[] = isTournamentLive
-  ? livePlayers
-  : PREVIEW_PLAYERS;
+const players: Player[] = activeAccount.type === "demo"
+  ? livePlayers          // Fetch from demoAccounts collection
+  : isTournamentLive
+  ? livePlayers          // Tournament live leaderboard
+  : PREVIEW_PLAYERS;     // Fallback
 
+// ✅ Override current user's balance for instant demo updates
+const displayPlayers = players.map((p) => {
+  const isCurrent = currentUser && p.id === currentUser.uid;
 
-// add this at the top of LeaderboardBar
+  // If this is the demo account of the current user, force the local demoBalance
+  if (activeAccount.type === "demo" && isCurrent) {
+    return { ...p, balance: demoBalance ?? p.balance };
+  }
+
+  return p;
+});
+// 👇 Group players into vertical pairs (2 rows layout)
+const chunkedPlayers: Player[][] = [];
+
+for (let i = 0; i < displayPlayers.length; i += 2) {
+  chunkedPlayers.push(displayPlayers.slice(i, i + 2));
+}
 
 return (
   <View style={styles.container}>
@@ -231,52 +272,72 @@ return (
           </Text>
         )}
 
-        {players.map((p, index) => {
-          const isCurrent = currentUser && p.id === currentUser.uid;
+    {chunkedPlayers.map((pair, columnIndex) => (
+  <View key={columnIndex} style={{ marginRight: 10 }}>
+    {pair.map((p, rowIndex) => {
+      const index = columnIndex * 2 + rowIndex;
+      const isCurrent = currentUser && p.id === currentUser.uid;
 
-          // Highlight top 3
-          let topColor;
-          if (index === 0) topColor = "#FFD700"; // Gold
-          else if (index === 1) topColor = "#C0C0C0"; // Silver
-          else if (index === 2) topColor = "#CD7F32"; // Bronze
+      let topColor;
+      if (index === 0) topColor = "#FFD700";
+      else if (index === 1) topColor = "#C0C0C0";
+      else if (index === 2) topColor = "#CD7F32";
 
-          return (
-            <Animated.View
-              key={p.id}
-              style={[
-                styles.player,
-                isCurrent && styles.currentUser,
-                topColor && { borderColor: topColor, borderWidth: 2 },
-              ]}
-              entering={SlideInRight.springify()}
-              exiting={FadeOut}
-              layout={Layout.springify()}
-            >
-              <Image
-                source={{
-                  uri: isCurrent
-                    ? profile?.avatarUrl || p.avatar || "https://via.placeholder.com/32"
-                    : p.avatar || "https://via.placeholder.com/32",
-                }}
-                style={[styles.avatar, isCurrent && styles.currentUserAvatar]}
-              />
+      return (
+        <Animated.View
+          key={p.id}
+          style={[
+            styles.player,
+             { width: 120 },
+            isCurrent && styles.currentUser,
+            topColor && { borderColor: topColor, borderWidth: 2 },
+            { marginBottom: 6 } // space between the 2 rows
+          ]}
+          entering={SlideInRight.springify()}
+          exiting={FadeOut}
+          layout={Layout.springify()}
+        >
+          <Image
+            source={{
+              uri: isCurrent
+                ? profile?.avatarUrl || p.avatar || "https://via.placeholder.com/32"
+                : p.avatar || "https://via.placeholder.com/32",
+            }}
+            style={[styles.avatar, isCurrent && styles.currentUserAvatar]}
+          />
 
-              <View style={styles.info}>
-                <PlayerRow
-                  username={isCurrent ? profile?.username || p.username || "You" : p.username || "Player"}
-                  countryCode={isCurrent ? toISO2(profile?.country) : p.countryCode || "CM"}
-                />
-                <Text style={styles.balance}>
-                  {activeAccount.type === "tournament" && isCurrent
-                    ? tournamentBalance ?? p.balance ?? 0
-                    : p.balance ?? 0}T
-                </Text>
-              </View>
+          <View style={styles.info}>
+            <PlayerRow
+              username={
+                isCurrent
+                  ? profile?.username || p.username || "You"
+                  : p.username || "Player"
+              }
+              countryCode={
+                isCurrent ? toISO2(profile?.country) : p.countryCode || "CM"
+              }
+            />
+            <Text style={styles.balance}>
+              {activeAccount.type === "tournament" && isCurrent
+                ? tournamentBalance ?? p.balance ?? 0
+                : p.balance ?? 0}
+              T
+            </Text>
+          </View>
 
-              <Text style={[styles.rank, topColor ? { color: topColor } : {}]}>#{index + 1}</Text>
-            </Animated.View>
-          );
-        })}
+          <Text
+            style={[
+              styles.rank,
+              topColor ? { color: topColor } : {},
+            ]}
+          >
+            #{index + 1}
+          </Text>
+        </Animated.View>
+      );
+    })}
+  </View>
+))}
       </Animated.ScrollView>
 
       {/* Floating See All button */}
@@ -326,7 +387,7 @@ return (
           </Pressable>
 
           <FlatList
-            data={players}
+            data={displayPlayers}
             keyExtractor={(p) => p.id}
             numColumns={3} // makes it grid-like
             columnWrapperStyle={{ justifyContent: "space-between", marginBottom: 10 }}
@@ -384,21 +445,24 @@ const styles = StyleSheet.create({
   player: {
     flexDirection: "row",
     alignItems: "center",
-    marginRight: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 5,
+    marginRight: 6,
+paddingHorizontal: 6,
+    paddingVertical: 4,
     backgroundColor: "rgba(255,255,255,0.05)",
     borderRadius: 12,
   },
   avatar: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     marginRight: 6,
   },
-  info: { marginRight: 6 },
-  balance: { color: "#22c55e", fontSize: 11 },
-  rank: { color: "#facc15", fontWeight: "700", fontSize: 12 },
+  info: {
+  flex: 1,           // 👈 this is the key
+  marginRight: 4,
+},
+  balance: { color: "#22c55e", fontSize: 10 },
+  rank: { color: "#facc15", fontWeight: "700", fontSize: 12, top:7 },
   currentUser: {
     backgroundColor: "rgba(255,255,255,0.15)",
     shadowColor: "#22c55e",

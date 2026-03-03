@@ -3,7 +3,7 @@ import { Linking, ScrollView, StyleSheet, Text, TouchableOpacity } from "react-n
 
 export default function AboutScreen() {
   const email = "ebech94@gmail.com";
-  const website = "https://www.fxarena.app"; // optional
+  const website = "https://forex-app-p1.vercel.app/"; // optional
 
   const handleEmailPress = () => {
     Linking.openURL(`mailto:${email}`);

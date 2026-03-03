@@ -118,7 +118,26 @@ const payoutTournamentWin = async (
     });
   });
 };
+// FIRESTORE DEMO HELPERS
+const updateDemoBalance = async (uid: string, newBalance: number) => {
+  if (!uid) return;
 
+  try {
+    const demoRef = doc(db, "demoBalances", uid);
+
+    await setDoc(
+      demoRef,
+      {
+        balance: newBalance,
+        updatedAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+  } catch (e) {
+    console.error("❌ Failed to update demo balance:", e);
+  }
+};
 // ------------------------ MAIN COMPONENT ------------------------
 
 export default function TradingLayout() {
@@ -155,6 +174,7 @@ const [compressWicks, setCompressWicks] = useState(false);
 const [tournamentMeta, setTournamentMeta] = useState<
   Record<string, TournamentMeta>
 >({});
+
 
 useEffect(() => {
   // 🔐 Only run if activeAccount is a tournament account
@@ -363,13 +383,23 @@ const handleTrade = async (type: "buy" | "sell") => {
 
   // ---------------- DEMO ACCOUNT ----------------
   if (activeAccount.type === "demo") {
-  if (demoBalance < stake) {
-    alert("Not enough demo balance, top up your demo account to trade more");
-    return;
-  }
-setDemoBalance((prev: number) => prev - stake);
+ if (demoBalance < stake) {
+  alert("Not enough demo balance, top up your demo account to trade more");
+  return;
 }
 
+const uid = auth.currentUser?.uid;
+if (!uid) return;
+
+setDemoBalance((prev) => {
+  const newBalance = prev - stake;
+
+  // ❗ Firestore update so leaderboard updates live
+  updateDemoBalance(uid, newBalance);
+
+  return newBalance;
+});
+}
   const now = Date.now();
   const id = uuid.v4() as string;
 
@@ -447,9 +477,18 @@ useEffect(() => {
     if (isWin) {
       const uid = auth.currentUser?.uid;
       if (!uid) return;
-
 if (t.account.type === "demo") {
-setDemoBalance((prev: number) => prev + payout);
+  const uid = auth.currentUser?.uid;
+  if (!uid) return;
+
+  setDemoBalance((prev) => {
+    const newBalance = prev + payout;
+
+    // 🔥 Firestore update using correct balance
+    updateDemoBalance(uid, newBalance);
+
+    return newBalance;
+  });
 }
 
       if (t.account.type === "real") {
@@ -490,7 +529,7 @@ setDemoBalance((prev: number) => prev + payout);
   }, 1000);
 
   return () => clearInterval(timer);
-}, [profitPercent, setDemoBalance]);
+}, [profitPercent, setDemoBalance, demoBalance]);
 
 
 
@@ -700,7 +739,7 @@ useEffect(() => {
   username={profile?.username}
   countryCode={profile?.country}
   tournamentBalance={balances.tournament}
-
+demoBalance={demoBalance}
  
 />
 

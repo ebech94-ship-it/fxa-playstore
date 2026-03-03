@@ -83,6 +83,7 @@ const { appSettings, profile } = useApp();
     cvv: "",
     walletAddress: "",
     note: "",
+    operator: "",  
   });
 
   const isMobileMoney =
@@ -124,7 +125,8 @@ useEffect(() => {
       ...prev,
       currency:
         method === "MTN" || method === "Orange" ? "XAF" : "USD",
-      fullName: profile?.displayName || "", 
+      fullName: profile?.displayName || "",
+      operator: method, 
     }));
 
     setModalVisible(true);
@@ -158,8 +160,9 @@ const handleWithdrawal = async () => {
 
   try {
     const token = await auth.currentUser?.getIdToken();
-const API_BASE = process.env.BACKEND_URL;
-
+const API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL;
+ // 🔹 Log API_BASE
+      console.log("API_BASE =", API_BASE);
 const res = await fetch(`${API_BASE}/transactions`, {
   method: "POST",
   headers: {
@@ -170,19 +173,23 @@ const res = await fetch(`${API_BASE}/transactions`, {
     type: "withdrawal",          // or "deposit" depending on the action
     amount: numericAmount,
     momoNumber: formData.phone,
-    operator: activeMethod,
+    operator: formData.operator,
     userId: currentUser!.uid,
     fullName: currentUser!.displayName,
   }),
 });
 
-    const data = await res.json();
+    // 🔹 Log HTTP status
+console.log("Response status:", res.status);
 
-    if (!res.ok) {
-      Alert.alert("Error", data.error || "Failed");
-      return;
-    }
+// 🔹 Safely parse JSON
+const data = await res.json().catch(() => ({}));
+console.log("Backend response:", data);
 
+if (!res.ok) {
+  Alert.alert("Error", data.error || "Failed");
+  return;
+}
     Alert.alert("Withdrawal Requested", "Waiting for admin approval.");
   } catch (err) {
     console.log(err);
@@ -194,6 +201,9 @@ const res = await fetch(`${API_BASE}/transactions`, {
 const handleManualDeposit = async () => {
   try {
     const numericAmount = Number(formData.amount);
+     // 🔹 Log API_BASE
+    
+   
 
     if (!numericAmount || numericAmount <= 0) {
       Alert.alert("Invalid Amount", "Enter a valid amount.");
@@ -208,8 +218,9 @@ const handleManualDeposit = async () => {
       return;
     }
 const token = await auth.currentUser?.getIdToken();
-const API_BASE = process.env.BACKEND_URL;
-
+const API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL;
+ 
+    console.log("API_BASE =", API_BASE);
 const res = await fetch(`${API_BASE}/transactions`, {
   method: "POST",
   headers: {
@@ -220,18 +231,23 @@ const res = await fetch(`${API_BASE}/transactions`, {
     type: "deposit",
     amount: numericAmount,
     momoNumber: formData.phone,
-    operator: activeMethod,  
+   operator: formData.operator,  
     userId: currentUser!.uid,
     fullName: currentUser!.displayName,
   }),
 });
 
-    const data = await res.json();
+    // 🔹 Log HTTP status
+console.log("Response status:", res.status);
 
-    if (!res.ok) {
-      Alert.alert("Error", data.error || "Failed");
-      return;
-    }
+// 🔹 Safely parse JSON
+const data = await res.json().catch(() => ({}));
+console.log("Backend response:", data);
+
+if (!res.ok) {
+  Alert.alert("Error", data.error || "Failed");
+  return;
+}
 
     Alert.alert(
       "Deposit Submitted",
@@ -304,6 +320,7 @@ if (isDeposit && isMobileMoney) {
       cvv: "",
       walletAddress: "",
       note: "",
+      operator: "",  
     });
   } catch {
     Alert.alert("Error", "Something went wrong.");

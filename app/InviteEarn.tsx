@@ -5,7 +5,7 @@ import {
   View,
   TouchableOpacity,
   Alert,
-  Share,
+  Share,Platform
 } from "react-native";
 import * as Clipboard from "expo-clipboard";
 import { getAuth } from "firebase/auth";
@@ -16,9 +16,13 @@ export default function InviteEarnScreen() {
   const user = getAuth().currentUser;
 
   const inviteLink = useMemo(() => {
-    if (!user) return "";
+  if (!user) return "";
+  if (Platform.OS === "web") {
     return `${BACKEND_URL}/invite?ref=${user.uid}`;
-  }, [user]);
+  } else {
+    return `forextournaments://invite?ref=${user.uid}`; // mobile deep link
+  }
+}, [user]);
 
   const copyLink = async () => {
     await Clipboard.setStringAsync(inviteLink);

@@ -100,8 +100,29 @@ app.get("/invite", (req, res) => {
     return res.status(400).send("Missing referral code");
   }
 
-  const redirectUrl = `forextournamentsarena://welcome?ref=${ref}`;
-  return res.redirect(302, redirectUrl);
+  // Deep link (opens the app if installed)
+  const deepLink = `forextournamentsarena://welcome?ref=${ref}`;
+
+  // Fallback URL (Vercel download page)
+  const fallbackUrl = `https://forex-app-p1.vercel.app/download?ref=${ref}`;
+
+  // Serve a simple HTML page that tries deep link first
+  res.send(`
+    <html>
+      <body>
+        <script>
+          // Try opening the app
+          window.location = "${deepLink}";
+
+          // If the app is not installed, redirect to Vercel after 1.5 seconds
+          setTimeout(() => {
+            window.location = "${fallbackUrl}";
+          }, 1500);
+        </script>
+        <p>If you are not redirected, <a href="${fallbackUrl}">click here to download the app</a></p>
+      </body>
+    </html>
+  `);
 });
 
 

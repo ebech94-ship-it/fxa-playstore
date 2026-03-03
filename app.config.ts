@@ -9,11 +9,15 @@ export default {
     version: "1.0.0",
     orientation: "default",
     scheme: "forextournamentsarena",
-
+ jsEngine: "hermes",
     icon: "./assets/images/icon.png",
     userInterfaceStyle: "automatic",
 
-   
+     // ✅ Add assetBundlePatterns here
+    assetBundlePatterns: [
+      "**/*"
+    ],
+
 
     ios: {
       supportsTablet: true,
