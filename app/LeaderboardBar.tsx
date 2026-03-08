@@ -4,7 +4,11 @@ import { useEffect, useState } from "react";
 import { db } from "@/lib/firebase";
 import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
 
-import { FlatList, Image, Modal, Pressable, StyleSheet, Text, View } from "react-native";
+import {
+  BackHandler,
+  FlatList, Image, Modal, Pressable, StyleSheet, Text, View,
+  useWindowDimensions
+} from "react-native";
 import CountryFlag from "react-native-country-flag";
 import Animated, { FadeOut, Layout, SlideInRight } from "react-native-reanimated";
 import { AccountType, useApp } from "./AppContext";
@@ -156,12 +160,20 @@ const activeTourney =
     : null;
 
   const currentUser = authUser;
-
+const { width, height } = useWindowDimensions();
+const isLandscape = width > height;
   
  const [showFull, setShowFull] = useState(false); 
   const [livePlayers, setLivePlayers] = useState<Player[]>([]);
 
 const [loadingLive, setLoadingLive] = useState(false);
+const PAGE_SIZE = 50;
+const [page, setPage] = useState(1);
+const [pagedPlayers, setPagedPlayers] = useState<Player[]>([]);
+
+
+
+
 
 useEffect(() => {
   if (activeAccount.type !== "demo") return;
@@ -249,15 +261,41 @@ const displayPlayers = players.map((p) => {
 
   return p;
 });
-// 👇 Group players into vertical pairs (2 rows layout)
+ useEffect (() => {
+  const backAction = () => {
+    if (showFull) {
+      setShowFull(false);  // close modal
+      return true;         // prevent default
+    }
+    return false;          // default behavior
+  };
+
+  const backHandler = BackHandler.addEventListener(
+    "hardwareBackPress",
+    backAction
+  );
+
+  return () => backHandler.remove();
+}, [showFull]);
+
+useEffect(() => {
+  setPagedPlayers(displayPlayers.slice(0, page * PAGE_SIZE));
+}, [displayPlayers, page]);
+
+const chunkSize = isLandscape ? 1 : 2; // 1 row in landscape, 2 rows in portrait
+
 const chunkedPlayers: Player[][] = [];
 
-for (let i = 0; i < displayPlayers.length; i += 2) {
-  chunkedPlayers.push(displayPlayers.slice(i, i + 2));
+for (let i = 0; i < displayPlayers.length; i += chunkSize) {
+  chunkedPlayers.push(displayPlayers.slice(i, i + chunkSize));
+
 }
 
 return (
-  <View style={styles.container}>
+ <View
+  style={[
+    styles.container,
+    { height: isLandscape ? 70 : height * 0.2 }]}>
     {/* Wrapper for relative positioning of floating button */}
     <View style={{ position: "relative" }}>
       <Animated.ScrollView
@@ -343,23 +381,23 @@ return (
       {/* Floating See All button */}
       <Pressable
         onPress={() => setShowFull(true)}
-        style={{
-          position: "absolute",
-          right: 5,
-          top: 0,
-          bottom: 0,
-          justifyContent: "center",
-          alignItems: "center",
-          paddingHorizontal: 12,
-          backgroundColor: "#174355ff",
-          borderRadius: 12,
-          shadowColor: "#000",
-          shadowOpacity: 0.3,
-          shadowRadius: 4,
-          shadowOffset: { width: 0, height: 2 },
-        }}
+      style={{
+  position: "absolute",
+  right: 6,
+  top: "35%",   // centers it vertically
+  height: 32,   // slim horizontal button
+  justifyContent: "center",
+  alignItems: "center",
+  paddingHorizontal: 10,
+  backgroundColor: "#174355",
+  borderRadius: 10,
+  shadowColor: "#000",
+  shadowOpacity: 0.25,
+  shadowRadius: 3,
+  shadowOffset: { width: 0, height: 2 },
+}}
       >
-        <Text style={{ color: "#fff", fontWeight: "700" }}>See All</Text>
+        <Text style={{ color: "#fff", fontSize: 10, fontWeight: "700" }}> All</Text>
       </Pressable>
     </View>
 
@@ -374,47 +412,50 @@ return (
         <View
           style={{
             flex: 1,
-            backgroundColor: "#0f1727dd",
+            backgroundColor:"rgba(15,23,39,0.95)",
             padding: 5,
             justifyContent: "center",
           }}
         >
           <Pressable
-            style={{ alignSelf: "flex-end", marginBottom: 10 }}
-            onPress={() => setShowFull(false)}
-          >
-            <Text style={{ color: "#f87171", fontSize: 16 }}>Close ✖</Text>
-          </Pressable>
+  onPress={() => setShowFull(false)}
+  style={{
+    position: "absolute",
+    top: 20,        // some distance from top
+    right: 20,      // some distance from right edge
+    padding: 8,     // bigger touch area
+    borderRadius: 8,
+    backgroundColor: "rgba(248,113,113,0.2)", // subtle background for visibility
+    zIndex: 10,
+  }}
+>
+  <Text style={{ color: "#f87171", fontSize: 16, fontWeight: "700" }}>✖</Text>
+</Pressable>
 
-          <FlatList
-            data={displayPlayers}
-            keyExtractor={(p) => p.id}
-            numColumns={3} // makes it grid-like
-            columnWrapperStyle={{ justifyContent: "space-between", marginBottom: 10 }}
-            renderItem={({ item, index }) => (
-              <View
-                style={{
-                  backgroundColor: "rgba(255,255,255,0.05)",
-                  padding: 8,
-                  borderRadius: 10,
-                  alignItems: "center",
-                  width: "30%",
-                }}
-              >
-                <Image
-                  source={{ uri: item.avatar || "https://via.placeholder.com/32" }}
-                  style={{ width: 40, height: 40, borderRadius: 20, marginBottom: 4 }}
-                />
-                <Text style={{ color: "#fff", fontWeight: "600", fontSize: 12 }}>
-                  {item.username || "Player"}
-                </Text>
-                <Text style={{ color: "#22c55e", fontSize: 11 }}>
-                  {item.balance ?? 0}T
-                </Text>
-                <Text style={{ color: "#facc15", fontSize: 10 }}>#{index + 1}</Text>
-              </View>
-            )}
-          />
+         <FlatList
+  data={pagedPlayers}                     // only the players for current page
+  keyExtractor={(p) => p.id}
+  numColumns={3}                           // keep grid-like layout
+  columnWrapperStyle={{ justifyContent: "space-between", marginBottom: 10 }}
+  onEndReached={() => setPage((prev) => prev + 1)}    // load next page
+  onEndReachedThreshold={0.5}             // trigger when near bottom
+  renderItem={({ item, index }) => (
+    <View style={[styles.player, { width: 120, marginBottom: 6 }]}>
+      <Image
+        source={{ uri: item.avatar || "https://via.placeholder.com/32" }}
+        style={styles.avatar}
+      />
+      <View style={styles.info}>
+        <PlayerRow
+          username={item.username || "Player"}
+          countryCode={item.countryCode || "CM"}
+        />
+        <Text style={styles.balance}>{item.balance ?? 0}T</Text>
+      </View>
+      <Text style={styles.rank}>#{index + 1}</Text>
+    </View>
+  )}
+/>
         </View>
       </Modal>
     )}
@@ -432,8 +473,9 @@ const styles = StyleSheet.create({
     borderBottomColor: "rgba(255,255,255,0.1)",
     right: 0,
     left: 0,
-    height: "20%",
+   
     justifyContent: "center",
+    marginTop: 10
   },
   row: {
     flexDirection: "row",
@@ -448,20 +490,22 @@ const styles = StyleSheet.create({
     marginRight: 6,
 paddingHorizontal: 6,
     paddingVertical: 4,
+      
     backgroundColor: "rgba(255,255,255,0.05)",
     borderRadius: 12,
+      minHeight: 44
   },
   avatar: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     marginRight: 6,
   },
   info: {
   flex: 1,           // 👈 this is the key
   marginRight: 4,
 },
-  balance: { color: "#22c55e", fontSize: 10 },
+  balance: { color: "#22c55e", fontSize: 11 },
   rank: { color: "#facc15", fontWeight: "700", fontSize: 12, top:7 },
   currentUser: {
     backgroundColor: "rgba(255,255,255,0.15)",

@@ -11,7 +11,17 @@ import type { ChartViewHandle } from "./ChartView";
 import { useEffect, useRef, useState } from "react";
 
 import {
-  Animated, Dimensions, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View,
+  Animated,
+  Dimensions,
+  Modal,
+  PanResponder,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+
+  TouchableOpacity,
+  View
 } from "react-native";
 
 
@@ -68,6 +78,7 @@ interface ClosedTrade extends Trade {
 // ------------------------ FIREBASE HELPERS ------------------------
 
 const auth = getAuth();
+
 
 const updateAccountBalance = async (
   userId: string,
@@ -144,7 +155,32 @@ export default function TradingLayout() {
   const PAYOUT = 95; // Fixed payout %
   const [activePage, setActivePage] = useState<string | null>(null);
   const [amount, setAmount] = useState<number>(10);
+
+  const [showAmountPad, setShowAmountPad] = useState(false);
+const [showExpiryPad, setShowExpiryPad] = useState(false);
+
+
+
+const expiryPosition = useRef(new Animated.ValueXY()).current;
+const expiryPanResponder = useRef(
+  PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
+    onPanResponderMove: Animated.event(
+      [null, { dx: expiryPosition.x, dy: expiryPosition.y }],
+      { useNativeDriver: false }
+    ),
+    onPanResponderRelease: () => {
+      expiryPosition.extractOffset();
+    }
+  })
+).current;
+
+
   const [expiration, setExpiration] = useState<string>("15s");
+
+  const expirationOptions: string[] = ["5s","8s","10s", "12s", "15s","20s","25s",  "30s", "1m", "5m", "15m", "30m", "1h"];
+ 
+ 
   const [profitPercent] = useState<number>(PAYOUT);
   const { unreadCount } = useApp();
 
@@ -157,6 +193,25 @@ const [tournamentBalances, setTournamentBalances] = useState<
   Record<string, number>
 >({});
 
+const handleKeyPress = (key: string) => {
+  if (key === "back") {
+    setAmount((prev) => {
+      const str = String(prev).slice(0, -1);
+      return str === "" ? 0 : Number(str);
+    });
+    return;
+  }
+
+  if (key === "ok") {
+    setShowAmountPad(false);
+    return;
+  }
+
+  setAmount((prev) => {
+    const next = String(prev === 0 ? "" : prev) + key;
+    return Number(next);
+  });
+};
 const { 
   profile, 
   tournaments, 
@@ -174,7 +229,21 @@ const [compressWicks, setCompressWicks] = useState(false);
 const [tournamentMeta, setTournamentMeta] = useState<
   Record<string, TournamentMeta>
 >({});
+const padPosition = useRef(new Animated.ValueXY({ x: 0, y: 0 })).current;
+const panResponder = useRef(
+  PanResponder.create({
+    onStartShouldSetPanResponder: () => true,
 
+    onPanResponderMove: Animated.event(
+      [null, { dx: padPosition.x, dy: padPosition.y }],
+      { useNativeDriver: false }
+    ),
+
+    onPanResponderRelease: () => {
+      padPosition.extractOffset();
+    },
+  })
+).current;
 
 useEffect(() => {
   // 🔐 Only run if activeAccount is a tournament account
@@ -313,7 +382,11 @@ const handleTrade = async (type: "buy" | "sell") => {
     alert("Preview mode: trading is disabled");
     return;
   }
-
+ if (activeAccount.type === "real") {
+    alert("Real account trading is temporarily disabled. Use Demo or Tournament accounts.");
+    return; // ⚠ Only blocks trading, not deposits/withdrawals
+  }
+  
   const stake = Number(amount) || 0;
   if (stake <= 0) return;
 
@@ -441,6 +514,15 @@ setDemoBalance((prev) => {
   console.log(
     `Opened ${type.toUpperCase()} ${stake} @ ${entryPrice} | Account=${activeAccount.type}`
   );
+  // 🔥 Show trade confirmation popup
+setTradeToast({
+ visible: true, 
+  type,
+  amount: stake,
+  symbol: "BECH/USD",
+  expiration,
+});
+setTimeout(() => setTradeToast(null), 2000);
 };
 // 🕒 SINGLE MASTER CLOCK — updates price + resolves trades
 useEffect(() => {
@@ -586,10 +668,14 @@ useEffect(() => {
 
 
 
-  const expirations = [
-    "5s", "8s", "12s", "15s", "25s", "30s", "1m", "2m", "3m",  "5m",  "15m",
-    "30m", "1h", "2h", "4h", "1d", "3d", ];
-
+  
+const [tradeToast, setTradeToast] = useState<{
+  visible: boolean;
+  type: "buy" | "sell";
+  amount: number;
+  symbol: string;
+  expiration: string;
+} | null>(null);
   // Menu
   const menuItems: { icon: string; label: string; color: string }[] = [
     { icon: "person-outline", label: "Profile", color: "#00FF00" },
@@ -770,37 +856,25 @@ demoBalance={demoBalance}
       {/* Trade Size */}
       <View style={styles.inputRow}>
         <Text style={styles.label}>Trade Size</Text>
-        <TextInput
-          style={styles.input}
-          keyboardType="numeric"
-          value={String(amount)}
-          onChangeText={(v) => setAmount(parseInt(v) || 0)}
-          placeholder="1-25000"
-          placeholderTextColor="blue"
-        />
+       <TouchableOpacity
+  style={styles.input}
+  onPress={() => setShowAmountPad(true)}
+>
+  <Text style={{ color: "#fff", fontSize: 14 }}>
+    {amount}
+  </Text>
+</TouchableOpacity>
       </View>
 
       {/* Expiration */}
       <View style={styles.inputRow}>
         <Text style={styles.label}>Expiration</Text>
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          contentContainerStyle={{ alignItems: "center", paddingHorizontal: 6 }}
-        >
-          {expirations.map((exp) => (
-            <TouchableOpacity
-              key={exp}
-              style={[
-                styles.expButton,
-                expiration === exp && styles.expButtonActive,
-              ]}
-              onPress={() => setExpiration(exp)}
-            >
-              <Text style={styles.expButtonText}>{exp}</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+       <TouchableOpacity
+  style={styles.expiryButton}
+  onPress={() => setShowExpiryPad(true)}
+>
+  <Text style={styles.expiryKeyText}>{expiration}</Text>
+</TouchableOpacity>
       </View>
 
       {/* Profit */}
@@ -846,7 +920,124 @@ demoBalance={demoBalance}
         Goal: Molding A Disciplined Trader and Mastering Market/Price Movement Psychology!
       </Text>
     </Animated.View>
-   
+   <Modal
+  visible={showAmountPad}
+  transparent
+  animationType="fade"
+  onRequestClose={() => setShowAmountPad(false)}
+>
+  <Pressable
+  style={styles.padOverlay}
+  onPress={() => setShowAmountPad(false)}
+>
+  <Animated.View
+  style={[
+    styles.padContainer,
+    { transform: padPosition.getTranslateTransform() }
+  ]}
+  {...panResponder.panHandlers}
+>
+<TouchableOpacity
+  style={{ position:"absolute", top:6, right:8 }}
+  onPress={() => setShowAmountPad(false)}
+>
+  <Text style={{ color:"red", fontSize:18 }}>✕</Text>
+</TouchableOpacity>
+      {[
+        ["7","8","9"],
+        ["4","5","6"],
+        ["1","2","3"],
+        ["0","back","ok"]
+      ].map((row, i) => (
+        <View key={i} style={styles.padRow}>
+          {row.map((key) => (
+            <TouchableOpacity
+              key={key}
+              style={styles.padKey}
+              onPress={() => handleKeyPress(key)}
+            >
+              <Text style={styles.padKeyText}>
+                {key === "back" ? "⌫" : key === "ok" ? "OK" : key}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+
+      ))}
+
+    </Animated.View>
+  </Pressable>
+</Modal>
+<Modal
+  visible={showExpiryPad}
+  transparent
+  animationType="fade"
+  onRequestClose={() => setShowExpiryPad(false)}
+>
+  <Pressable
+    style={styles.padOverlay}
+    onPress={() => setShowExpiryPad(false)}
+  >
+    <Animated.View
+      style={[
+        styles.expiryContainer,
+        { transform: expiryPosition.getTranslateTransform() }
+      ]}
+      {...expiryPanResponder.panHandlers}
+    >
+
+      <TouchableOpacity
+        style={{ position: "absolute", top: 6, right: 8 }}
+        onPress={() => setShowExpiryPad(false)}
+      >
+        <Text style={{ color: "red", fontSize: 18 }}>✕</Text>
+      </TouchableOpacity>
+
+      <View style={styles.expiryGrid}>
+        {expirationOptions.map((time) => (
+          <TouchableOpacity
+            key={time}
+            style={[
+              styles.expiryKey,
+              expiration === time && { backgroundColor: "#00c853" }
+            ]}
+            onPress={() => {
+              setExpiration(time);
+              setShowExpiryPad(false);
+            }}
+          >
+            <Text style={styles.expiryKeyText}>{time}</Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+    </Animated.View>
+  </Pressable>
+</Modal>
+{tradeToast && (
+  <Animated.View
+    style={{
+      position: "absolute",
+      top: 60,
+      left: "50%",
+      transform: [{ translateX: -120 }],
+      width: 240,
+      padding: 12,
+      backgroundColor: tradeToast.type === "buy" ? "green" : "red",
+      borderRadius: 8,
+      alignItems: "center",
+      zIndex: 100,
+      opacity: 0.9,
+    }}
+  >
+    <Text style={{ color: "#fff", fontWeight: "bold" }}>Trade Placed</Text>
+    <Text style={{ color: "#fff" }}>{tradeToast.symbol}</Text>
+    <Text style={{ color: "#fff" }}>
+      {tradeToast.type.toUpperCase()} ${tradeToast.amount}
+    </Text>
+    <Text style={{ color: "#fff" }}>{tradeToast.expiration}</Text>
+  </Animated.View>
+)}
   </View>
 );
 }
@@ -866,7 +1057,7 @@ const styles = StyleSheet.create({
   input: {  backgroundColor: "rgba(255,255,255,0.1)", borderColor: "#666",  borderWidth: 1,  borderRadius: 6, 
    padding: 5, color: "#fff", fontSize: 14, },
   inputRow: { marginVertical: 6 },
-  expButton: { paddingVertical: 6, paddingHorizontal: 12, backgroundColor: "rgba(255,255,255,0.1)", borderRadius: 3,
+  expiryButton: { paddingVertical: 6, paddingHorizontal: 12, backgroundColor: "rgba(255,255,255,0.1)", borderRadius: 3,
    marginRight: 6, },
   expButtonActive: { backgroundColor: "blue" },
   expButtonText: { color: "#fff", fontSize: 14 },
@@ -885,28 +1076,50 @@ const styles = StyleSheet.create({
 profitGlowRed: { shadowColor: "#ff2222",  shadowOffset: { width: 0, height: 0 },  shadowOpacity: 0.9,  shadowRadius: 20,
   elevation: 15, },
   // New switcher container: fixed height so AccountSwitcher doesn't jump.
-  switcherContainer: {
-    width: "100%",
-    minHeight: 120,
-    maxHeight: 160,
-    marginBottom: 12,
-    justifyContent: "center",
-     flexDirection: "row",
-  },
-  badge: {
-  position: "absolute",
-  top: -5,
-  right: -5,
-  backgroundColor: "red",
-  borderRadius: 10,
-  paddingHorizontal: 6,
-  paddingVertical: 2,
-  zIndex: 100,
+  switcherContainer: { width: "100%", minHeight: 120,
+    maxHeight: 160,  marginBottom: 12,
+    justifyContent: "center", flexDirection: "row", },
+  badge: {  position: "absolute",  top: -5, right: -5, backgroundColor: "red", borderRadius: 10,
+  paddingHorizontal: 6, paddingVertical: 2, zIndex: 100,},
+badgeText: {  color: "#fff", fontSize: 10, fontWeight: "bold",},
+padOverlay:{  flex:1,  backgroundColor:"rgba(0,0,0,0.5)",  justifyContent:"center",
+  alignItems:"center"},
+padContainer:{ width:220, backgroundColor:"#1c1c1c", borderRadius:12,
+  padding:10},
+
+padRow:{  flexDirection:"row", justifyContent:"space-between",
+  marginVertical:4},
+
+padKey:{  width:60,  height:45, backgroundColor:"#333", borderRadius:8,
+  justifyContent:"center", alignItems:"center"},
+
+padKeyText:{  color:"#fff", fontSize:18,  fontWeight:"bold"
 },
-badgeText: {
+expiryContainer: {
+  width: 240,
+  backgroundColor: "#111",
+  borderRadius: 10,
+  padding: 10,
+},
+
+expiryGrid: {
+  flexDirection: "row",
+  flexWrap: "wrap",
+  justifyContent: "space-between",
+},
+
+expiryKey: {
+  width: "30%",
+  padding: 10,
+  marginVertical: 5,
+  backgroundColor: "#222",
+  borderRadius: 6,
+  alignItems: "center",
+},
+
+expiryKeyText: {
   color: "#fff",
-  fontSize: 10,
-  fontWeight: "bold",
+  fontSize: 14,
 },
 
 });

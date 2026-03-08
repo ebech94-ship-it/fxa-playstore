@@ -88,8 +88,7 @@ export default function RootLayout() {
   <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
     <AuthGate />
     <Stack screenOptions={{ headerShown: false }}>
-
-          <Stack.Screen name="index" />
+ <Stack.Screen name="index" />
           <Stack.Screen name="splash" />
           <Stack.Screen name="welcome" />
           <Stack.Screen name="tradinglayout" />

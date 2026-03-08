@@ -24,21 +24,34 @@ export default function TradeSummaryBar({
   activeAccount,
   tournamentInfo = [],
 }: TradeSummaryBarProps) {
-  const { height: screenHeight } = useWindowDimensions();
-  const COLLAPSED_HEIGHT = 50;
-  const EXPANDED_HEIGHT = Math.min(screenHeight * 0.7, 420);
-  const maxTranslateY = EXPANDED_HEIGHT - COLLAPSED_HEIGHT;
 
-  const translateY = useRef(new Animated.Value(maxTranslateY)).current;
-  const lastY = useRef(maxTranslateY);
+// ADD THIS RIGHT BELOW YOUR DESCTRUCTURING OF props
+const translateY = useRef(new Animated.Value(0)).current;
+const lastY = useRef(0);
+  
+  const { height: screenHeight, width: screenWidth } = useWindowDimensions();
+const isLandscape = screenWidth > screenHeight;
 
+const COLLAPSED_HEIGHT = 50;
+const EXPANDED_HEIGHT = isLandscape
+  ? Math.min(screenHeight * 0.85, 420) // larger in landscape
+  : Math.min(screenHeight * 0.7, 420);
+
+const maxTranslateY = EXPANDED_HEIGHT - COLLAPSED_HEIGHT;
 const minTranslateY = 0;
 
 useEffect(() => {
+  // Reset panel position when orientation changes
   translateY.setValue(maxTranslateY);
   lastY.current = maxTranslateY;
-}, [maxTranslateY, minTranslateY, translateY]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [screenHeight, screenWidth]); // leave as-is, we manually ignore ESLint here
 
+useEffect(() => {
+  // Fix for landscape/portrait: reset panel position safely
+  lastY.current = maxTranslateY;
+  translateY.setValue(maxTranslateY);
+}, [maxTranslateY, translateY]); // use maxTranslateY as dependency
 
   const [openTrades, setOpenTrades] = useState<any[]>([]);
   const [closedTrades, setClosedTrades] = useState<any[]>([]);
@@ -63,10 +76,10 @@ useEffect(() => {
     return () => clearInterval(timer);
   }, []);
 
- const panResponder = useRef(
+const panResponder = useRef(
   PanResponder.create({
     onStartShouldSetPanResponder: () => true,
-    onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 10,
+    onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 5,
 
     onPanResponderMove: (_, g) => {
       const rawY = lastY.current + g.dy;
@@ -78,18 +91,20 @@ useEffect(() => {
       const rawY = lastY.current + g.dy;
       const clampedY = Math.max(minTranslateY, Math.min(maxTranslateY, rawY));
 
-      const shouldExpand =
-        g.vy < -0.3 || clampedY < maxTranslateY * 0.6;
+      // Use dynamic threshold depending on screen height
+    const threshold = maxTranslateY * (isLandscape ? 0.45 : 0.6);
+const velocityThreshold = isLandscape ? -0.2 : -0.3;
+const shouldExpand = g.vy < velocityThreshold || clampedY < threshold;
 
       const toValue = shouldExpand ? minTranslateY : maxTranslateY;
       lastY.current = toValue;
 
       Animated.spring(translateY, {
-        toValue,
-        damping: 20,
-        stiffness: 180,
-        useNativeDriver: true,
-      }).start();
+  toValue,
+  damping: isLandscape ? 25 : 20, // slightly more damping in landscape
+  stiffness: isLandscape ? 150 : 180, // softer spring
+  useNativeDriver: true,
+}).start();
     },
   })
 ).current;
@@ -106,9 +121,12 @@ useEffect(() => {
 
   return (
     <Animated.View
-      style={[styles.panel, { height: EXPANDED_HEIGHT, transform: [{ translateY }] }]}
-      
-    >
+  onLayout={() => {
+    const clamped = Math.max(minTranslateY, Math.min(maxTranslateY, lastY.current));
+    lastY.current = clamped;
+    translateY.setValue(clamped);
+  }}
+  style={[styles.panel, { height: EXPANDED_HEIGHT, transform: [{ translateY }] }]}>
       {/* HANDLE */}
       <View style={styles.handle} {...panResponder.panHandlers}>
         <View style={styles.handleLine} />

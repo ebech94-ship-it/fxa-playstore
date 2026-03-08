@@ -1,17 +1,17 @@
 import { useRouter } from "expo-router";
 import {
   collection,
-  deleteDoc,
   doc,
-  onSnapshot,
+ 
   orderBy,
   query,
-  updateDoc,
+  setDoc,
+  where,
+  getDocs,
 } from "firebase/firestore";
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
-  Alert,
   Animated,
   Easing,
   FlatList,
@@ -20,6 +20,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import { useApp } from "../app/AppContext";
 import { db } from "../firebaseConfig";
 
 export default function AlertScreen() {
@@ -27,50 +28,84 @@ export default function AlertScreen() {
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const router = useRouter();
-  
 
-  useEffect(() => {
+  const { authUser, setUnreadCount } = useApp(); // context
+
+useEffect(() => {
+  if (!authUser) return;
+
+  const loadAlerts = async () => {
+    // 1️⃣ get alerts
     const q = query(collection(db, "alerts"), orderBy("createdAt", "desc"));
-    const unsub = onSnapshot(q, (snap) => {
-      const data = snap.docs.map((d) => {
-        const raw = d.data();
-        return {
-          id: d.id,
-          ...raw,
-          createdAt: raw.createdAt || { toDate: () => new Date() },
-        };
-      });
-      setAlerts(data);
-      setLoading(false);
+    const snap = await getDocs(q);
+
+    const alertData = snap.docs.map((d) => {
+      const raw = d.data();
+      return {
+        id: d.id,
+        ...raw,
+        createdAt: raw.createdAt || { toDate: () => new Date() },
+      };
     });
 
-    return unsub;
-  }, []);
-
-  const markRead = async (id: string) => {
-    await updateDoc(doc(db, "alerts", id), { read: true });
-    setAlerts((prev) =>
-      prev.map((a) => (a.id === id ? { ...a, read: true } : a))
+    // 2️⃣ get alerts this user has read
+    const userQ = query(
+      collection(db, "userAlerts"),
+      where("userId", "==", authUser.uid)
     );
+
+    const userSnap = await getDocs(userQ);
+
+    const readIds = new Set<string>();
+
+    userSnap.forEach((doc) => {
+      const data: any = doc.data();
+      if (data.read) {
+        readIds.add(data.alertId);
+      }
+    });
+
+    // 3️⃣ merge read status
+    const merged = alertData.map((a) => ({
+      ...a,
+      read: readIds.has(a.id),
+    }));
+
+    setAlerts(merged);
+
+    // 4️⃣ set unread count
+    const unread = merged.filter((a) => !a.read).length;
+    setUnreadCount(unread);
+
+    setLoading(false);
   };
 
-  const deleteAlert = async (id: string) => {
-    Alert.alert(
-      "Delete Alert",
-      "Are you sure you want to delete this alert?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Delete",
-          style: "destructive",
-          onPress: async () => {
-            await deleteDoc(doc(db, "alerts", id));
-            setAlerts((prev) => prev.filter((a) => a.id !== id));
-          },
-        },
-      ]
-    );
-  };
+  loadAlerts();
+}, [authUser, setUnreadCount]);
+
+const markRead = async (id: string) => {
+  if (!authUser) return;
+
+  // 1️⃣ Add entry to userAlerts
+ await setDoc(
+  doc(db, "userAlerts", `${authUser.uid}_${id}`),
+  {
+    userId: authUser.uid,
+    alertId: id,
+    read: true,
+    deleted: false,
+  },
+  { merge: true }
+);
+
+  // 2️⃣ Update local state immediately
+  setAlerts((prev) =>
+    prev.map((a) => (a.id === id ? { ...a, read: true } : a))
+  );
+
+  // 3️⃣ Adjust unread count instantly for UI
+  setUnreadCount((prev) => Math.max(prev - 1, 0));
+};
 
   if (loading) return <ActivityIndicator size="large" color="#7cf" />;
 
@@ -88,7 +123,6 @@ export default function AlertScreen() {
               setExpandedId(expandedId === item.id ? null : item.id)
             }
             onRead={markRead}
-            onDelete={deleteAlert}
           />
         )}
         ListEmptyComponent={
@@ -101,7 +135,7 @@ export default function AlertScreen() {
   );
 }
 
-const AlertCard = ({ item, router, expanded, onToggle, onRead, onDelete }: any) => {
+const AlertCard = ({ item, router, expanded, onToggle, onRead }: any) => {
   const glow = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -134,18 +168,18 @@ const AlertCard = ({ item, router, expanded, onToggle, onRead, onDelete }: any) 
   });
 
   const handlePress = () => {
-    onRead(item.id);
+  onRead(item.id);
 
-    if (item.type === "tournament" && item.tournamentId) {
-      router.push({
-        pathname: "/Tournament",
-        params: { tournamentId: item.tournamentId },
-      });
-      return;
-    }
+  if (item.type === "tournament" && item.tournamentId) {
+    router.push({
+      pathname: "/Tournament",
+      params: { tournamentId: item.tournamentId },
+    });
+    return;
+  }
 
-    onToggle();
-  };
+  onToggle();
+};
 
   const typeColor: any = {
     admin: "#7cf",
@@ -165,7 +199,7 @@ const AlertCard = ({ item, router, expanded, onToggle, onRead, onDelete }: any) 
 
   return (
     <View style={styles.card}>
-      <TouchableOpacity onPress={handlePress}>
+     <TouchableOpacity onPress={handlePress}>
         <View style={styles.header}>
           <Text style={[styles.title, { color: typeColor[item.type] || "#7cf" }]}>
             {typeLabel[item.type] || "Notification"}
@@ -186,14 +220,9 @@ const AlertCard = ({ item, router, expanded, onToggle, onRead, onDelete }: any) 
 
         {item.type !== "tournament" && (
           <Text style={styles.expandHint}>
-            {expanded ? "Tap to collapse" : "Tap to read"}
+            Tap to read
           </Text>
         )}
-      </TouchableOpacity>
-
-      {/* DELETE BUTTON */}
-      <TouchableOpacity style={styles.deleteButton} onPress={() => onDelete(item.id)}>
-        <Text style={styles.deleteText}>Delete</Text>
       </TouchableOpacity>
     </View>
   );
@@ -246,19 +275,5 @@ const styles = StyleSheet.create({
   emptyText: {
     color: "#777",
     fontSize: 16,
-  },
-
-  deleteButton: {
-    marginTop: 8,
-    backgroundColor: "#ef4444",
-    padding: 6,
-    borderRadius: 6,
-    alignItems: "center",
-  },
-
-  deleteText: {
-    color: "#fff",
-    fontWeight: "bold",
-    fontSize: 13,
   },
 });

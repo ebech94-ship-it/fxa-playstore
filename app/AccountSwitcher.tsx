@@ -226,6 +226,10 @@ const displayBalance = (() => {
               <Text style={[styles.balance, { color: "#facc15" }]}>
                 XAF {balances.real.toLocaleString()}
               </Text>
+               {/* 🎯 TRADING LOCKED BADGE */}
+    {activeAccount.type === "real" && (
+      <Text style={styles.tradingLockedBadge}>Trading Locked</Text>
+    )}
             </TouchableOpacity>
 
             <View style={styles.row}>
@@ -341,89 +345,29 @@ const displayBalance = (() => {
 /* ================= STYLES ================= */
 
 const styles = StyleSheet.create({
-  container: {
-    position: "absolute",
-    top: 10,
-    right: 10,
-    zIndex: 20,
-    alignItems: "flex-end",
+  container: { position: "absolute", top: 10, right: 10, zIndex: 20, alignItems: "flex-end",
   },
-  iconRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    backgroundColor: "#374151",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 20,
+  iconRow: { flexDirection: "row", alignItems: "center", backgroundColor: "#374151",
+    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20,},
+  activeBalance: { marginLeft: 8, fontSize: 14, fontWeight: "600", },
+  dropdown: { marginTop: 8, width: 240, maxHeight: 350, backgroundColor: "#111827",
+    borderRadius: 12,  padding: 10, },
+  card: { borderWidth: 1, borderColor: "#374151", borderRadius: 10, padding: 10,
+    marginBottom: 8, },
+  activeCard: { borderColor: "#22d3ee", backgroundColor: "#1f2937", },
+  cardTitle: { color: "#fff", fontSize: 14,fontWeight: "700", },
+  balance: { fontSize: 13, marginTop: 2, },
+  row: { flexDirection: "row", justifyContent: "space-between", gap: 8, marginTop: 6,
   },
-  activeBalance: {
-    marginLeft: 8,
-    fontSize: 14,
-    fontWeight: "600",
+  button: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, marginTop: 6,
   },
-  dropdown: {
-    marginTop: 8,
-    width: 240,
-    maxHeight: 350,
-    backgroundColor: "#111827",
-    borderRadius: 12,
-    padding: 10,
-  },
-  card: {
-    borderWidth: 1,
-    borderColor: "#374151",
-    borderRadius: 10,
-    padding: 10,
-    marginBottom: 8,
-  },
-  activeCard: {
-    borderColor: "#22d3ee",
-    backgroundColor: "#1f2937",
-  },
-  cardTitle: {
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: "700",
-  },
-  balance: {
-    fontSize: 13,
-    marginTop: 2,
-  },
-  row: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 8,
-    marginTop: 6,
-  },
-  button: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
-    marginTop: 6,
-  },
-  buttonText: {
-    color: "#fff",
-    fontSize: 12,
-    fontWeight: "600",
-  },
-  sectionTitle: {
-    color: "#9ca3af",
-    fontSize: 12,
-    marginVertical: 6,
-  },
-  warning: {
-    position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    alignItems: "center",
-    zIndex: 1000,
-  },
-  warningText: {
-    backgroundColor: "rgba(255,0,0,0.85)",
-    color: "#fff",
-    padding: 8,
-    borderRadius: 6,
-    fontWeight: "bold",
-  },
+  buttonText: { color: "#fff", fontSize: 12, fontWeight: "600",  },
+  sectionTitle: { color: "#9ca3af", fontSize: 12, marginVertical: 6,  },
+  warning: { position: "absolute", top: 0, left: 0, right: 0, alignItems: "center",
+    zIndex: 1000, },
+  warningText: { backgroundColor: "rgba(255,0,0,0.85)", color: "#fff", padding: 8,
+    borderRadius: 6, fontWeight: "bold",  },
+  tradingLockedBadge: { marginTop: 4, fontSize: 11, fontWeight: "600", color: "#fbbf24", // amber, stands out but subtle
+  backgroundColor: "rgba(255,255,255,0.1)", paddingHorizontal: 6, paddingVertical: 2,
+  borderRadius: 6, alignSelf: "flex-start",},
 });

@@ -13,14 +13,16 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   ScrollView,
   StyleSheet,
   Switch,
   Text,
   TextInput,
   TouchableOpacity,
-  View,
+  View
 } from "react-native";
 import { auth } from "../firebaseConfig";
 
@@ -132,6 +134,67 @@ useEffect(() => {
     setModalVisible(true);
   };
 
+/* -------------------- Manual Deposit -------------------- */
+const handleManualDeposit = async () => {
+  try {
+    const numericAmount = Number(formData.amount);
+     // 🔹 Log API_BASE
+    
+   
+
+    if (!numericAmount || numericAmount <= 0) {
+      Alert.alert("Invalid Amount", "Enter a valid amount.");
+      return;
+    }
+
+    if (!formData.phone) {
+      Alert.alert(
+        "Phone Required",
+        "Enter the phone number used for payment."
+      );
+      return;
+    }
+const token = await auth.currentUser?.getIdToken();
+const API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL;
+ 
+    console.log("API_BASE =", API_BASE);
+const res = await fetch(`${API_BASE}/transactions`, {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${token}`,
+  },
+  body: JSON.stringify({
+    type: "deposit",
+    amount: numericAmount,
+    momoNumber: formData.phone,
+   operator: formData.operator,  
+    userId: currentUser!.uid,
+    fullName: currentUser!.displayName,
+  }),
+});
+
+    // 🔹 Log HTTP status
+console.log("Response status:", res.status);
+
+// 🔹 Safely parse JSON
+const data = await res.json().catch(() => ({}));
+console.log("Backend response:", data);
+
+if (!res.ok) {
+  Alert.alert("Error", data.error || "Failed");
+  return;
+}
+
+    Alert.alert(
+      "Deposit Submitted",
+      "Send money to our MoMo number. Admin will confirm shortly."
+    );
+  } catch (err) {
+    console.log(err);
+    Alert.alert("Error", "Could not submit deposit request.");
+  }
+};
   //* -------------------- Withdrawal -------------------- */
 const handleWithdrawal = async () => {
   const numericAmount = Number(formData.amount);
@@ -197,67 +260,6 @@ if (!res.ok) {
   }
 };
 
-/* -------------------- Manual Deposit -------------------- */
-const handleManualDeposit = async () => {
-  try {
-    const numericAmount = Number(formData.amount);
-     // 🔹 Log API_BASE
-    
-   
-
-    if (!numericAmount || numericAmount <= 0) {
-      Alert.alert("Invalid Amount", "Enter a valid amount.");
-      return;
-    }
-
-    if (!formData.phone) {
-      Alert.alert(
-        "Phone Required",
-        "Enter the phone number used for payment."
-      );
-      return;
-    }
-const token = await auth.currentUser?.getIdToken();
-const API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL;
- 
-    console.log("API_BASE =", API_BASE);
-const res = await fetch(`${API_BASE}/transactions`, {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${token}`,
-  },
-  body: JSON.stringify({
-    type: "deposit",
-    amount: numericAmount,
-    momoNumber: formData.phone,
-   operator: formData.operator,  
-    userId: currentUser!.uid,
-    fullName: currentUser!.displayName,
-  }),
-});
-
-    // 🔹 Log HTTP status
-console.log("Response status:", res.status);
-
-// 🔹 Safely parse JSON
-const data = await res.json().catch(() => ({}));
-console.log("Backend response:", data);
-
-if (!res.ok) {
-  Alert.alert("Error", data.error || "Failed");
-  return;
-}
-
-    Alert.alert(
-      "Deposit Submitted",
-      "Send money to our MoMo number. Admin will confirm shortly."
-    );
-  } catch (err) {
-    console.log(err);
-    Alert.alert("Error", "Could not submit deposit request.");
-  }
-};
   /* -------------------- Submit -------------------- */
   const submitForm = async () => {
   console.log("Submit button pressed", formData);
@@ -426,9 +428,18 @@ You can navigate and explore the app safely without making any real transactions
       </View>
 
       {/* -------------------- MODAL -------------------- */}
-      <Modal visible={modalVisible} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContainer}>
+<Modal visible={modalVisible} transparent  animationType="fade"
+  onRequestClose={() => setModalVisible(false)}>
+       <KeyboardAvoidingView
+  style={styles.modalOverlay}
+  behavior={Platform.OS === "ios" ? "padding" : "padding"}
+>
+            <ScrollView
+      style={styles.modalContainer}
+      contentContainerStyle={{ paddingBottom: 40 }}
+      showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+    >
             <Text style={styles.modalTitle}>{activeMethod} Form</Text>
             <View style={{ flexDirection: "row", justifyContent: "flex-end", marginBottom: 10 }}>
   <TouchableOpacity onPress={() => setLang("en")}>
@@ -453,7 +464,7 @@ You can navigate and explore the app safely without making any real transactions
          account using MTN or Orange Money. Respect the limits.</Text>
         <Text style={styles.instructionText}>4. Use your User ID as reference when you deposit so we identify you.</Text>
         <Text style={styles.instructionText}>5. After sending is successfull, come back and fill this form below with the exact amount you deposited,
-        to update the administration and your accout real account will then be updated accordingly within 5 mins.</Text>
+        to update the administration and your real account will then be credited accordingly within 5 mins.</Text>
         <Text style={{ color: "#FACC15", marginVertical: 6 }}>
           ⚠️ Do NOT fill this form before sending money.
         </Text>
@@ -628,8 +639,8 @@ afin l&apos;informer l&apos;administration. Votre compte réel sera ensuite mis 
 )}
               </TouchableOpacity>
             </View>
-          </View>
-        </View>
+            </ScrollView>
+       </KeyboardAvoidingView>
       </Modal>
     </ScrollView>
   );
@@ -649,7 +660,8 @@ const styles = StyleSheet.create({
   confirmButton: { backgroundColor: "#6a5acd", padding: 15, borderRadius: 10 },
   confirmButtonText: { color: "#fff", fontWeight: "bold" },
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", alignItems: "center" },
-  modalContainer: { width: "85%", backgroundColor: "#2C2C44", padding: 20, borderRadius: 15 },
+  modalContainer: {width: "90%",
+  maxHeight: "85%", backgroundColor: "#2C2C44", padding: 20, borderRadius: 15 },
   modalTitle: { color: "#fff", fontSize: 20, marginBottom: 15, textAlign: "center" },
   modalInput: { backgroundColor: "#1C1C2E", borderRadius: 10, padding: 12, color: "#fff", marginBottom: 15 },
   modalButtons: { flexDirection: "row", justifyContent: "space-between" },

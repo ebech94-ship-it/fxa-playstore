@@ -15,8 +15,10 @@ import {
 } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import {
-  Alert, FlatList, LayoutAnimation, Modal, Platform, Pressable, ScrollView, StyleSheet,
-  Text, TextInput, TouchableOpacity, UIManager, View,
+  Alert, FlatList,
+  KeyboardAvoidingView,
+  LayoutAnimation, Modal, Platform, Pressable, ScrollView, StyleSheet,
+  Text, TextInput, TouchableOpacity, UIManager, View
 } from "react-native";
 import { db } from "../firebaseConfig";
 
@@ -836,6 +838,7 @@ const allowRebuy =
               secureTextEntry
               value={adminCode}
               onChangeText={setAdminCode}
+               autoFocus
             />
             <View style={styles.modalBtnRow}>
               <TouchableOpacity style={styles.cancelBtn} onPress={() => setAdminModal(false)}>
@@ -856,137 +859,159 @@ const allowRebuy =
       </Modal>
 
       {/* tournament modal */}
-      <Modal visible={!!selectedTournament} animationType="slide" transparent>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Pressable style={styles.closeButton} onPress={() => setSelectedTournament(null)}>
-              <Ionicons name="close" size={22} color="#fff" />
-            </Pressable>
-
-            {selectedTournament && (
-              <View>
-                <Text style={styles.modalTitle}>
-  {selectedTournament.title || selectedTournament.name || "Tournament"} </Text>
-                           
-                                <View style={styles.modalMetaRow}>
-  <Text style={styles.modalPrize}>
-  🏆 Prize Pool: {selectedTournament.prizePool ?? 0} $
-</Text>
-  <Text style={styles.modalInfo}>
-    ⏰ {formatTime(selectedTournament.endTime - now)}
-  </Text>
-</View>
-{/* participants */}
-<Text style={styles.modalInfo}>
-  👥 {players.length} participants
-</Text>
-
-{/* rebuy count */}
-<Text style={styles.modalInfo}>
-  ♻️ Rebuys: {tournamentRebuys[selectedTournament.id] ?? 0}
-</Text>
-
-                {/* Tab switch */}
-                <View style={styles.tabRow}>
-                  <TouchableOpacity
-                    style={[styles.tabBtn, viewTab === "info" && styles.tabActive]}
-                    onPress={() => setViewTab("info")}
-                  >
-                    <Text style={viewTab === "info" ? styles.tabTextActive : styles.tabText}>Info</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.tabBtn, viewTab === "leaderboard" && styles.tabActive]}
-                    onPress={() => setViewTab("leaderboard")}
-                  >
-                    <Text style={viewTab === "leaderboard" ? styles.tabTextActive : styles.tabText}>Leaderboard</Text>
-                  </TouchableOpacity>
-                </View>
-
-              <ScrollView  showsVerticalScrollIndicator={false}>
-                  {viewTab === "info" ? (
-                    <View>
-                      <Text style={styles.sectionTitle}>📖 Information</Text>
-                      <Text style={styles.infoText}>
-                        {selectedTournament.description ||
-                          "Each participant receives a starting balance. Grow it, finish top to win the prize pool."}
-                      </Text>
-
-                      <Text style={styles.sectionTitle}>🧾 Rules</Text>
-                      <Text style={styles.infoText}>
-                        {selectedTournament.rules ||
-                          "1) No malicious bots. 2) Trades placed count. 3) Fair-play enforced."}
-                      </Text>
-
-                      <Text style={styles.sectionTitle}>🎁 On Registration</Text>
-                  <Text style={styles.infoText}>
-                       {selectedTournament.onRegisterInfo || 
-                `You get a starting demo balance of ${selectedTournament.startingBalance ?? 0} $ and leaderboard entry.`} {/* ✅ updated */}
-                   </Text>
-{selectedTournament.payoutStructure?.length ? (
-  <View>
-    {/*<Text style={styles.sectionTitle}>🏆 Prize Distribution</Text>*/}
-<Text style={styles.sectionTitle}>🏆 RANKINGS </Text>
-<View style={{
-  flexDirection: "row",
-  justifyContent: "space-between",
-  marginTop: 8,
-  borderBottomWidth: 1,
-  borderBottomColor: "#2b2b3a",
-  paddingBottom: 6
-}}>
-  <Text style={{ color: "#94a3b8", fontWeight: "900", flex: 1 }}>
-    Position
-  </Text>
-  <Text style={{ color: "#94a3b8", fontWeight: "900", flex: 1, textAlign: "center" }}>
-    Tier
-  </Text>
-  <Text style={{ color: "#94a3b8", fontWeight: "900", flex: 1, textAlign: "right" }}>
-    Prize
-  </Text>
-</View>
-
-    {selectedTournament.payoutStructure.map((p: any) => (
-      <View
-  key={p.rank}
-  style={{
-    flexDirection: "row",
-    marginTop: 8,
-    alignItems: "center"
-  }}
+    <Modal
+  visible={!!selectedTournament}
+  animationType="slide"
+  transparent
+  onRequestClose={() => setSelectedTournament(null)}
 >
-  <Text style={{ color: "#cbd5e1", flex: 1 }}>
-    {p.rank === 1 ? "🥇" :
-     p.rank === 2 ? "🥈" :
-     p.rank === 3 ? "🥉" :
-     `#${p.rank}`}
-  </Text>
+  <Pressable
+    style={styles.modalOverlay}
+    onPress={() => setSelectedTournament(null)} // tap outside closes modal
+  >
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === "ios" ? "padding" : "height"} // avoid keyboard overlapping inputs
+    >
+      <Pressable
+        style={styles.modalContent}
+        onPress={(e) => e.stopPropagation()} // prevent taps inside modal from closing
+      >
+        {/* Close button */}
+        <Pressable
+          style={styles.closeButton}
+          onPress={() => setSelectedTournament(null)}
+          hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }} // easier to tap
+        >
+          <Ionicons name="close" size={26} color="#fff" />
+        </Pressable>
 
-  <Text style={{ color: "#facc15", fontWeight: "800", flex: 1, textAlign: "center" }}>
-    {getTierForRank(p.rank)}
-  </Text>
+        {selectedTournament && (
+          <View style={{ flex: 1 }}>
+            <Text style={styles.modalTitle}>
+              {selectedTournament.title || selectedTournament.name || "Tournament"}
+            </Text>
 
-  <Text style={{ color: "#22c55e", fontWeight: "900", flex: 1, textAlign: "right" }}>
-    {p.amount} $
-  </Text>
-</View>
-        
-    ))}
-  </View>
-) : null}
+            <View style={styles.modalMetaRow}>
+              <Text style={styles.modalPrize}>
+                🏆 Prize Pool: {selectedTournament.prizePool ?? 0} $
+              </Text>
+              <Text style={styles.modalInfo}>
+                ⏰ {formatTime(selectedTournament.endTime - now)}
+              </Text>
+            </View>
 
-                    </View>
-                  ) : (
-                    <View>
-                      <Text style={styles.sectionTitle}>🏆 Live Leaderboard</Text>
-                      <LeaderboardTable list={leaderboard} />
-                    </View>
-                  )}
-                </ScrollView>
-              </View>
-            )}
+            <Text style={styles.modalInfo}>
+              👥 {players.length} participants
+            </Text>
+
+            <Text style={styles.modalInfo}>
+              ♻️ Rebuys: {tournamentRebuys[selectedTournament.id] ?? 0}
+            </Text>
+
+            {/* Tab switch */}
+            <View style={styles.tabRow}>
+              <TouchableOpacity
+                style={[styles.tabBtn, viewTab === "info" && styles.tabActive]}
+                onPress={() => setViewTab("info")}
+              >
+                <Text style={viewTab === "info" ? styles.tabTextActive : styles.tabText}>
+                  Info
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.tabBtn, viewTab === "leaderboard" && styles.tabActive]}
+                onPress={() => setViewTab("leaderboard")}
+              >
+                <Text style={viewTab === "leaderboard" ? styles.tabTextActive : styles.tabText}>
+                  Leaderboard
+                </Text>
+              </TouchableOpacity>
+            </View>
+{/* Scrollable content */}
+{viewTab === "info" ? (
+  <ScrollView
+    style={{ flex: 1 }}
+    contentContainerStyle={{ paddingBottom: 40 }}
+    showsVerticalScrollIndicator={false}
+  >
+    <Text style={styles.sectionTitle}>📖 Information</Text>
+    <Text style={styles.infoText}>
+      {selectedTournament.description ||
+        "Each participant receives a starting balance. Grow it, finish top to win the prize pool."}
+    </Text>
+
+    <Text style={styles.sectionTitle}>🧾 Rules</Text>
+    <Text style={styles.infoText}>
+      {selectedTournament.rules ||
+        "1) No malicious bots. 2) Trades placed count. 3) Fair-play enforced."}
+    </Text>
+
+    <Text style={styles.sectionTitle}>🎁 On Registration</Text>
+    <Text style={styles.infoText}>
+      {selectedTournament.onRegisterInfo ||
+        `You get a starting demo balance of ${selectedTournament.startingBalance ?? 0} $ and leaderboard entry.`}
+    </Text>
+
+    {selectedTournament.payoutStructure?.length ? (
+      <View>
+        <Text style={styles.sectionTitle}>🏆 RANKINGS</Text>
+        {selectedTournament.payoutStructure.map((p: any) => (
+          <View
+            key={p.rank}
+            style={{
+              flexDirection: "row",
+              marginTop: 8,
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
+            <Text style={{ color: "#cbd5e1", flex: 1 }}>
+              {p.rank === 1 ? "🥇" : p.rank === 2 ? "🥈" : p.rank === 3 ? "🥉" : `#${p.rank}`}
+            </Text>
+            <Text
+              style={{
+                color: "#facc15",
+                fontWeight: "800",
+                flex: 1,
+                textAlign: "center",
+              }}
+            >
+              {getTierForRank(p.rank)}
+            </Text>
+            <Text
+              style={{
+                color: "#22c55e",
+                fontWeight: "900",
+                flex: 1,
+                textAlign: "right",
+              }}
+            >
+              {p.amount} $
+            </Text>
           </View>
-        </View>
-      </Modal>
+        ))}
+      </View>
+    ) : null}
+  </ScrollView>
+) : (
+  // Leaderboard tab: single table with all users
+  <ScrollView
+    style={{ flex: 1 }}
+    contentContainerStyle={{ paddingBottom: 40 }}
+    showsVerticalScrollIndicator={false}
+  >
+    <View style={{ flex: 1 }}>
+      <LeaderboardTable list={leaderboard} />
+    </View>
+  </ScrollView>
+)}
+          </View>
+        )}
+      </Pressable>
+    </KeyboardAvoidingView>
+  </Pressable>
+</Modal>
     </View>
   );
 }
@@ -1015,8 +1040,22 @@ cardFooter: { flexDirection: "row", justifyContent: "space-between", marginTop: 
 disabledBtn: { opacity: 0.45 },
 // modal
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "center", alignItems: "center" },
-  modalContent: { backgroundColor: "#0e0f26", borderRadius: 18, width: "92%", maxHeight: "90%", padding: 14 },
-  closeButton: { alignSelf: "flex-end", padding: 6 },
+modalContent: {
+  flex: 1,
+  backgroundColor: "#0e0f26",
+  borderRadius: 18,
+  width: "92%",
+  maxHeight: "90%",
+  paddingTop: 18,
+  paddingBottom: 10,
+  paddingHorizontal: 16,
+  alignSelf: "center",
+},
+  closeButton: {
+  alignSelf: "flex-end",
+  padding: 10,
+  marginRight: 4
+},
   modalTitle: { fontSize: 20, fontWeight: "900", color: "#fff" },
   modalMetaRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 8 },
   modalPrize: { color: "#47f11dff", fontWeight: "800" },

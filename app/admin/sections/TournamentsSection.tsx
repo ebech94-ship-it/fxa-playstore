@@ -617,7 +617,10 @@ setSaving(false);
       </View>
 
      {/* LIST */}
-<ScrollView showsVerticalScrollIndicator={false}>
+<ScrollView
+  showsVerticalScrollIndicator={false}
+  contentContainerStyle={{ paddingBottom: 40 }}
+>
   {filtered.map((t) => (
     <View key={t.id} style={styles.card}>
       {/* PRESSABLE AREA (OPEN LEADERBOARD) */}

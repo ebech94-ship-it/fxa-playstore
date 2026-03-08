@@ -91,4 +91,10 @@ runtimeVersion: {
       },
     },
   },
+  updates: {
+  url: "https://u.expo.dev/9aeadda0-8d0b-4833-9971-158baac2d2ad",
+  enabled: true,
+  checkAutomatically: "ON_LOAD",
+  fallbackToCacheTimeout: 0,
+},
 };

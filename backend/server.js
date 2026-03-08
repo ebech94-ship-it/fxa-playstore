@@ -24,6 +24,8 @@ const app = express();
 // ---------------------------------------------------------------------
 // CORS + JSON
 // ---------------------------------------------------------------------
+app.use(cors());
+
 app.use(
   express.json({
     verify: (req, res, buf) => {
@@ -32,7 +34,7 @@ app.use(
   })
 );
 
-app.use(cors());
+
 app.options("*", cors());
 // Middleware to verify Firebase ID token
 const authenticate = async (req, res, next) => {
