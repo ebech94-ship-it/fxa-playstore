@@ -744,10 +744,10 @@ const allowRebuy =
         {renderPinnedUserRow(list)}
         <View style={styles.tableHeader}>
           <Text style={[styles.tableColSmall, styles.headerText]}>#</Text>
-          <Text style={[styles.tableCol, styles.headerText]}>Participant</Text>
-          <Text style={[styles.tableCol, styles.headerText]}>Balance</Text>
-<Text style={[styles.tableCol, styles.headerText]}>Tier</Text>
-<Text style={[styles.tableCol, styles.headerText]}>Prize</Text>
+<Text style={[styles.tableColName, styles.headerText]}>Participant</Text>
+<Text style={[styles.tableColBalance, styles.headerText]}>Balance</Text>
+<Text style={[styles.tableColTier, styles.headerText]}>Tier</Text>
+<Text style={[styles.tableColPrize, styles.headerText]}>Prize</Text>
         </View>
         {list.map((row, i) => (
           <View
@@ -756,31 +756,30 @@ const allowRebuy =
               styles.tableRow,
               row.id === currentUser?.uid ? styles.currentRowHighlight : null,
             ]}
-          >
-            <Text style={[styles.tableColSmall]}>{i + 1}</Text>
-            <View style={styles.tableCol}>
+          ><Text style={styles.tableColSmall}>{i + 1}</Text>
+
+<View style={styles.tableColName}>
   <NameWithFlag
     username={row.username || row.email || "Player"}
     countryCode={row.countryCode}
   />
 </View>
 
-            <Text style={[styles.tableCol, styles.balanceLightBlue]}>{row.balance ?? 0}T</Text>
-            
-           {/* Tier */}
-<Text style={[styles.tableCol, styles.priceGreen]}>
+<Text style={styles.tableColBalance}>
+  {row.balance ?? 0}T
+</Text>
+
+<Text style={styles.tableColTier}>
   {getTierForRank(i + 1)}
 </Text>
 
-{/* Cash Reward */}
-<Text style={[styles.tableCol, { color: "#22c55e", fontWeight: "800" }]}>
+<Text style={styles.tableColPrize}>
   {(() => {
     if (!selectedTournament) return "-";
     const prize = getPrizeForRank(i + 1, selectedTournament);
     return prize ? `${prize} $` : "-";
   })()}
 </Text>
-
           </View>
         ))}
       </View>
@@ -887,7 +886,7 @@ const allowRebuy =
         </Pressable>
 
         {selectedTournament && (
-          <View style={{ flex: 1 }}>
+          <View style={{ flex: 1, minHeight: 0 }}>
             <Text style={styles.modalTitle}>
               {selectedTournament.title || selectedTournament.name || "Tournament"}
             </Text>
@@ -931,10 +930,10 @@ const allowRebuy =
 {/* Scrollable content */}
 {viewTab === "info" ? (
   <ScrollView
-    style={{ flex: 1 }}
-    contentContainerStyle={{ paddingBottom: 40 }}
-    showsVerticalScrollIndicator={false}
-  >
+  style={{ flex: 1 }}
+  contentContainerStyle={{ paddingBottom: 80 }}
+  keyboardShouldPersistTaps="handled"
+>
     <Text style={styles.sectionTitle}>📖 Information</Text>
     <Text style={styles.infoText}>
       {selectedTournament.description ||
@@ -1114,5 +1113,15 @@ cardFeeText: { color: "#60a5fa", fontWeight: "bold", fontSize: 15,},
 
 cardStatsRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 8,},
 startingBalanceText: { color: "#22c55e", fontWeight: "700", fontSize: 14, marginTop: 4 },
+tableColName: {  flex: 2.2,  color: "#fff",},
+
+tableColBalance: {  flex: 1.2,  color: "#38bdf8",  fontWeight: "700",
+},
+
+tableColTier: {  flex: 1.3,  color: "#facc15",  fontWeight: "700",
+},
+
+tableColPrize: {  flex: 1,  color: "#22c55e",  fontWeight: "800",
+},
 
 });

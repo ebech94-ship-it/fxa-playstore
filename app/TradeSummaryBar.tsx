@@ -40,12 +40,6 @@ const EXPANDED_HEIGHT = isLandscape
 const maxTranslateY = EXPANDED_HEIGHT - COLLAPSED_HEIGHT;
 const minTranslateY = 0;
 
-useEffect(() => {
-  // Reset panel position when orientation changes
-  translateY.setValue(maxTranslateY);
-  lastY.current = maxTranslateY;
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-}, [screenHeight, screenWidth]); // leave as-is, we manually ignore ESLint here
 
 useEffect(() => {
   // Fix for landscape/portrait: reset panel position safely
@@ -81,15 +75,16 @@ const panResponder = useRef(
     onStartShouldSetPanResponder: () => true,
     onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 5,
 
-    onPanResponderMove: (_, g) => {
-      const rawY = lastY.current + g.dy;
-      const clampedY = Math.max(minTranslateY, Math.min(maxTranslateY, rawY));
-      translateY.setValue(clampedY);
-    },
+   onPanResponderMove: (_, g) => {
+  const rawY = lastY.current + g.dy;
+  const clampedY = Math.max(minTranslateY, Math.min(maxTranslateY, rawY));
+
+  translateY.setValue(clampedY);
+  lastY.current = clampedY; // keep reference synced
+},
 
     onPanResponderRelease: (_, g) => {
-      const rawY = lastY.current + g.dy;
-      const clampedY = Math.max(minTranslateY, Math.min(maxTranslateY, rawY));
+     const clampedY = lastY.current;
 
       // Use dynamic threshold depending on screen height
     const threshold = maxTranslateY * (isLandscape ? 0.45 : 0.6);
