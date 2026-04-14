@@ -45,14 +45,14 @@ const LIMITS = {
       min: 1000,
       max: 500000,
     },
-    withdraw: {
-      min: 2500,
+    withdraw: { 
+      min: 1500,
     },
   },
   card: {
     currency: "USD",
     deposit: {
-      min: 10,
+      min: 2.5,
       max: 5000,
     },
     withdraw: {
@@ -60,7 +60,16 @@ const LIMITS = {
     },
   },
 };
+const EXCHANGE_RATES = {
+  USD: 1,    // Base
+  XAF: 600,  // 1 USD ≈ 600 XAF
+};
 
+const convertCurrency = (amount: number, from: "USD" | "XAF", to: "USD" | "XAF") => {
+  if (!EXCHANGE_RATES[from] || !EXCHANGE_RATES[to]) return 0;
+  const amountInUSD = amount / EXCHANGE_RATES[from];
+  return +(amountInUSD * EXCHANGE_RATES[to]).toFixed(2);
+};
 
 export default function DepositWithdraw() {
   const router = useRouter();
@@ -71,7 +80,7 @@ export default function DepositWithdraw() {
   const [modalVisible, setModalVisible] = useState(false);
   const [loading, setLoading] = useState(false);
 const { appSettings, profile } = useApp();
-
+const [convertedAmount, setConvertedAmount] = useState(0);
 
   /* -------------------- Form State -------------------- */
   const [formData, setFormData] = useState({
@@ -95,12 +104,26 @@ const methodLimits = isMobileMoney ? LIMITS.mobile : LIMITS.card;
 const [lang, setLang] = useState<"en" | "fr">("en");
 
   const handleChange = (key: string, value: string) => {
+  if (key === "amount") {
+  const num = Number(value);
+  if (num > 0) {
+    const converted = convertCurrency(
+      num,
+      formData.currency as "XAF" | "USD",
+      formData.currency === "XAF" ? "USD" : "XAF"
+    );
+    setConvertedAmount(converted);
+  } else {
+    setConvertedAmount(0);
+  }
+}
     setFormData((prev) => ({ ...prev, [key]: value }));
   };
 
   useEffect(() => {
     const unsub = auth.onAuthStateChanged(setCurrentUser);
     return () => unsub();
+    
   }, []);
 
   useEffect(() => {
@@ -135,7 +158,7 @@ useEffect(() => {
   };
 
 /* -------------------- Manual Deposit -------------------- */
-const handleManualDeposit = async () => {
+const handleDeposit = async () => {
   try {
     const numericAmount = Number(formData.amount);
      // 🔹 Log API_BASE
@@ -154,7 +177,12 @@ const handleManualDeposit = async () => {
       );
       return;
     }
-const token = await auth.currentUser?.getIdToken();
+if (!auth.currentUser) {
+  Alert.alert("Auth Error", "User not logged in.");
+  return;
+}
+
+const token = await auth.currentUser.getIdToken(true);
 const API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL;
  
     console.log("API_BASE =", API_BASE);
@@ -165,13 +193,11 @@ const res = await fetch(`${API_BASE}/transactions`, {
     Authorization: `Bearer ${token}`,
   },
   body: JSON.stringify({
-    type: "deposit",
-    amount: numericAmount,
-    momoNumber: formData.phone,
-   operator: formData.operator,  
-    userId: currentUser!.uid,
-    fullName: currentUser!.displayName,
-  }),
+  type: "deposit",
+  amount: numericAmount,
+  momoNumber: formData.phone,
+  operator: formData.operator,
+}),
 });
 
     // 🔹 Log HTTP status
@@ -222,7 +248,12 @@ const handleWithdrawal = async () => {
   }
 
   try {
-    const token = await auth.currentUser?.getIdToken();
+   if (!auth.currentUser) {
+  Alert.alert("Auth Error", "User not logged in.");
+  return;
+}
+
+const token = await auth.currentUser.getIdToken(true);
 const API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL;
  // 🔹 Log API_BASE
       console.log("API_BASE =", API_BASE);
@@ -233,13 +264,11 @@ const res = await fetch(`${API_BASE}/transactions`, {
     Authorization: `Bearer ${token}`,
   },
   body: JSON.stringify({
-    type: "withdrawal",          // or "deposit" depending on the action
-    amount: numericAmount,
-    momoNumber: formData.phone,
-    operator: formData.operator,
-    userId: currentUser!.uid,
-    fullName: currentUser!.displayName,
-  }),
+  type: "withdrawal",
+  amount: numericAmount,
+  momoNumber: formData.phone,
+  operator: formData.operator,
+}),
 });
 
     // 🔹 Log HTTP status
@@ -291,7 +320,7 @@ if (isDeposit) {
     );
     return;
   }
-}
+}  
 if (isDeposit && isMobileMoney) {
   if (!/^2376\d{8}$/.test(formData.phone)) {
     Alert.alert(
@@ -305,7 +334,7 @@ if (isDeposit && isMobileMoney) {
    setLoading(true);
 
   if (isDeposit) {
-  await handleManualDeposit();
+  await handleDeposit();
 } else {
   await handleWithdrawal();
 }
@@ -594,8 +623,15 @@ afin l&apos;informer l&apos;administration. Votre compte réel sera ensuite mis 
     style={styles.modalInput}
     placeholderTextColor="#888"
   />
+  
 )}
-
+{Number(formData.amount) > 0 && (
+  <Text style={{ color: "#00ffff", fontSize: 12, marginBottom: 10 }}>
+    {isDeposit
+      ? `You will have ≈ ${convertedAmount.toLocaleString()} USD`
+      : `You will receive ≈ ${convertedAmount.toLocaleString()} XAF`}
+  </Text>
+)}
             {(activeMethod === "Visa" || activeMethod === "MasterCard") && (
               <>
                 <TextInput placeholder="Card Number" style={styles.modalInput} />

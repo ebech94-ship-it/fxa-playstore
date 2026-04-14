@@ -9,15 +9,15 @@ export default {
     version: "1.0.0",
     orientation: "default",
     scheme: "forextournamentsarena",
- jsEngine: "hermes",
+    jsEngine: "hermes", // Hermes enabled
     icon: "./assets/images/icon.png",
     userInterfaceStyle: "automatic",
 
-     // ✅ Add assetBundlePatterns here
+    // Only bundle essential assets for smaller APK
     assetBundlePatterns: [
-      "**/*"
+      "assets/images/*",
+      "assets/fonts/*"
     ],
-
 
     ios: {
       supportsTablet: true,
@@ -40,30 +40,33 @@ export default {
       favicon: "./assets/images/favicon.png",
     },
 
-   plugins: [
-  [
-    "expo-splash-screen",
-    {
-      image: "./assets/images/myicon.png",
-      imageWidth: 200,
-      resizeMode: "contain",
-      backgroundColor: "#ffffff",
-      dark: { backgroundColor: "#000000" },
-    },
-  ],
-  "expo-font", 
-  "expo-secure-store",
-  "expo-web-browser",
-  "expo-localization",
-  "expo-router",
- 
-  [
-    "expo-build-properties",
-    {
-      ios: { useFrameworks: "static" },
-    },
-  ],
-],
+    plugins: [
+      [
+        "expo-splash-screen",
+        {
+          image: "./assets/images/myicon.png",
+          imageWidth: 200,
+          resizeMode: "contain",
+          backgroundColor: "#ffffff",
+          dark: { backgroundColor: "#000000" },
+        },
+      ],
+      "expo-font",
+      "expo-secure-store",
+      "expo-web-browser",
+      "expo-localization",
+      "expo-router",
+      [
+        "expo-build-properties",
+        {
+          ios: { useFrameworks: "static" },
+          android: {
+            enableProguardInReleaseBuilds: true, // enable Proguard
+            extraProguardRules: "-keep class com.ebeh.forextournamentsarena.** { *; }"
+          }
+        },
+      ],
+    ],
 
     experiments: {
       typedRoutes: true,
@@ -71,11 +74,15 @@ export default {
     },
 
     updates: {
-  url: "https://u.expo.dev/9aeadda0-8d0b-4833-9971-158baac2d2ad",
-},
-runtimeVersion: {
-  policy: "appVersion",
-},
+      url: "https://u.expo.dev/9aeadda0-8d0b-4833-9971-158baac2d2ad",
+      enabled: true,
+      checkAutomatically: "ON_LOAD",
+      fallbackToCacheTimeout: 0,
+    },
+
+    runtimeVersion: {
+      policy: "appVersion",
+    },
 
     extra: {
       apiBaseUrl: process.env.EXPO_PUBLIC_API_BASE_URL,
@@ -91,10 +98,4 @@ runtimeVersion: {
       },
     },
   },
-  updates: {
-  url: "https://u.expo.dev/9aeadda0-8d0b-4833-9971-158baac2d2ad",
-  enabled: true,
-  checkAutomatically: "ON_LOAD",
-  fallbackToCacheTimeout: 0,
-},
 };

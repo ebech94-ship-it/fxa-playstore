@@ -1,17 +1,17 @@
 // SplashScreen.js
 
 import * as ExpoSplashScreen from "expo-splash-screen";
-import { useEffect, useRef, useState } from 'react';
-import { Animated, Image, StyleSheet, Text, View } from 'react-native';
+import { useEffect, useRef, useState } from "react";
+import { Animated, Image, StyleSheet, Text, View } from "react-native";
 import { useApp } from "./AppContext";
 
-// 🔴 THIS WAS MISSING
+// Prevent splash screen from auto-hiding
 ExpoSplashScreen.preventAutoHideAsync();
 
 export default function SplashScreen() {
   const [progress] = useState(new Animated.Value(0));
   const glowAnim = useRef(new Animated.Value(0)).current;
-const { setAppReady } = useApp();
+  const { setAppReady } = useApp();
 
   // Animate the progress bar
   useEffect(() => {
@@ -20,9 +20,8 @@ const { setAppReady } = useApp();
       duration: 10000,
       useNativeDriver: false,
     }).start(async () => {
-    await ExpoSplashScreen.hideAsync();
+      await ExpoSplashScreen.hideAsync();
       setAppReady(true);
-
     });
   }, [progress, setAppReady]);
 
@@ -46,23 +45,23 @@ const { setAppReady } = useApp();
 
   const progressWidth = progress.interpolate({
     inputRange: [0, 1],
-    outputRange: ['0%', '100%'],
+    outputRange: ["0%", "100%"],
   });
 
   const glowColor = glowAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: ['#00f0ff', '#ffffff'], // pulse from blue to white
+    outputRange: ["#00f0ff", "#ffffff"], // pulse from blue to white
   });
 
   return (
     <View style={styles.container}>
+      {/* Top content */}
       <View style={styles.topContent}>
         <Text style={styles.title}>FX ARENA</Text>
-        <Text style={styles.subtitle}>MASTERING MARKET 
-        PSYCHOLOGY</Text>
+        <Text style={styles.subtitle}>MASTERING MARKET PSYCHOLOGY</Text>
 
         <Image
-          source={require('../assets/images/splashscreen.png')}
+          source={require("../assets/images/splashscreen.png")}
           style={styles.arenaImage}
           resizeMode="contain"
         />
@@ -74,13 +73,12 @@ const { setAppReady } = useApp();
         </View>
       </View>
 
+      {/* Bottom content */}
       <View style={styles.bottomContent}>
-        <Text style={styles.powered}>
-          Powered by{' '}
-          <Animated.Text style={[styles.glow, { color: glowColor }]}>
-            GodSpeed (GS) Technologies.
-          </Animated.Text>
-        </Text>
+        <Text style={styles.powered}>Powered by</Text>
+        <Animated.Text style={[styles.glow, { color: glowColor }]}>
+          GodSpeed (GS) Technologies.
+        </Animated.Text>
       </View>
     </View>
   );
@@ -89,67 +87,73 @@ const { setAppReady } = useApp();
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000C26',
-    justifyContent: 'space-between', // Use space-between to push topContent down and powered to bottom
-    alignItems: 'center',
-    paddingVertical: 20, // reduced padding to give more room
+    backgroundColor: "#000C26",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 20,
   },
 
   topContent: {
-    alignItems: 'center',
-    paddingTop: 60, // move top content down a bit from top
+    alignItems: "center",
+    paddingTop: 60,
   },
 
   bottomContent: {
-    alignItems: 'center',
-    marginBottom: 20, // powered by at bottom
+    alignItems: "center",
+    marginBottom: 20,
   },
 
   title: {
     fontSize: 36,
-    color: 'white',
-    fontWeight: 'bold',
+    color: "white",
+    fontWeight: "bold",
     marginBottom: 4,
   },
+
   subtitle: {
     fontSize: 20,
-    color: '#E2C13E',
-    fontWeight: 'bold',
+    color: "#E2C13E",
+    fontWeight: "bold",
     marginBottom: 20,
   },
+
   arenaImage: {
     width: 250,
     height: 250,
     marginBottom: 20,
   },
+
   connecting: {
     fontSize: 18,
-    color: 'white',
+    color: "white",
     marginBottom: 10,
   },
+
   progressBarContainer: {
     height: 6,
     width: 250,
-    backgroundColor: '#555',
+    backgroundColor: "#555",
     borderRadius: 3,
-    overflow: 'hidden',
-    marginBottom: 20, // reduce gap to powered by
+    overflow: "hidden",
+    marginBottom: 20,
   },
+
   progressBar: {
-    height: '100%',
-    backgroundColor: '#4CAF50',
+    height: "100%",
+    backgroundColor: "#4CAF50",
   },
+
   powered: {
     fontSize: 16,
-    color: 'gray',
-    marginBottom: 10, // bottom spacing
+    color: "gray",
+    marginBottom: 5,
   },
+
   glow: {
-    fontWeight: 'bold',
-    textShadowColor: '#00f0ff',
+    fontSize: 16,
+    fontWeight: "bold",
+    textShadowColor: "#00f0ff",
     textShadowOffset: { width: 0, height: 0 },
     textShadowRadius: 10,
   },
 });
-
- 

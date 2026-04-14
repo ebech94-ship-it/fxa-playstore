@@ -9,9 +9,29 @@ const cors = require("cors");
 // ---------------------------------------------------------------------
 const { db } = require("./firebaseAdmin");
 const treasury = require("./treasury");
+const payinRoutes = require("./payin");
+const payoutRouter = require("./payout");
 
 const admin = require("firebase-admin");
+// ----------------------
+// CURRENCY CONVERTER
+// ----------------------
+const EXCHANGE_RATES = {
+  USD: 1,      // Base currency
+  XAF: 600,    // 1 USD ≈ 600 XAF
+};
 
+function convertCurrency(amount, from = "USD", to = "USD") {
+  if (!EXCHANGE_RATES[from] || !EXCHANGE_RATES[to]) {
+    throw new Error(`Unknown currency: ${from} or ${to}`);
+  }
+
+  // Convert amount to USD first, then to target currency
+  const amountInUSD = amount / EXCHANGE_RATES[from];
+  const convertedAmount = amountInUSD * EXCHANGE_RATES[to];
+
+  return Number(convertedAmount.toFixed(2)); // round to 2 decimals
+}
 
 // If your Node version < 18, uncomment next two lines
  const fetch = require("node-fetch");
@@ -19,15 +39,24 @@ const admin = require("firebase-admin");
 
 const app = express();
 
-
+app.use((req, res, next) => {
+  console.log("📩 Incoming Request:");
+  console.log("URL:", req.method, req.url);
+  console.log("Body:", req.body);
+  console.log("Headers:", req.headers);
+  next();
+});
 
 // ---------------------------------------------------------------------
 // CORS + JSON
 // ---------------------------------------------------------------------
-app.use(cors());
+app.use(cors({
+  origin: true,
+  credentials: true
+}));
 
 app.use(
-  express.json({
+  express.json({ 
     verify: (req, res, buf) => {
       req.rawBody = buf;
     },
@@ -106,11 +135,13 @@ app.get("/invite", (req, res) => {
   const deepLink = `forextournamentsarena://welcome?ref=${ref}`;
 
   // Fallback URL (Vercel download page)
-  const fallbackUrl = `https://forex-app-p1.vercel.app/download?ref=${ref}`;
-
+ const fallbackUrl = `https://forexarena.vercel.app/download?ref=${ref}`;
   // Serve a simple HTML page that tries deep link first
   res.send(`
     <html>
+    <head>
+    <meta http-equiv="refresh" content="2;url=${fallbackUrl}" />
+  </head>
       <body>
         <script>
           // Try opening the app
@@ -119,7 +150,7 @@ app.get("/invite", (req, res) => {
           // If the app is not installed, redirect to Vercel after 1.5 seconds
           setTimeout(() => {
             window.location = "${fallbackUrl}";
-          }, 1500);
+          }, 2000);
         </script>
         <p>If you are not redirected, <a href="${fallbackUrl}">click here to download the app</a></p>
       </body>
@@ -161,12 +192,13 @@ app.post("/transactions", authenticate, async (req, res) => {
     if (isNaN(parsedAmount) || parsedAmount <= 0) {
       return res.status(400).json({ success: false, error: "Invalid amount" });
     }
-
+// Convert amount from XAF to USD (backend internal currency)
+const amountInUSD = convertCurrency(parsedAmount, "XAF", "USD");
     if (type === "deposit") {
 
       const txRef = await db.collection("transactions").add({
         userId: req.user.uid,
-        amount: parsedAmount,
+       amount: amountInUSD, 
         type: "deposit",
         status: "pending",
         momoNumber,
@@ -181,7 +213,7 @@ app.post("/transactions", authenticate, async (req, res) => {
 
       await treasury.processWithdrawal(
         req.user.uid,
-        parsedAmount,
+        amountInUSD,
         momoNumber
       );
 
@@ -900,7 +932,8 @@ app.get("/admin/activity-history", authenticate, requireAdmin, async (req, res) 
     res.status(500).json({ error: err.message });
   }
 });
-
+app.use("/api/payin", payinRoutes);
+app.use("/api/payout", payoutRouter);     // withdrawals
 // ---------------------------------------------------------------------
 // START SERVER
 // ---------------------------------------------------------------------

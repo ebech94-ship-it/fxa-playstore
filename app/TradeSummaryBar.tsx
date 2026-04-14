@@ -28,6 +28,7 @@ export default function TradeSummaryBar({
 // ADD THIS RIGHT BELOW YOUR DESCTRUCTURING OF props
 const translateY = useRef(new Animated.Value(0)).current;
 const lastY = useRef(0);
+const startY = useRef(0);
   
   const { height: screenHeight, width: screenWidth } = useWindowDimensions();
 const isLandscape = screenWidth > screenHeight;
@@ -40,12 +41,22 @@ const EXPANDED_HEIGHT = isLandscape
 const maxTranslateY = EXPANDED_HEIGHT - COLLAPSED_HEIGHT;
 const minTranslateY = 0;
 
+useEffect(() => {
+  const clamped = Math.max(
+    minTranslateY,
+    Math.min(maxTranslateY, lastY.current)
+  );
+
+  lastY.current = clamped;
+  translateY.setValue(clamped);
+// eslint-disable-next-line react-hooks/exhaustive-deps
+}, [minTranslateY, maxTranslateY]);
 
 useEffect(() => {
-  // Fix for landscape/portrait: reset panel position safely
   lastY.current = maxTranslateY;
   translateY.setValue(maxTranslateY);
-}, [maxTranslateY, translateY]); // use maxTranslateY as dependency
+// eslint-disable-next-line react-hooks/exhaustive-deps
+}, [isLandscape, maxTranslateY]);
 
   const [openTrades, setOpenTrades] = useState<any[]>([]);
   const [closedTrades, setClosedTrades] = useState<any[]>([]);
@@ -75,31 +86,23 @@ const panResponder = useRef(
     onStartShouldSetPanResponder: () => true,
     onMoveShouldSetPanResponder: (_, g) => Math.abs(g.dy) > 5,
 
-   onPanResponderMove: (_, g) => {
-  const rawY = lastY.current + g.dy;
-  const clampedY = Math.max(minTranslateY, Math.min(maxTranslateY, rawY));
+    onPanResponderGrant: () => {
+      startY.current = lastY.current;
+    },
 
-  translateY.setValue(clampedY);
-  lastY.current = clampedY; // keep reference synced
-},
+    onPanResponderMove: (_, g) => {
+      const rawY = startY.current + g.dy;
 
-    onPanResponderRelease: (_, g) => {
-     const clampedY = lastY.current;
+      // clamp to stay within the panel's min and max
+      const clampedY = Math.max(minTranslateY, Math.min(maxTranslateY, rawY));
 
-      // Use dynamic threshold depending on screen height
-    const threshold = maxTranslateY * (isLandscape ? 0.45 : 0.6);
-const velocityThreshold = isLandscape ? -0.2 : -0.3;
-const shouldExpand = g.vy < velocityThreshold || clampedY < threshold;
+      translateY.setValue(clampedY);
+      lastY.current = clampedY; // update lastY continuously
+    },
 
-      const toValue = shouldExpand ? minTranslateY : maxTranslateY;
-      lastY.current = toValue;
-
-      Animated.spring(translateY, {
-  toValue,
-  damping: isLandscape ? 25 : 20, // slightly more damping in landscape
-  stiffness: isLandscape ? 150 : 180, // softer spring
-  useNativeDriver: true,
-}).start();
+    // Remove any snapping logic
+    onPanResponderRelease: () => {
+      // Do nothing: lastY already tracks the finger position
     },
   })
 ).current;

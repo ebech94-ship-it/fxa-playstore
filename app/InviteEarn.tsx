@@ -2,7 +2,7 @@ import * as Clipboard from "expo-clipboard";
 import { getAuth } from "firebase/auth";
 import {
   Alert,
-  
+
   Share,
   StyleSheet,
   Text,
@@ -22,20 +22,21 @@ export default function InviteEarnScreen() {
   }
 
   const uid = user.uid;
+const landingLink = `https://forexarena.vercel.app/?ref=${uid}`; // define once
 
  
 
   const copyLink = async () => {
-    const link = `https://forex-app-p1.vercel.app/?ref=${uid}`; // always copy web fallback
-    await Clipboard.setStringAsync(link);
+
+    await Clipboard.setStringAsync(landingLink);
     Alert.alert("Copied", "Invite link copied to clipboard");
   };
 
   const shareLink = async () => {
-    const link = `https://forex-app-p1.vercel.app/?ref=${uid}`; // always share web fallback
+
     try {
       await Share.share({
-        message: `🚀 Join me on Forex Tournaments!\n\nUse my invite link:\n${link}`,
+        message: `🚀 Join me on Forex Tournaments!\n\nUse my invite link:\n${landingLink}`,
       });
     } catch (err) {
       console.error("Share failed", err);
@@ -47,10 +48,16 @@ export default function InviteEarnScreen() {
       <View style={styles.card}>
         <Text style={styles.title}>🎁 Invite & Earn</Text>
 
+<Text style={{ color: "#ffcc00", fontSize: 13, marginBottom: 6 }}>
+  🚀 Blast off into rewards with every invite you make! Gain access to exclusive free tournaments as your invites grow.
+</Text>
+<Text style={{ color: "#b9b9c5", fontSize: 12, marginBottom: 20 }}>
+  Trading is better with friends—invite yours today and earn together!
+</Text>
         <Text style={styles.subtitle}>
-          Invite friends and earn rewards when they join and trade.
+          More invites you do can earn more rewards when they join and participates more especially in tournaments.
         </Text>
-
+<Text> The greater the community the better the outcome </Text>
         <View style={styles.codeBox}>
           <Text style={styles.codeLabel}>Your Invite Code</Text>
           <Text style={styles.code}>{uid}</Text>

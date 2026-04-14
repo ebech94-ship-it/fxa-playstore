@@ -1,5 +1,7 @@
 // PaymentsSection.tsx
+import { db } from "@/lib/firebase";
 import { getAuth } from "firebase/auth";
+import { collection, onSnapshot, query, QueryDocumentSnapshot, QuerySnapshot, where } from "firebase/firestore";
 import { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
@@ -49,33 +51,23 @@ const PaymentsSection = () => {
   }, [glow]);
 
   /* Fetch pending payments */
-  useEffect(() => {
-    const unsubscribe = auth.onAuthStateChanged(async (user) => {
-      if (!user) {
-        setPayments([]);
-        return;
-      }
+useEffect(() => {
+  const q = query(
+    collection(db, "transactions"),
+    where("status", "==", "pending"),
+    where("type", "==", "deposit")
+  );
 
-      try {
-        const token = await user.getIdToken();
+  const unsubscribe = onSnapshot(q, (snap: QuerySnapshot) => {
+    const docs = snap.docs.map((d: QueryDocumentSnapshot) => ({
+      id: d.id,
+      ...d.data(),
+    }));
+    setPayments(docs as PaymentDoc[]);
+  });
 
-        const res = await fetch(
-          `${API_BASE}/admin/transactions?type=deposit&status=pending`,
-          {
-            headers: { Authorization: `Bearer ${token}` },
-          }
-        );
-
-        const data = await res.json();
-        setPayments(data);
-      } catch (err) {
-        console.error("Failed to fetch payments:", err);
-      }
-    });
-
-    return () => unsubscribe();
-  }, [auth, API_BASE]);
-
+  return () => unsubscribe();
+}, []);
   /* Approve */
   const approve = async () => {
     if (!selected || loading) return;

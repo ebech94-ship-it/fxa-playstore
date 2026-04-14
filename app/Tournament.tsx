@@ -428,12 +428,17 @@ const handleRegister = async (tournamentId: string) => {
     }
 
     Alert.alert("Error", message);
+
+
   } finally {
     setLoadingFor(tournamentId, "register", false);
   }
 };
 
-// ----------- REBUY ACTION (CLEAN + BACKEND-MATCHED) -----------
+// ---- Keep TS happy ----
+if (false) handleRegister("dummy");
+
+
 // ----------- REBUY ACTION (SECURE BACKEND VERSION) -----------
 const handleRebuy = async (tournamentId: string) => {
   // 🚫 DOUBLE TAP GUARD
@@ -540,7 +545,7 @@ const formatFullDate = (ms: number) => {
 
   // Hours & minutes (24h format)
   const hours = String(date.getHours()).padStart(2, "0");
-  const minutes = String(date.getMinutes()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0"); 
 
   return `${ordinal} ${month} ${year}, ${hours}:${minutes}`;
 
@@ -550,11 +555,13 @@ if (!item.startTime || !item.endTime) return null;
 
 const status = getTournamentStatus(item.startTime, item.endTime, now);
  
-  const duration = item.endTime - item.startTime;
+  const duration = Math.max(1, item.endTime - item.startTime);
   
 const progress =
-  status === "finished" || duration <= 0
+  status === "finished"
     ? 1
+    : status === "upcoming"
+    ? 0
     : Math.max(0, Math.min((now - item.startTime) / duration, 1));
 
  const durationText = formatDuration(duration);
@@ -645,20 +652,27 @@ const allowRebuy =
 
       {/* ACTION BUTTONS */}
       <View style={styles.cardFooter}>
+      
 <TouchableOpacity
+
   style={[
+  
     styles.actionBtn,
     (status === "finished" ||
       loadingActions[item.id]?.register ||
       joinedMap[item.id]) &&
       styles.disabledBtn,
   ]}
-  disabled={
-    status === "finished" ||
-    !!loadingActions[item.id]?.register ||
-    !!joinedMap[item.id]
-  }
-  onPress={() => handleRegister(item.id)}
+  disabled={false} // keep pressable to show message
+  onPress={() => {
+    // handleRegister(item.id); // <-- commented out temporarily
+
+    // Friendly message for users
+    Alert.alert(
+      "Registration Not Open",
+      "🎟 Registration is not yet open. Stay tuned!"
+    );
+  }}
 >
   <Text style={styles.actionText}>
     {status === "finished"
@@ -669,7 +683,7 @@ const allowRebuy =
       ? "Processing..."
       : item.entryFee === 0
       ? "Register (Free)"
-      : `Register (${item.entryFee} $)`}
+      : `Registration Not Open`} {/* changed text to match new state */}
   </Text>
 </TouchableOpacity>
 
@@ -708,35 +722,51 @@ const allowRebuy =
 
   // find current user row and create pinned row to top of leaderboard modal
   const renderPinnedUserRow = (list: LeaderboardUser[]) => {
-    if (!currentUser) return null;
-    const idx = list.findIndex((p) => p.id === currentUser.uid);
-    if (idx === -1) return null;
- 
-    return (
-  <View style={styles.pinnedRow}>
-    {/* "You" label */}
-{/* Tier */}
-<Text style={[styles.tableCol, styles.priceGreen, styles.pinnedCol]}>
-  {(() => {
-    const rank = list.findIndex((p) => p.id === currentUser?.uid) + 1;
-    return getTierForRank(rank);
-  })()}
+  if (!currentUser) return null;
+
+  const idx = list.findIndex((p) => p.id === currentUser.uid);
+  if (idx === -1) return null;
+
+  const rank = idx + 1;
+  const user = list[idx];
+
+  const prize =
+    selectedTournament ? getPrizeForRank(rank, selectedTournament) : null;
+
+  return (
+    <View style={styles.pinnedRow}>
+      
+      {/* Rank */}
+      <Text style={styles.tableColSmall}>
+        {rank <= 3 ? ["🥇","🥈","🥉"][rank-1] : rank}
+      </Text>
+
+      {/* Participant */}
+      <View style={styles.tableColName}>
+       <NameWithFlag
+  username={user.username || user.email || "Player"}
+  countryCode={user.countryCode}
+/>
+      </View>
+
+      {/* Balance */}
+     <Text style={styles.tableColBalance} numberOfLines={1}>
+  {user.balance ?? 0}T
 </Text>
 
-{/* Cash */}
-<Text style={[styles.tableCol, { color: "#22c55e", fontWeight: "900" }]}>
-  {(() => {
-    if (!selectedTournament) return "-";
-    const rank = list.findIndex((p) => p.id === currentUser?.uid) + 1;
-    const prize = getPrizeForRank(rank, selectedTournament);
-    return prize ? `${prize} $` : "-";
-  })()}
-</Text>
-  </View>
-);
+      {/* Tier */}
+      <Text style={styles.tableColTier}>
+        {getTierForRank(rank)}
+      </Text>
 
-  };
+      {/* Prize */}
+      <Text style={styles.tableColPrize}>
+        {prize ? `${prize} $` : "-"}
+      </Text>
 
+    </View>
+  );
+};
   // table header for leaderboard
   const LeaderboardTable = ({ list }: { list: LeaderboardUser[] }) => {
     return (
@@ -746,17 +776,20 @@ const allowRebuy =
           <Text style={[styles.tableColSmall, styles.headerText]}>#</Text>
 <Text style={[styles.tableColName, styles.headerText]}>Participant</Text>
 <Text style={[styles.tableColBalance, styles.headerText]}>Balance</Text>
-<Text style={[styles.tableColTier, styles.headerText]}>Tier</Text>
+<Text style={[styles.tableColTier, styles.headerText]}>Level</Text>
 <Text style={[styles.tableColPrize, styles.headerText]}>Prize</Text>
         </View>
         {list.map((row, i) => (
           <View
             key={row.id}
-            style={[
+            style={[ 
               styles.tableRow,
               row.id === currentUser?.uid ? styles.currentRowHighlight : null,
             ]}
-          ><Text style={styles.tableColSmall}>{i + 1}</Text>
+          >
+          <Text style={styles.tableColSmall}>
+  {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : i + 1}
+</Text>
 
 <View style={styles.tableColName}>
   <NameWithFlag
@@ -765,7 +798,10 @@ const allowRebuy =
   />
 </View>
 
-<Text style={styles.tableColBalance}>
+<Text
+  style={styles.tableColBalance}
+  numberOfLines={1}
+>
   {row.balance ?? 0}T
 </Text>
 
@@ -886,7 +922,7 @@ const allowRebuy =
         </Pressable>
 
         {selectedTournament && (
-          <View style={{ flex: 1, minHeight: 0 }}>
+     <View style={{ flex: 1 }}>    
             <Text style={styles.modalTitle}>
               {selectedTournament.title || selectedTournament.name || "Tournament"}
             </Text>
@@ -931,7 +967,9 @@ const allowRebuy =
 {viewTab === "info" ? (
   <ScrollView
   style={{ flex: 1 }}
-  contentContainerStyle={{ paddingBottom: 80 }}
+  contentContainerStyle={{ paddingBottom: 120,
+    paddingTop: 6  }}
+  showsVerticalScrollIndicator={false}
   keyboardShouldPersistTaps="handled"
 >
     <Text style={styles.sectionTitle}>📖 Information</Text>
@@ -955,6 +993,12 @@ const allowRebuy =
     {selectedTournament.payoutStructure?.length ? (
       <View>
         <Text style={styles.sectionTitle}>🏆 RANKINGS</Text>
+        {/* Header row */}
+    <View style={[styles.rankHeaderRow]}>
+      <Text style={[styles.rankHeaderCol, { flex: 1 }]}>Position</Text>
+      <Text style={[styles.rankHeaderCol, { flex: 2 }]}>Level</Text> {/* instead of "Tier", use Level */}
+      <Text style={[styles.rankHeaderCol, { flex: 1, textAlign: 'right' }]}>Prize</Text>
+    </View>
         {selectedTournament.payoutStructure.map((p: any) => (
           <View
             key={p.rank}
@@ -997,10 +1041,10 @@ const allowRebuy =
   // Leaderboard tab: single table with all users
   <ScrollView
     style={{ flex: 1 }}
-    contentContainerStyle={{ paddingBottom: 40 }}
+    contentContainerStyle={{ paddingBottom:120 }}
     showsVerticalScrollIndicator={false}
   >
-    <View style={{ flex: 1 }}>
+    <View style={{ flexGrow: 1 }}>
       <LeaderboardTable list={leaderboard} />
     </View>
   </ScrollView>
@@ -1040,11 +1084,10 @@ disabledBtn: { opacity: 0.45 },
 // modal
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "center", alignItems: "center" },
 modalContent: {
-  flex: 1,
   backgroundColor: "#0e0f26",
   borderRadius: 18,
   width: "92%",
-  maxHeight: "90%",
+  height: "90%",
   paddingTop: 18,
   paddingBottom: 10,
   paddingHorizontal: 16,
@@ -1055,7 +1098,7 @@ modalContent: {
   padding: 10,
   marginRight: 4
 },
-  modalTitle: { fontSize: 20, fontWeight: "900", color: "#fff" },
+  modalTitle: { fontSize: 20, fontWeight: "900", color: "#fff", marginBottom: 6, },
   modalMetaRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 8 },
   modalPrize: { color: "#47f11dff", fontWeight: "800" },
   modalInfo: { color: "#cbd5e1" },
@@ -1073,11 +1116,19 @@ modalContent: {
   btnText: { color: "#fff", fontWeight: "900" },
   btnTextAlt: { color: "#fff", fontWeight: "700" },
   // leaderboard table
-  tableHeader: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: "#2b2b3a", paddingBottom: 6, marginTop: 10 },
-  tableRow: { flexDirection: "row", paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: "#12121a", alignItems: "center" },
-  tableColSmall: { width: 32, color: "#fff", fontWeight: "700" },
+  tableHeader: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: "#2b2b3a",paddingBottom: 8,  marginTop: 10, alignItems: "center", },
+ 
+tableRow: {   flexDirection: "row",  alignItems: "center",
+  justifyContent: "space-between",  width: "100%", 
+  paddingVertical: 8,  borderBottomWidth: 1,  borderBottomColor: "#12121a",
+},
+
+tableColSmall: { flexShrink: 0, color: "#fff", fontWeight: "700" },
   tableCol: { flex: 1, color: "#fff" },
-  pinnedRow: { backgroundColor: "rgba(34,211,238,0.06)", padding: 10, borderRadius: 10, marginBottom: 8, flexDirection: "row", alignItems: "center" },
+  pinnedRow: { backgroundColor: "#12142e", padding: 10, borderRadius: 10, borderTopWidth: 1,
+ 
+ borderColor: "#2b2b3a", marginBottom: 8, flexDirection: "row", alignItems: "center" },
+  
   pinnedCol: { color: "#fff", fontWeight: "900" },
   currentRowHighlight: { backgroundColor: "rgba(34,197,94,0.06)" },
   balanceLightBlue: { color: "#38bdf8" , fontWeight: "700" }, priceGreen: { color: "#facc15", fontWeight: "700" },
@@ -1113,15 +1164,28 @@ cardFeeText: { color: "#60a5fa", fontWeight: "bold", fontSize: 15,},
 
 cardStatsRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 8,},
 startingBalanceText: { color: "#22c55e", fontWeight: "700", fontSize: 14, marginTop: 4 },
-tableColName: {  flex: 2.2,  color: "#fff",},
+tableColName: {  flex: 2.5,  color: "#fff",},
 
-tableColBalance: {  flex: 1.2,  color: "#38bdf8",  fontWeight: "700",
+tableColBalance: {  flex: 1.5,  color: "#38bdf8",  fontWeight: "700",},
+
+tableColTier: {  flex: 1.4,  color: "#facc15",  fontWeight: "700",},
+
+tableColPrize: {  flex: 1.3,  color: "#22c55e",  fontWeight: "800",},
+rankHeaderRow: {
+  flexDirection: 'row',
+  marginTop: 8,
+  paddingBottom: 4,
+  borderBottomWidth: 1,
+  borderBottomColor: '#2b2b3a',
+  alignItems: 'center',
+  justifyContent: 'space-between',
 },
 
-tableColTier: {  flex: 1.3,  color: "#facc15",  fontWeight: "700",
-},
-
-tableColPrize: {  flex: 1,  color: "#22c55e",  fontWeight: "800",
+rankHeaderCol: {
+  color: '#cbd5e1',
+  fontWeight: '900',
+  textAlign: 'center',
+  flex: 1, // make column flexible by default
 },
 
 });

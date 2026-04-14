@@ -355,12 +355,12 @@ return (
                 isCurrent ? toISO2(profile?.country) : p.countryCode || "CM"
               }
             />
-            <Text style={styles.balance}>
-              {activeAccount.type === "tournament" && isCurrent
-                ? tournamentBalance ?? p.balance ?? 0
-                : p.balance ?? 0}
-              T
-            </Text>
+           <Text style={styles.balance}>
+  {`$${((activeAccount.type === "tournament" && isCurrent
+      ? tournamentBalance ?? p.balance ?? 0
+      : p.balance ?? 0
+    ).toFixed(1))}`}
+</Text>
           </View>
 
           <Text
@@ -450,7 +450,9 @@ return (
           username={item.username || "Player"}
           countryCode={item.countryCode || "CM"}
         />
-        <Text style={styles.balance}>{item.balance ?? 0}T</Text>
+       <Text style={styles.balance}>
+  {`$${((item.balance ?? 0).toFixed(1))}`}
+</Text>
       </View>
       <Text style={styles.rank}>#{index + 1}</Text>
     </View>
@@ -505,7 +507,7 @@ paddingHorizontal: 6,
   flex: 1,           // 👈 this is the key
   marginRight: 4,
 },
-  balance: { color: "#22c55e", fontSize: 11 },
+  balance: { color: "#22c55e", fontSize: 11, fontWeight: "700" },
   rank: { color: "#facc15", fontWeight: "700", fontSize: 12, top:7 },
   currentUser: {
     backgroundColor: "rgba(255,255,255,0.15)",
