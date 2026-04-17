@@ -160,30 +160,34 @@ originalAmount: Number(amount),
     res.status(500).json({ success: false, error: error.message });
   }
 });
-
 // ----------------------
-// WEBHOOK (PRODUCTION SAFE)
+// WEBHOOK (PRODUCTION SAFE - FIXED)
 // ----------------------
 router.post("/webhook", async (req, res) => {
   try {
     const signature = req.headers["x-swychr-signature"];
+
+    // ❌ ALWAYS REQUIRE SECRET (no optional mode)
+    if (!process.env.SWYCHR_WEBHOOK_SECRET) {
+      throw new Error("SWYCHR_WEBHOOK_SECRET is required");
+    }
 
     if (!signature) {
       console.log("❌ Missing signature");
       return res.status(401).send("Unauthorized");
     }
 
-    // OPTIONAL: enable if you have secret
-    if (process.env.SWYCHR_WEBHOOK_SECRET) {
-      const expected = crypto
-        .createHmac("sha256", process.env.SWYCHR_WEBHOOK_SECRET)
-        .update(req.rawBody)
-        .digest("hex");
+    // ----------------------
+    // VERIFY SIGNATURE
+    // ----------------------
+    const expected = crypto
+      .createHmac("sha256", process.env.SWYCHR_WEBHOOK_SECRET)
+      .update(req.rawBody)
+      .digest("hex");
 
-      if (signature !== expected) {
-        console.log("❌ Invalid signature");
-        return res.status(401).send("Unauthorized");
-      }
+    if (signature !== expected) {
+      console.log("❌ Invalid signature");
+      return res.status(401).send("Unauthorized");
     }
 
     const payload = req.body;
@@ -211,16 +215,27 @@ router.post("/webhook", async (req, res) => {
 
     const doc = snapshot.docs[0];
 
-  if (Number(status) === 1) {
+    // ----------------------
+    // SUCCESS PAYMENT
+    // ----------------------
+    if (Number(status) === 1) {
       await db.runTransaction(async (t) => {
         const snap = await t.get(doc.ref);
         const tx = snap.data();
-if (!tx.userId) throw new Error("Invalid transaction");
 
-       if (tx.status && tx.status !== "pending") return;
-       
+        if (!tx.userId) throw new Error("Invalid transaction");
+
+        // prevent double processing
+        if (tx.status && tx.status !== "pending") return;
+
+        // OPTIONAL: amount validation (recommended)
+        if (tx.amount && Number(amount) !== tx.amount) {
+          throw new Error("Amount mismatch");
+        }
+
         const userRef = db.collection("users").doc(tx.userId);
-       const amountInUSD = Number(amount) / XAF_TO_USD;
+
+        const amountInUSD = Number(amount) / XAF_TO_USD;
 
         t.update(userRef, {
           realBalance: admin.firestore.FieldValue.increment(amountInUSD),
@@ -235,7 +250,10 @@ if (!tx.userId) throw new Error("Invalid transaction");
       console.log("✅ USER CREDITED");
     }
 
-  if (Number(status) === 2) {
+    // ----------------------
+    // FAILED PAYMENT
+    // ----------------------
+    if (Number(status) === 2) {
       await doc.ref.update({
         status: "failed",
         failedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -244,11 +262,11 @@ if (!tx.userId) throw new Error("Invalid transaction");
       console.log("❌ PAYMENT FAILED");
     }
 
-    res.status(200).json({ received: true });
+    return res.status(200).json({ received: true });
 
   } catch (error) {
     console.error("Webhook error:", error.message);
-    res.status(500).json({ error: error.message });
+    return res.status(500).json({ error: error.message });
   }
 });
 

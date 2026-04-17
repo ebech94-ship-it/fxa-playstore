@@ -2,6 +2,11 @@ console.log("🔥🔥🔥 ACTIVE SERVER.JS LOADED 🔥🔥🔥");
 
 require("dotenv").config();
 
+// 🔒 CHECK WEBHOOK SECRET (ADD THIS HERE)
+if (!process.env.SWYCHR_WEBHOOK_SECRET) {
+  console.warn("⚠️ SWYCHR_WEBHOOK_SECRET is NOT set");
+}
+
 const express = require("express");
 const cors = require("cors");
 // ---------------------------------------------------------------------
@@ -13,25 +18,8 @@ const payinRoutes = require("./payin");
 const payoutRouter = require("./payout");
 
 const admin = require("firebase-admin");
-// ----------------------
-// CURRENCY CONVERTER
-// ----------------------
-const EXCHANGE_RATES = {
-  USD: 1,      // Base currency
-  XAF: 600,    // 1 USD ≈ 600 XAF
-};
 
-function convertCurrency(amount, from = "USD", to = "USD") {
-  if (!EXCHANGE_RATES[from] || !EXCHANGE_RATES[to]) {
-    throw new Error(`Unknown currency: ${from} or ${to}`);
-  }
 
-  // Convert amount to USD first, then to target currency
-  const amountInUSD = amount / EXCHANGE_RATES[from];
-  const convertedAmount = amountInUSD * EXCHANGE_RATES[to];
-
-  return Number(convertedAmount.toFixed(2)); // round to 2 decimals
-}
 
 // If your Node version < 18, uncomment next two lines
  const fetch = require("node-fetch");
@@ -40,10 +28,9 @@ function convertCurrency(amount, from = "USD", to = "USD") {
 const app = express();
 
 app.use((req, res, next) => {
-  console.log("📩 Incoming Request:");
-  console.log("URL:", req.method, req.url);
-  console.log("Body:", req.body);
-  console.log("Headers:", req.headers);
+  if (process.env.NODE_ENV !== "production") {
+    console.log("📩", req.method, req.url);
+  }
   next();
 });
 
@@ -55,13 +42,11 @@ app.use(cors({
   credentials: true
 }));
 
-app.use(
-  express.json({ 
-    verify: (req, res, buf) => {
-      req.rawBody = buf;
-    },
-  })
-);
+app.use(express.json({
+  verify: (req, res, buf) => {
+    req.rawBody = buf.toString();
+  }
+}));
 
 
 app.options("*", cors());
@@ -179,75 +164,6 @@ app.get("/api/treasury/balances", authenticate, requireAdmin, async (req, res) =
   }
 });
 
-// ----------------------
-// TRANSACTIONS (MERGED)
-// ----------------------
-
-// USER: create deposit/withdrawal
-app.post("/transactions", authenticate, async (req, res) => {
-  try {
-    const { type, amount, momoNumber, operator } = req.body;
-
-    const parsedAmount = Number(amount);
-    if (isNaN(parsedAmount) || parsedAmount <= 0) {
-      return res.status(400).json({ success: false, error: "Invalid amount" });
-    }
-// Convert amount from XAF to USD (backend internal currency)
-const amountInUSD = convertCurrency(parsedAmount, "XAF", "USD");
-    if (type === "deposit") {
-
-      const txRef = await db.collection("transactions").add({
-        userId: req.user.uid,
-       amount: amountInUSD, 
-        type: "deposit",
-        status: "pending",
-        momoNumber,
-        operator,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
-
-      return res.json({ success: true, txId: txRef.id });
-    }
-
-    if (type === "withdrawal") {
-
-      await treasury.processWithdrawal(
-        req.user.uid,
-        amountInUSD,
-        momoNumber
-      );
-
-      return res.json({ success: true });
-    }
-
-    return res.status(400).json({ success: false, error: "Invalid type" });
-
-  } catch (err) {
-    res.status(400).json({ success: false, error: err.message });
-  }
-});
-
-// ADMIN: approve transaction
-app.post("/transactions/approve", authenticate, requireAdmin, async (req, res) => {
-  try {
-    const { txId } = req.body;
-    await treasury.approveTransaction(txId, req.user.uid);
-    res.json({ success: true });
-  } catch (err) {
-    res.status(400).json({ success: false, error: err.message });
-  }
-});
-
-// ADMIN: reject transaction
-app.post("/transactions/reject", authenticate, requireAdmin, async (req, res) => {
-  try {
-    const { txId } = req.body;
-    await treasury.rejectTransaction(txId, req.user.uid);
-    res.json({ success: true });
-  } catch (err) {
-    res.status(400).json({ success: false, error: err.message });
-  }
-});
 // ---------------------------------------------------------------------
 // TOURNAMENTS HANDLING
 // ---------------------------------------------------------------------
@@ -365,17 +281,6 @@ t.set(
     res.status(400).json({ success: false, error: err.message });
   }
   
-});
-
-
-app.get("/admin/transactions", authenticate, requireAdmin, async (req, res) => {
-  const { type, status } = req.query;
-  const snapshot = await db.collection("transactions")
-    .where("type", "==", type)
-    .where("status", "==", status)
-    .get();
-  const data = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-  res.json(data);
 });
 
 

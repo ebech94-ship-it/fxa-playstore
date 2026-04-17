@@ -3,9 +3,10 @@ const router = express.Router();
 const { db } = require("./firebaseAdmin");
 const admin = require("firebase-admin");
 const fetch = require("node-fetch");
-
+const crypto = require("crypto");
 
 const { XAF_TO_USD, BASE_CURRENCY } = require("../config/currency");
+
 // ----------------------
 // TOKEN CACHE (PAYOUT)
 // ----------------------
@@ -29,7 +30,7 @@ async function getPayoutToken() {
   const data = await response.json();
 
   if (!data.token) {
-    console.error("❌ Payout auth failed:", data);
+    console.error("❌ Payout auth failed");
     throw new Error("Failed to get payout token");
   }
 
@@ -43,23 +44,20 @@ async function getPayoutToken() {
 // CREATE PAYOUT
 // ----------------------
 router.post("/", async (req, res) => {
-  const {
-    beneficiary_name,
-    mobile_no,
-    amount,
-    payment_method,
-    bank_code,
-    account_number,
-    remarks,
-    country_code
-  } = req.body;
-
   let transactionId;
 
   try {
-    // ----------------------
-    // VALIDATION
-    // ----------------------
+    const {
+      beneficiary_name,
+      mobile_no,
+      amount,
+      payment_method,
+      bank_code,
+      account_number,
+      remarks,
+      country_code
+    } = req.body;
+
     if (!beneficiary_name || !mobile_no || !amount || !payment_method || !country_code) {
       return res.status(400).json({ error: "Missing required fields" });
     }
@@ -67,129 +65,129 @@ router.post("/", async (req, res) => {
     const idToken = req.headers.authorization?.split("Bearer ")[1];
     if (!idToken) return res.status(401).json({ error: "Unauthorized" });
 
-    let uid;
-    try {
-      const decodedToken = await admin.auth().verifyIdToken(idToken);
-      uid = decodedToken.uid;
-    } catch {
-      return res.status(401).json({ error: "Invalid token" });
-    }
+    const decodedToken = await admin.auth().verifyIdToken(idToken);
+    const uid = decodedToken.uid;
 
     const userRef = db.collection("users").doc(uid);
 
-  
-   // ----------------------
-// 🔐 CONCURRENCY SAFE CHECK + LOCK (ATOMIC)
-// ----------------------
-await db.runTransaction(async (t) => {
-  const snap = await t.get(userRef);
-  const balance = snap.data()?.realBalance || 0;
-
-  // 💰 STEP 1: define amounts (FIRST!)
-  const amountUSD = Number(amount);
-
-if (!amountUSD || amountUSD <= 0) {
-  throw new Error("INVALID_AMOUNT");
-}
-  const fee = amountUSD * 0.01; // 1%
-  const netUSD = amountUSD - fee;
-
-  // 🔄 convert to XAF for payout API
-  const amountXAF = Math.round(netUSD * XAF_TO_USD);
-
-  // 🚫 STEP 2: check balance
-  if (balance < amountUSD) {
-    throw new Error("INSUFFICIENT_BALANCE");
-  }
-
-  // 🆔 STEP 3: create transaction ID
-  transactionId =
-    "payout_" + Date.now() + "_" + Math.floor(Math.random() * 10000);
-
-  // 🔑 STEP 4: get token
-  const token = await getPayoutToken();
-
-  // 🌍 STEP 5: call payout API
-  const response = await fetch(
-    "https://api.accountpe.com/api/payout/create_transaction",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-        "Idempotency-Key": transactionId,
-      },
-      body: JSON.stringify({
-        country_code,
-        beneficiary_name,
-        mobile_no,
-        amount: amountXAF, // ✅ converted value
-        transaction_id: transactionId,
-        payment_method,
-        remarks: remarks || "",
-        bank_code,
-        account_number,
-      }),
+    // 💰 AMOUNT LOGIC
+    const amountUSD = Number(amount);
+    if (!amountUSD || amountUSD <= 0) {
+      throw new Error("INVALID_AMOUNT");
     }
-  );
 
-      if (!response.ok) {
-        throw new Error("PAYOUT_FAILED");
+    if (amountUSD < 1) {
+      throw new Error("MIN_WITHDRAWAL_1_USD");
+    }
+
+    const fee = amountUSD * 0.01;
+    const netUSD = amountUSD - fee;
+
+    // ✅ CORRECT CONVERSION
+    const amountXAF = Math.round(netUSD / XAF_TO_USD);
+
+    transactionId = "payout_" + Date.now() + "_" + Math.floor(Math.random() * 10000);
+
+    // 🔑 GET TOKEN OUTSIDE TRANSACTION
+    const token = await getPayoutToken();
+
+    // 🌐 CALL PAYOUT API WITH TIMEOUT
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+
+    const response = await fetch(
+      "https://api.accountpe.com/api/payout/create_transaction",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          "Idempotency-Key": transactionId,
+        },
+        body: JSON.stringify({
+          country_code,
+          beneficiary_name,
+          mobile_no,
+          amount: amountXAF,
+          transaction_id: transactionId,
+          payment_method,
+          remarks: remarks || "",
+          bank_code,
+          account_number,
+        }),
+        signal: controller.signal,
+      }
+    );
+
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      throw new Error("PAYOUT_FAILED");
+    }
+
+    const payoutData = await response.json();
+
+    // ----------------------
+    // FIRESTORE TRANSACTION
+    // ----------------------
+    await db.runTransaction(async (t) => {
+      const userSnap = await t.get(userRef);
+      const balance = userSnap.data()?.realBalance || 0;
+
+      if (balance < amountUSD) {
+        throw new Error("INSUFFICIENT_BALANCE");
       }
 
-      const payoutData = await response.json();
-
-      // 🔒 LOCK BALANCE (immediately)
+      // 🔒 DEDUCT BALANCE
       t.update(userRef, {
         realBalance: admin.firestore.FieldValue.increment(-amountUSD),
       });
 
-      // 🧾 CREATE PAYOUT RECORD
+      // 🧾 STORE PAYOUT
       const payoutRef = db.collection("payouts").doc(transactionId);
 
-     t.set(payoutRef, {
-  userId: uid,
-  transactionId,
+      t.set(payoutRef, {
+        userId: uid,
+        transactionId,
 
-  // USER SIDE (USD)
-  amount: amountUSD,
-  fee,
-  netAmount: netUSD,
-  currency: BASE_CURRENCY,
+        amount: amountUSD,
+        fee,
+        netAmount: netUSD,
+        currency: BASE_CURRENCY,
 
-  // API SIDE (XAF)
-  payoutAmount: amountXAF,
-  payoutCurrency: "XAF",
+        payoutAmount: amountXAF,
+        payoutCurrency: "XAF",
 
-  beneficiary_name,
-  mobile_no,
-  payment_method,
-  status: "processing",
-  createdAt: admin.firestore.FieldValue.serverTimestamp(),
-  payoutResponse: payoutData,
-    // 🔐 IDEMPOTENCY STORAGE
-  processedStatuses: [],
-});
-const treasuryRef = db.collection("treasury").doc(`${transactionId}_fee`);
+        beneficiary_name,
+        mobile_no,
+        payment_method,
 
-t.set(treasuryRef, {
-  type: "withdrawal_fee",
-  amount: fee,
-  currency: BASE_CURRENCY,
-  userId: uid,
-  transactionId,
-  createdAt: admin.firestore.FieldValue.serverTimestamp(),
-});
+        status: "processing",
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        payoutResponse: payoutData,
+
+        processedStatuses: [],
+      });
+
+      // 💰 STORE FEE
+      const treasuryRef = db.collection("treasury").doc(`${transactionId}_fee`);
+
+      t.set(treasuryRef, {
+        type: "withdrawal_fee",
+        amount: fee,
+        currency: BASE_CURRENCY,
+        userId: uid,
+        transactionId,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
     });
-    
+
     return res.json({
       success: true,
       transactionId,
     });
+
   } catch (error) {
-    // ----------------------
-    // ERROR HANDLING (IMPORTANT)
-    // ----------------------
     if (error.message === "INSUFFICIENT_BALANCE") {
       return res.status(400).json({ error: "Insufficient balance" });
     }
@@ -204,21 +202,45 @@ t.set(treasuryRef, {
 });
 
 // ----------------------
-// PAYOUT WEBHOOK (REAL-TIME UPDATE)
+// WEBHOOK (SECURED)
 // ----------------------
 router.post("/webhook", async (req, res) => {
   try {
+    const signature = req.headers["x-swychr-signature"];
+
+    if (process.env.SWYCHR_WEBHOOK_SECRET) {
+      const expectedSignature = crypto
+        .createHmac("sha256", process.env.SWYCHR_WEBHOOK_SECRET)
+        .update(req.rawBody)
+        .digest("hex");
+
+      if (signature !== expectedSignature) {
+        console.error("❌ Invalid webhook signature");
+        return res.status(401).json({ error: "Invalid signature" });
+      }
+    }
+
     const payload = req.body;
 
     const transaction_id =
       payload?.data?.transaction_id || payload?.transaction_id;
 
-    const status =
+    const rawStatus =
       payload?.data?.status || payload?.status;
 
-    if (!transaction_id || !status) {
+    if (!transaction_id || !rawStatus) {
       return res.status(200).json({ received: true });
     }
+
+    const raw = String(rawStatus).toLowerCase();
+
+    const newStatus =
+      raw === "1" || raw === "success" ? "success" :
+      raw === "2" || raw === "failed" ? "failed" :
+      raw === "refunded" ? "refunded" :
+      raw === "cancelled" ? "cancelled" :
+      raw === "processing" ? "processing" :
+      "unknown";
 
     const snapshot = await db
       .collection("payouts")
@@ -232,70 +254,38 @@ router.post("/webhook", async (req, res) => {
 
     const docRef = snapshot.docs[0].ref;
 
-    const raw = String(status).toLowerCase();
-
-    const newStatus =
-      raw === "1" || raw === "success" ? "success" :
-      raw === "2" || raw === "failed" ? "failed" :
-      raw === "refunded" ? "refunded" :
-      raw === "cancelled" ? "cancelled" :
-      raw === "processing" ? "processing" :
-      raw;
-
     await db.runTransaction(async (t) => {
       const docSnap = await t.get(docRef);
       const payout = docSnap.data();
 
-      const oldStatus = payout.status;
-
-      // 🔐 IDEMPOTENCY KEY
       const processedKey = `${payout.transactionId}_${newStatus}`;
-      const processedList = payout.processedStatuses || [];
 
-      // 🚫 HARD STOP (already processed)
-      if (oldStatus === newStatus || processedList.includes(processedKey)) {
+      if (
+        payout.status === newStatus ||
+        (payout.processedStatuses || []).includes(processedKey)
+      ) {
         return;
       }
 
-      // ✅ UPDATE PAYOUT DOC
       t.update(docRef, {
         status: newStatus,
         lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
         processedStatuses: admin.firestore.FieldValue.arrayUnion(processedKey),
       });
 
-      const userRef = db.collection("users").doc(payout.userId);
-
-      // ----------------------
-      // SUCCESS (NO ACTION NEEDED)
-      // ----------------------
-      if (newStatus === "success") {
-        console.log("✅ WEBHOOK: payout success");
-        return;
-      }
-
-      // ----------------------
-      // REFUND CASES
-      // ----------------------
-      if (
-        newStatus === "failed" ||
-        newStatus === "cancelled" ||
-        newStatus === "refunded"
-      ) {
+      // 💰 REFUND LOGIC
+      if (["failed", "cancelled", "refunded"].includes(newStatus)) {
+        const userRef = db.collection("users").doc(payout.userId);
         const userSnap = await t.get(userRef);
+
         const refundedList = userSnap.data()?.refunds || [];
 
-        const txId = payout.transactionId;
-
-        // 🔒 DOUBLE REFUND PROTECTION
-        if (refundedList.includes(txId)) return;
-
-        t.update(userRef, {
-          realBalance: admin.firestore.FieldValue.increment(payout.amount),
-          refunds: admin.firestore.FieldValue.arrayUnion(txId),
-        });
-
-        console.log("💰 WEBHOOK REFUND SAFE");
+        if (!refundedList.includes(payout.transactionId)) {
+          t.update(userRef, {
+            realBalance: admin.firestore.FieldValue.increment(payout.amount),
+            refunds: admin.firestore.FieldValue.arrayUnion(payout.transactionId),
+          });
+        }
       }
     });
 
@@ -308,7 +298,7 @@ router.post("/webhook", async (req, res) => {
 });
 
 // ----------------------
-// STATUS CHECK (READ-ONLY SYNC)
+// STATUS CHECK
 // ----------------------
 router.post("/status", async (req, res) => {
   try {
@@ -334,43 +324,9 @@ router.post("/status", async (req, res) => {
 
     const statusData = await response.json();
 
-    const snapshot = await db
-      .collection("payouts")
-      .where("transactionId", "==", transaction_id)
-      .limit(1)
-      .get();
-
-    if (snapshot.empty) {
-      return res.json({
-        success: true,
-        status: statusData,
-        source: "provider"
-      });
-    }
-
-    const docRef = snapshot.docs[0].ref;
-
-    await db.runTransaction(async (t) => {
-      const docSnap = await t.get(docRef);
-      const payout = docSnap.data();
-
-      const newStatus = statusData?.data?.status || "unknown";
-      const oldStatus = payout.status;
-
-      // 🚫 Avoid duplicate updates
-      if (oldStatus === newStatus) return;
-
-      // ✅ ONLY update status (NO MONEY LOGIC HERE)
-      t.update(docRef, {
-        status: newStatus,
-        lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
-      });
-    });
-
     return res.json({
       success: true,
       status: statusData,
-      source: "sync"
     });
 
   } catch (err) {

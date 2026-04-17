@@ -8,6 +8,7 @@ import { useApp } from "./AppContext";
   collection,
   serverTimestamp,
 } from "firebase/firestore";*/
+ import { XAF_TO_USD } from "../config/currency";
 import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
@@ -60,11 +61,11 @@ const LIMITS = {
     },
   },
 };
-const EXCHANGE_RATES = {
-  USD: 1,    // Base
-  XAF: 600,  // 1 USD ≈ 600 XAF
-};
 
+const EXCHANGE_RATES = {
+  USD: 1,
+  XAF: XAF_TO_USD,
+};
 const convertCurrency = (amount: number, from: "USD" | "XAF", to: "USD" | "XAF") => {
   if (!EXCHANGE_RATES[from] || !EXCHANGE_RATES[to]) return 0;
   const amountInUSD = amount / EXCHANGE_RATES[from];
