@@ -127,11 +127,16 @@ const tournament = tournamentSnap.data();
     if (Date.now() > tournament.endTime) {
       throw new Error("Tournament has ended");
     }
-    
-const startingBalance = tournamentSnap.data().startingBalance;
-const rebuyFee = tournamentSnap.data().rebuyFee;
+const startingBalance = tournament.startingBalance;
+const rebuyFee = tournament.rebuyFee;
 
 const player = playerSnap.data();
+// 🛑 Prevent fast multiple clicks (ANTI-SPAM)
+const now = Date.now();
+
+if (player.lastRebuyAt && now - player.lastRebuyAt < 3000) {
+  throw new Error("Rebuy too fast, wait a moment");
+}
 const initialBalance =
   player.initialBalance ??
   userSnap.data()?.accounts?.tournaments?.[tournamentId]?.initialBalance ??
@@ -162,6 +167,7 @@ if (player.balance >= initialBalance * 0.5) {
         amount: rebuyFee,
         at: admin.firestore.Timestamp.now(),
       }),
+        lastRebuyAt: now, 
     });
 // 🔁 SYNC USER SNAPSHOT (FIX 3)
 t.update(userRef, {
@@ -245,7 +251,7 @@ async processWithdrawal(userId, amount, momoNumber) {
       userId,
       amount: numericAmount,
       type: "withdrawal",
-      status: "withdrawal completed",
+     status: "pending",
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 

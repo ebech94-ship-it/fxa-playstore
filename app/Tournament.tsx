@@ -441,8 +441,12 @@ if (false) handleRegister("dummy");
 
 // ----------- REBUY ACTION (SECURE BACKEND VERSION) -----------
 const handleRebuy = async (tournamentId: string) => {
+
   // 🚫 DOUBLE TAP GUARD
-  if (loadingActions[tournamentId]?.rebuy) return;
+  if (loadingActions[tournamentId]?.rebuy) {
+  console.log("Rebuy blocked: already processing");
+  return;
+}
 
   if (!currentUser) {
     Alert.alert("Error", "You must be logged in.");
@@ -706,7 +710,7 @@ const allowRebuy =
 >
   <Text style={styles.actionTextAlt}>
     {loadingActions[item.id]?.rebuy
-      ? "..."
+      ? "Processing..."
       : rebuyFee === 0
       ? "Rebuy (Free)"
       : `Rebuy • ${rebuyFee} $`}
