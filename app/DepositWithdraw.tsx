@@ -157,14 +157,10 @@ useEffect(() => {
 
     setModalVisible(true);
   };
-
-/* -------------------- Manual Deposit -------------------- */
+/* -------------------- Mobile Money Deposit -------------------- */
 const handleDeposit = async () => {
   try {
     const numericAmount = Number(formData.amount);
-     // 🔹 Log API_BASE
-    
-   
 
     if (!numericAmount || numericAmount <= 0) {
       Alert.alert("Invalid Amount", "Enter a valid amount.");
@@ -178,61 +174,72 @@ const handleDeposit = async () => {
       );
       return;
     }
-if (!auth.currentUser) {
-  Alert.alert("Auth Error", "User not logged in.");
-  return;
-}
 
-const token = await auth.currentUser.getIdToken(true);
-const API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL;
- 
-    console.log("API_BASE =", API_BASE);
-const res = await fetch(`${API_BASE}/transactions`, {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${token}`,
-  },
-  body: JSON.stringify({
-  type: "deposit",
-  amount: numericAmount,
-  momoNumber: formData.phone,
-  operator: formData.operator,
-}),
-});
+    if (!auth.currentUser) {
+      Alert.alert("Auth Error", "User not logged in.");
+      return;
+    }
 
-    // 🔹 Log HTTP status
-console.log("Response status:", res.status);
+    const token = await auth.currentUser.getIdToken(true);
+    const API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL;
 
-// 🔹 Safely parse JSON
-const data = await res.json().catch(() => ({}));
-console.log("Backend response:", data);
+    console.log("🔵 DEPOSIT REQUEST:", {
+      API_BASE,
+      name: formData.fullName,
+      email: auth.currentUser?.email,
+      momoNumber: formData.phone,
+      amount: numericAmount,
+    });
 
-if (!res.ok) {
-  Alert.alert("Error", data.error || "Failed");
-  return;
-}
+    // ✅ CORRECT ENDPOINT & PAYLOAD
+    const res = await fetch(`${API_BASE}/api/payin/create-link`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        name: formData.fullName,                    // ✅ ADDED
+        email: auth.currentUser?.email,            // ✅ ADDED
+        momoNumber: formData.phone,                // ✅ CORRECT
+        amount: numericAmount,                     // ✅ CORRECT
+      }),
+    });
+
+    console.log("Response status:", res.status);
+
+    const data = await res.json().catch(() => ({}));
+    console.log("Backend response:", data);
+
+    if (!res.ok) {
+      Alert.alert("Error", data.error || "Failed to create payment link");
+      return;
+    }
 
     Alert.alert(
       "Deposit Submitted",
       "Send money to our MoMo number. Admin will confirm shortly."
     );
   } catch (err) {
-    console.log(err);
+    console.error("Deposit error:", err);
     Alert.alert("Error", "Could not submit deposit request.");
   }
 };
-  //* -------------------- Withdrawal -------------------- */
+
+/* -------------------- Mobile Money Withdrawal -------------------- */
 const handleWithdrawal = async () => {
   const numericAmount = Number(formData.amount);
+  
   if (!numericAmount || numericAmount <= 0) {
     Alert.alert("Invalid Amount", "Enter a valid amount.");
     return;
   }
+  
   if (!formData.phone) {
     Alert.alert("Phone Required", "Enter withdrawal phone number.");
     return;
   }
+  
   if (!appSettings.enablePayouts) {
     Alert.alert(
       "Payouts Disabled",
@@ -240,6 +247,7 @@ const handleWithdrawal = async () => {
     );
     return;
   }
+  
   if (appSettings.maintenanceMode) {
     Alert.alert(
       "Maintenance Mode",
@@ -249,46 +257,56 @@ const handleWithdrawal = async () => {
   }
 
   try {
-   if (!auth.currentUser) {
-  Alert.alert("Auth Error", "User not logged in.");
-  return;
-}
+    if (!auth.currentUser) {
+      Alert.alert("Auth Error", "User not logged in.");
+      return;
+    }
 
-const token = await auth.currentUser.getIdToken(true);
-const API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL;
- // 🔹 Log API_BASE
-      console.log("API_BASE =", API_BASE);
-const res = await fetch(`${API_BASE}/transactions`, {
-  method: "POST",
-  headers: {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${token}`,
-  },
-  body: JSON.stringify({
-  type: "withdrawal",
-  amount: numericAmount,
-  momoNumber: formData.phone,
-  operator: formData.operator,
-}),
-});
+    const token = await auth.currentUser.getIdToken(true);
+    const API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL;
 
-    // 🔹 Log HTTP status
-console.log("Response status:", res.status);
+    console.log("🔴 WITHDRAWAL REQUEST:", {
+      API_BASE,
+      name: formData.fullName,
+      email: auth.currentUser?.email,
+      momoNumber: formData.phone,
+      amount: numericAmount,
+    });
 
-// 🔹 Safely parse JSON
-const data = await res.json().catch(() => ({}));
-console.log("Backend response:", data);
+    // ✅ NOTE: Withdrawals use a DIFFERENT backend endpoint
+    // For now, if backend doesn't have /api/payout/create-link, 
+    // you may need to create that endpoint or use the same payin endpoint
+    const res = await fetch(`${API_BASE}/api/payout/create-request`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        name: formData.fullName,                    // ✅ ADDED
+        email: auth.currentUser?.email,            // ✅ ADDED
+        momoNumber: formData.phone,                // ✅ CORRECT
+        amount: numericAmount,                     // ✅ CORRECT
+      }),
+    });
 
-if (!res.ok) {
-  Alert.alert("Error", data.error || "Failed");
-  return;
-}
+    console.log("Response status:", res.status);
+
+    const data = await res.json().catch(() => ({}));
+    console.log("Backend response:", data);
+
+    if (!res.ok) {
+      Alert.alert("Error", data.error || "Failed to create withdrawal");
+      return;
+    }
+
     Alert.alert("Withdrawal Requested", "Waiting for admin approval.");
   } catch (err) {
-    console.log(err);
+    console.error("Withdrawal error:", err);
     Alert.alert("Error", "Could not submit withdrawal request.");
   }
 };
+
 
   /* -------------------- Submit -------------------- */
   const submitForm = async () => {
