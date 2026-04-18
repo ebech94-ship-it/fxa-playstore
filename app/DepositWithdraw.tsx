@@ -236,17 +236,17 @@ const handleDeposit = async () => {
 /* -------------------- Mobile Money Withdrawal -------------------- */
 const handleWithdrawal = async () => {
   const numericAmount = Number(formData.amount);
-  
+
   if (!numericAmount || numericAmount <= 0) {
     Alert.alert("Invalid Amount", "Enter a valid amount.");
     return;
   }
-  
+
   if (!formData.phone) {
     Alert.alert("Phone Required", "Enter withdrawal phone number.");
     return;
   }
-  
+
   if (!appSettings.enablePayouts) {
     Alert.alert(
       "Payouts Disabled",
@@ -254,7 +254,7 @@ const handleWithdrawal = async () => {
     );
     return;
   }
-  
+
   if (appSettings.maintenanceMode) {
     Alert.alert(
       "Maintenance Mode",
@@ -272,29 +272,32 @@ const handleWithdrawal = async () => {
     const token = await auth.currentUser.getIdToken(true);
     const API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL;
 
+    // 🔥 FIXED PAYLOAD (MATCHES BACKEND / ACCOUNTPE SPEC)
+    const payload = {
+      country_code: "CM", // Cameroon (change if needed)
+      beneficiary_name: formData.fullName,
+      mobile_no: formData.phone,
+      amount: numericAmount,
+      transaction_id: `txn_${Date.now()}`,
+      payment_method: "mobile_money", // important for API routing
+      bank_code: "",
+      account_number: "",
+      remarks: "Tournament withdrawal",
+    };
+
     console.log("🔴 WITHDRAWAL REQUEST:", {
       API_BASE,
-      name: formData.fullName,
+      ...payload,
       email: auth.currentUser?.email,
-      momoNumber: formData.phone,
-      amount: numericAmount,
     });
 
-    // ✅ NOTE: Withdrawals use a DIFFERENT backend endpoint
-    // For now, if backend doesn't have /api/payout/create-link, 
-    // you may need to create that endpoint or use the same payin endpoint
-    const res = await fetch(`${API_BASE}/api/payout/create-request`, {
+    const res = await fetch(`${API_BASE}/api/payout`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({
-        name: formData.fullName,                    // ✅ ADDED
-        email: auth.currentUser?.email,            // ✅ ADDED
-        momoNumber: formData.phone,                // ✅ CORRECT
-        amount: numericAmount,                     // ✅ CORRECT
-      }),
+      body: JSON.stringify(payload),
     });
 
     console.log("Response status:", res.status);
@@ -303,20 +306,19 @@ const handleWithdrawal = async () => {
     console.log("Backend response:", data);
 
     if (!res.ok) {
-      Alert.alert("Error", data.error || "Failed to create withdrawal");
+      Alert.alert("Error", data.message || "Failed to create withdrawal");
       return;
     }
 
-Alert.alert(
-  "Processing",
-  "Your withdrawal is being processed. You will be notified shortly."
-);
+    Alert.alert(
+      "Processing",
+      "Your withdrawal is being processed. You will be notified shortly."
+    );
   } catch (err) {
     console.error("Withdrawal error:", err);
     Alert.alert("Error", "Could not submit withdrawal request.");
   }
 };
-
 
   /* -------------------- Submit -------------------- */
   const submitForm = async () => {
