@@ -1,7 +1,8 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 //import { getAuth } from "firebase/auth";
-import * as Clipboard from "expo-clipboard";
+import * as Linking from "expo-linking";
+
 import { useApp } from "./AppContext";
 /*import {
   addDoc,
@@ -208,7 +209,7 @@ const handleDeposit = async () => {
 
     console.log("Response status:", res.status);
 
-    const data = await res.json().catch(() => ({}));
+    const data = await res.json();
     console.log("Backend response:", data);
 
     if (!res.ok) {
@@ -216,10 +217,16 @@ const handleDeposit = async () => {
       return;
     }
 
-    Alert.alert(
-      "Deposit Submitted",
-      "Send money to our MoMo number. Admin will confirm shortly."
-    );
+    if (data.paymentUrl) {
+  Alert.alert(
+    "Continue Payment",
+    "Redirecting you to secure payment..."
+  );
+
+  Linking.openURL(data.paymentUrl);
+} else {
+  Alert.alert("Error", "No payment link received.");
+}
   } catch (err) {
     console.error("Deposit error:", err);
     Alert.alert("Error", "Could not submit deposit request.");
@@ -300,7 +307,10 @@ const handleWithdrawal = async () => {
       return;
     }
 
-    Alert.alert("Withdrawal Requested", "Waiting for admin approval.");
+Alert.alert(
+  "Processing",
+  "Your withdrawal is being processed. You will be notified shortly."
+);
   } catch (err) {
     console.error("Withdrawal error:", err);
     Alert.alert("Error", "Could not submit withdrawal request.");
@@ -341,7 +351,7 @@ if (isDeposit) {
   }
 }  
 if (isDeposit && isMobileMoney) {
-  if (!/^2376\d{8}$/.test(formData.phone)) {
+  if (!/^237\d{9}$/.test(formData.phone)) {
     Alert.alert(
       "Invalid Phone",
       "Phone must be in format 2376XXXXXXXX"
@@ -378,10 +388,7 @@ if (isDeposit && isMobileMoney) {
     setLoading(false);
   }
 };
-const copyToClipboard = async (value: string) => {
-  await Clipboard.setStringAsync(value);
-  Alert.alert("Copied", "Copied successfully");
-};
+
 
   /* -------------------- Auth Guard -------------------- */
   if (!currentUser) {
@@ -497,87 +504,7 @@ You can navigate and explore the app safely without making any real transactions
     <Text style={{ color: lang === "fr" ? "#FACC15" : "#888" }}>FR</Text>
   </TouchableOpacity>
 </View>
-{isDeposit && (
-  <View style={styles.depositInstructions}>
-    <Text style={styles.instructionTitle}>
-      {lang === "en" ? "⚠️ IMPORTANT – READ BEFORE DEPOSIT" : "⚠️ IMPORTANT – LIRE AVANT DE DÉPOSER"}
-    </Text>
 
-    {/* STEP LIST */}
-    {lang === "en" ? (
-      <>
-        <Text style={styles.instructionText}>1. Copy the company number below.</Text>
-        <Text style={styles.instructionText}>2. Copy your User ID.</Text>
-        <Text style={styles.instructionText}>3. Return and normaly send the amount you want to have in your real
-         account using MTN or Orange Money. Respect the limits.</Text>
-        <Text style={styles.instructionText}>4. Use your User ID as reference when you deposit so we identify you.</Text>
-        <Text style={styles.instructionText}>5. After sending is successfull, come back and fill this form below with the exact amount you deposited,
-        to update the administration and your real account will then be credited accordingly within 5 mins.</Text>
-        <Text style={{ color: "#FACC15", marginVertical: 6 }}>
-          ⚠️ Do NOT fill this form before sending money.
-        </Text>
-      </>
-    ) : (
-      <>
-        <Text style={styles.instructionText}>1. Copiez le numéro de l&apos;entreprise ci-dessous.</Text>
-        <Text style={styles.instructionText}>2. Copiez votre ID utilisateur.</Text>
-      <Text style={styles.instructionText}>
-  3. Revenez et envoyez normalement le montant que vous souhaitez avoir sur votre compte
-   réel en utilisant MTN ou Orange Money, en respectant les limites.</Text>
-<Text style={styles.instructionText}>
-  4. Utilisez votre ID utilisateur comme référence lors du dépôt afin que nous
-   puissions vous identifier.</Text>
-<Text style={styles.instructionText}>
-5. Après avoir effectué le transfert avec succès, revenez remplir le formulaire ci-dessous avec le montant exact que vous avez déposé,
-afin l&apos;informer l&apos;administration. Votre compte réel sera ensuite mis à jour en conséquence dans un délai de 5 minutes.
-</Text>
-        <Text style={{ color: "#FACC15", marginVertical: 6 }}>
-          ⚠️ Ne remplissez pas ce formulaire avant d&apos;envoyer l&apos;largent.
-        </Text>
-      </>
-    )}
-
-    <View style={{ marginTop: 10 }} />
-
-    <Text style={styles.numberText}>GodSpeed Technologies</Text>
-
-    {/* MTN */}
-    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-      <Text style={styles.numberText}>MTN: 682783789</Text>
-      <TouchableOpacity onPress={() => copyToClipboard("682783789")}>
-        <Text style={{ color: "#00ffff" }}>{lang === "en" ? "Copy" : "Copier"}</Text>
-      </TouchableOpacity>
-    </View>
-
-    {/* Orange */}
-    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-      <Text style={styles.numberText}>Orange: 69XXXXXXX</Text>
-      <TouchableOpacity onPress={() => copyToClipboard("69XXXXXXX")}>
-        <Text style={{ color: "#00ffff" }}>{lang === "en" ? "Copy" : "Copier"}</Text>
-      </TouchableOpacity>
-    </View>
-
-    {/* Support Number */}
-    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 5 }}>
-      <Text style={styles.numberText}>{lang === "en" ? "Support: 673864413" : "Support : 673864413"}</Text>
-      <TouchableOpacity onPress={() => copyToClipboard("673864413")}>
-        <Text style={{ color: "#00ffff" }}>{lang === "en" ? "Copy" : "Copier"}</Text>
-      </TouchableOpacity>
-    </View>
-
-    <View style={{ marginTop: 10 }} />
-
-    {/* User ID */}
-    <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-      <Text style={styles.userIdText}>
-        {lang === "en" ? `Your ID: ${currentUser?.uid}` : `Votre ID : ${currentUser?.uid}`}
-      </Text>
-      <TouchableOpacity onPress={() => copyToClipboard(currentUser?.uid || "")}>
-        <Text style={{ color: "#ffaa00" }}>{lang === "en" ? "Copy" : "Copier"}</Text>
-      </TouchableOpacity>
-    </View>
-  </View>
-)}
             <TextInput
               placeholder="Full Name"
               value={formData.fullName}
@@ -587,7 +514,7 @@ afin l&apos;informer l&apos;administration. Votre compte réel sera ensuite mis 
             />
 
             <TextInput
- placeholder={isDeposit ? "Exact Amount Sent!" : "Amount to Withdraw"}
+placeholder="Enter amount"
   value={formData.amount}
   onChangeText={(v) => handleChange("amount", v)}
   keyboardType="numeric"
@@ -631,11 +558,7 @@ afin l&apos;informer l&apos;administration. Votre compte réel sera ensuite mis 
 
 {(activeMethod === "MTN" || activeMethod === "Orange") && (
   <TextInput
-    placeholder={
-      isDeposit
-        ? "Use the same MoMo number you sent the money from (237...)"
-        : "Enter your MoMo number to receive the money, then wait 5mins(237...)"
-    }
+  placeholder="Enter your Mobile Money number (237...)"
     value={formData.phone}
     onChangeText={(v) => handleChange("phone", v)}
     keyboardType="phone-pad"

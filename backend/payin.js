@@ -153,7 +153,10 @@ originalAmount: Number(amount),
   createdAt: admin.firestore.FieldValue.serverTimestamp(),
 });
 
-    res.json({ success: true, payment: paymentData });
+ res.json({
+  success: true,
+  paymentUrl: paymentData?.data?.payment_link
+});
 
   } catch (error) {
     console.error("Create link error:", error.message);
