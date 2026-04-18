@@ -76,32 +76,31 @@ router.post("/", async (req, res) => {
     const uid = decodedToken.uid;
 
     const userRef = db.collection("users").doc(uid);
+// 💰 AMOUNT LOGIC
+const amountUSD = Number(amount);
 
-    // 💰 AMOUNT LOGIC
-    const amountUSD = Number(amount);
-    if (!amountUSD || amountUSD <= 0) {
-      throw new Error("INVALID_AMOUNT");
-    }
+// 1. VALIDATION
+if (!amountUSD || amountUSD <= 0) {
+  throw new Error("INVALID_AMOUNT");
+}
 
-    if (amountUSD < 1) {
-      throw new Error("MIN_WITHDRAWAL_1_USD");
-    }
+if (amountUSD < 1) {
+  throw new Error("MIN_WITHDRAWAL_1_USD");
+}
 
-    const fee = amountUSD * 0.01;
-    const netUSD = amountUSD - fee;
-
-    // ✅ CORRECT CONVERSION
-    // Convert USD → XAF FIRST
+// 3. CONVERT USD → XAF FIRST (core payout value)
 const grossXAF = Math.round(amountUSD * XAF_TO_USD);
 
-// Fee in XAF (not USD)
+// 4. XAF FEE (applied after conversion)
 const feeXAF = Math.round(grossXAF * 0.01);
 
-// Final payout in XAF
+// 5. FINAL PAYOUT AMOUNT (XAF)
 const netXAF = grossXAF - feeXAF;
 
-    transactionId = "payout_" + Date.now() + "_" + Math.floor(Math.random() * 10000);
-
+// 6. TRANSACTION ID
+transactionId = `payout_${Date.now()}_${Math.random()
+  .toString(36)
+  .substring(2, 8)}`;
     // 🔑 GET TOKEN OUTSIDE TRANSACTION
     const token = await getPayoutToken();
 
@@ -165,8 +164,8 @@ const netXAF = grossXAF - feeXAF;
         transactionId,
 
         amount: amountUSD,
-        fee,
-        netAmount: netUSD,
+         fee: feeXAF,
+       netAmount: netXAF,
         currency: BASE_CURRENCY,
 
         payoutAmount: netXAF,
@@ -188,8 +187,8 @@ const netXAF = grossXAF - feeXAF;
 
       t.set(treasuryRef, {
         type: "withdrawal_fee",
-        amount: fee,
-        currency: BASE_CURRENCY,
+         amount: feeXAF,
+          currency: "XAF",
         userId: uid,
         transactionId,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
