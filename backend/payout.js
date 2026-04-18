@@ -41,6 +41,13 @@ async function getPayoutToken() {
 }
 
 // ----------------------
+// FRONTEND COMPATIBILITY ROUTE
+// ----------------------
+router.post("/create-request", async (req, res, next) => {
+  req.url = "/";
+  return router.handle(req, res, next);
+});
+// ----------------------
 // CREATE PAYOUT
 // ----------------------
 router.post("/", async (req, res) => {
@@ -84,7 +91,14 @@ router.post("/", async (req, res) => {
     const netUSD = amountUSD - fee;
 
     // ✅ CORRECT CONVERSION
-    const amountXAF = Math.round(netUSD / XAF_TO_USD);
+    // Convert USD → XAF FIRST
+const grossXAF = Math.round(amountUSD * XAF_TO_USD);
+
+// Fee in XAF (not USD)
+const feeXAF = Math.round(grossXAF * 0.01);
+
+// Final payout in XAF
+const netXAF = grossXAF - feeXAF;
 
     transactionId = "payout_" + Date.now() + "_" + Math.floor(Math.random() * 10000);
 
@@ -108,7 +122,7 @@ router.post("/", async (req, res) => {
           country_code,
           beneficiary_name,
           mobile_no,
-          amount: amountXAF,
+         amount: netXAF,
           transaction_id: transactionId,
           payment_method,
           remarks: remarks || "",
@@ -155,7 +169,7 @@ router.post("/", async (req, res) => {
         netAmount: netUSD,
         currency: BASE_CURRENCY,
 
-        payoutAmount: amountXAF,
+        payoutAmount: netXAF,
         payoutCurrency: "XAF",
 
         beneficiary_name,

@@ -6,6 +6,7 @@ import type { AccountType } from "./AppContext"; // keep type imports separate i
 import { useApp } from "./AppContext";
 
 
+
 // AccountSwitcher.tsx
 
 import {
@@ -177,9 +178,9 @@ const displayBalance = (() => {
       },
   ]}
 >
-      {activeAccount.type === "real"
-    ? `XAF ${balances.real.toLocaleString()}`
-    : `$${displayBalance.toFixed(2)}`}
+{activeAccount.type === "real"
+  ? `$${balances.real.toFixed(2)}`
+  : `$${displayBalance.toFixed(2)}`}
 
 </Text>
 
@@ -223,9 +224,9 @@ const displayBalance = (() => {
               onPress={() => handleSelect({ type: "real" })}
             >
               <Text style={styles.cardTitle}>Real Account</Text>
-              <Text style={[styles.balance, { color: "#facc15" }]}>
-                XAF {balances.real.toLocaleString()}
-              </Text>
+             <Text style={[styles.balance, { color: "#facc15" }]}>
+  ${balances.real.toFixed(2)}
+</Text>
                {/* 🎯 TRADING LOCKED BADGE */}
     {activeAccount.type === "real" && (
       <Text style={styles.tradingLockedBadge}>Trading Locked</Text>
