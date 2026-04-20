@@ -238,39 +238,39 @@ const { activeAccount,   isAdmin, adminLoaded, tournamentAccounts, profile } = u
 
 
 useEffect(() => {
-  if (tournaments.length === 0) return;
+  if (!selectedTournament?.id) return;
 
-  const unsubscribers: (() => void)[] = [];
+  const ref = collection(
+    db,
+    "tournaments",
+    selectedTournament.id,
+    "players"
+  );
 
-  tournaments.forEach((t) => {
-    const ref = collection(db, "tournaments", t.id, "players");
+  const unsub = onSnapshot(ref, (snap) => {
+    let rebuyTotal = 0;
 
-    const unsub = onSnapshot(ref, (snap) => {
-     let rebuyTotal = 0;
-
-snap.docs.forEach((d) => {
-  const data = d.data();
-  const count = Array.isArray(data.rebuys) ? data.rebuys.length : 0;
-  rebuyTotal += count;
-});
-
-      setTournamentCounts((prev) => ({
-        ...prev,
-        [t.id]: snap.size, // participant count
-      }));
-
-      setTournamentRebuys((prev) => ({
-        ...prev,
-        [t.id]: rebuyTotal, // total rebuys
-      }));
+    snap.docs.forEach((d) => {
+      const data = d.data();
+      const count = Array.isArray(data.rebuys) ? data.rebuys.length : 0;
+      rebuyTotal += count;
     });
 
-    unsubscribers.push(unsub);
+    // 👥 participants
+    setTournamentCounts((prev) => ({
+      ...prev,
+      [selectedTournament.id]: snap.size,
+    }));
+
+    // ♻️ rebuys
+    setTournamentRebuys((prev) => ({
+      ...prev,
+      [selectedTournament.id]: rebuyTotal,
+    }));
   });
 
-  return () => unsubscribers.forEach((u) => u());
-}, [tournaments]);
-
+  return () => unsub();
+}, [selectedTournament]);
 
   // ✅ GLOBAL LEADERBOARD (only when no tournament is open)
   useEffect(() => {
@@ -286,23 +286,45 @@ snap.docs.forEach((d) => {
   }, [selectedTournament]);
 
   // ✅ TOURNAMENT LEADERBOARD (active tournament only)
-  useEffect(() => {
-    if (!selectedTournament?.id) return;
+ useEffect(() => {
+  if (!selectedTournament?.id) return;
 
-    const playersRef = collection(db, "tournaments", selectedTournament.id, "players");
-const q = query(playersRef, orderBy("balance", "desc")); // ✅ removed limit
+  const playersRef = collection(
+    db,
+    "tournaments",
+    selectedTournament.id,
+    "players"
+  );
 
-const unsub = onSnapshot(q, (snapshot) => {
-  const playerList = snapshot.docs.map((doc) => ({
-    id: doc.id,
-    ...(doc.data() as any),
-  }));
-  LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-  setLeaderboard(playerList);
-});
+  const q = query(playersRef); // no sorting from firestore
 
-    return () => unsub();
-  }, [selectedTournament]);
+  const unsub = onSnapshot(q, (snapshot) => {
+    const playerList = snapshot.docs.map((doc) => {
+      const data = doc.data() as any;
+
+      const initialBalance =
+        data.initialBalance ?? selectedTournament.startingBalance ?? 0;
+
+      const balance = data.balance ?? 0;
+
+      const performance = balance - initialBalance;
+
+      return {
+        id: doc.id,
+        ...data,
+        performance,
+      };
+    });
+
+    // ✅ SORT BY PERFORMANCE
+    playerList.sort((a, b) => b.performance - a.performance);
+
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setLeaderboard(playerList);
+  });
+
+  return () => unsub();
+}, [selectedTournament]);
   
   useEffect(() => {
   if (!tournamentId || tournaments.length === 0) return;
@@ -435,8 +457,6 @@ const handleRegister = async (tournamentId: string) => {
   }
 };
 
-// ---- Keep TS happy ----
-if (false) handleRegister("dummy");
 
 
 // ----------- REBUY ACTION (SECURE BACKEND VERSION) -----------
@@ -575,7 +595,8 @@ const progress =
 const tAccount = tournamentAccounts.find(t => t.tournamentId === item.id);
 
 const currentBalance = tAccount?.balance ?? 0;
-const initialBalance = tAccount?.initialBalance ?? item.startingBalance ?? 1000;
+const initialBalance =
+  tAccount?.initialBalance ?? item.startingBalance;
 
 // only allow rebuy if:
 // 1. user joined
@@ -587,6 +608,7 @@ const allowRebuy =
   !!tAccount &&
   !!joinedMap[item.id] &&
   status === "ongoing" &&
+  initialBalance != null &&
   currentBalance < initialBalance / 2;
   // Step 5: Active tournament highlight
   const isActiveTournament =
@@ -667,16 +689,13 @@ const allowRebuy =
       joinedMap[item.id]) &&
       styles.disabledBtn,
   ]}
-  disabled={false} // keep pressable to show message
-  onPress={() => {
-    // handleRegister(item.id); // <-- commented out temporarily
-
-    // Friendly message for users
-    Alert.alert(
-      "Registration Not Open",
-      "🎟 Registration is not yet open. Stay tuned!"
-    );
-  }}
+  disabled={
+  status === "finished" ||
+  loadingActions[item.id]?.register ||
+  joinedMap[item.id]
+}
+  
+  onPress={() => handleRegister(item.id)}
 >
   <Text style={styles.actionText}>
     {status === "finished"
@@ -687,7 +706,7 @@ const allowRebuy =
       ? "Processing..."
       : item.entryFee === 0
       ? "Register (Free)"
-      : `Registration Not Open`} {/* changed text to match new state */}
+   : "Register"}
   </Text>
 </TouchableOpacity>
 
@@ -706,7 +725,16 @@ const allowRebuy =
   !allowRebuy ||
   !!loadingActions[item.id]?.rebuy
 }
-  onPress={() => handleRebuy(item.id)}
+ onPress={() => {
+  Alert.alert(
+    "Confirm Rebuy",
+    `Rebuy for ${rebuyFee} $?`,
+    [
+      { text: "Cancel", style: "cancel" },
+      { text: "Confirm", onPress: () => handleRebuy(item.id) }
+    ]
+  );
+}}
 >
   <Text style={styles.actionTextAlt}>
     {loadingActions[item.id]?.rebuy
@@ -806,7 +834,7 @@ const allowRebuy =
   style={styles.tableColBalance}
   numberOfLines={1}
 >
-  {row.balance ?? 0}T
+ {row.balance ?? 0}T ({row.performance ?? 0})
 </Text>
 
 <Text style={styles.tableColTier}>

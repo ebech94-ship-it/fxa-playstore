@@ -239,15 +239,19 @@ t.update(userRef, {
 
       }
 
-      // 🧩 Create tournament player
-      t.set(playerRef, {
-        uid: userId,
-        username: user.username || "Player",
-        balance: startingBalance,
-        rebuys: [],
-        joinedAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
+      // 🧩 Create tournament player (WITH PERFORMANCE)
+t.set(playerRef, {
+  uid: userId,
+  username: user.username || "Player",
 
+  balance: startingBalance,
+  initialBalance: startingBalance, // ✅ IMPORTANT
+
+  performance: 0, // ✅ NEW (starts at 0)
+
+  rebuys: [],
+  joinedAt: admin.firestore.FieldValue.serverTimestamp(),
+});
       // 🧠 Create tournament account snapshot
       t.set(
   userRef,
@@ -256,6 +260,8 @@ t.update(userRef, {
     [`accounts.tournaments.${tournamentId}`]: {
       balance: startingBalance,
       initialBalance: startingBalance,
+
+  performance: 0, // ✅ ADD THIS
       status: "ongoing",
       joinedAt: admin.firestore.FieldValue.serverTimestamp(),
     },

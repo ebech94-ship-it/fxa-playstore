@@ -80,6 +80,7 @@ export default function DepositWithdraw() {
   const [isDeposit, setIsDeposit] = useState(true);
   const [activeMethod, setActiveMethod] = useState("");
   const [modalVisible, setModalVisible] = useState(false);
+  const [confirmVisible, setConfirmVisible] = useState(false);
   const [loading, setLoading] = useState(false);
 const { appSettings, profile } = useApp();
 const [convertedAmount, setConvertedAmount] = useState(0);
@@ -217,13 +218,19 @@ const handleDeposit = async () => {
       return;
     }
 
-    if (data.paymentUrl) {
+   if (data.paymentUrl) {
+  setModalVisible(false);
+
   Alert.alert(
     "Continue Payment",
-    "Redirecting you to secure payment..."
+    "You will be redirected to complete your payment securely.",
+    [
+      {
+        text: "Proceed",
+        onPress: () => Linking.openURL(data.paymentUrl),
+      },
+    ]
   );
-
-  Linking.openURL(data.paymentUrl);
 } else {
   Alert.alert("Error", "No payment link received.");
 }
@@ -271,6 +278,10 @@ const handleWithdrawal = async () => {
 
     const token = await auth.currentUser.getIdToken(true);
     const API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL;
+    if (!API_BASE) {
+  Alert.alert("Config Error", "API URL not set");
+  return;
+}
 
     // 🔥 FIXED PAYLOAD (MATCHES BACKEND / ACCOUNTPE SPEC)
     const payload = {
@@ -309,11 +320,12 @@ const handleWithdrawal = async () => {
       Alert.alert("Error", data.message || "Failed to create withdrawal");
       return;
     }
+setModalVisible(false);
 
-    Alert.alert(
-      "Processing",
-      "Your withdrawal is being processed. You will be notified shortly."
-    );
+Alert.alert(
+  "Request Sent",
+  "Your withdrawal request was submitted successfully."
+);
   } catch (err) {
     console.error("Withdrawal error:", err);
     Alert.alert("Error", "Could not submit withdrawal request.");
@@ -321,76 +333,72 @@ const handleWithdrawal = async () => {
 };
 
   /* -------------------- Submit -------------------- */
-  const submitForm = async () => {
+const submitForm = async () => {
   console.log("Submit button pressed", formData);
   if (!currentUser) return;
+
+  const amount = Number(formData.amount);
+
   // 🔒 Min / Max validation
- const amount = Number(formData.amount);
-
-if (isDeposit) {
-  if (amount < methodLimits.deposit.min) {
-    Alert.alert(
-      "Minimum Deposit",
-      `Minimum deposit is ${methodLimits.deposit.min.toLocaleString()} ${methodLimits.currency}`
-    );
-    return;
-  }
-
-  if (amount > methodLimits.deposit.max) {
-    Alert.alert(
-      "Maximum Deposit",
-      `Maximum deposit is ${methodLimits.deposit.max.toLocaleString()} ${methodLimits.currency}`
-    );
-    return;
-  }
-} else {
-  if (amount < methodLimits.withdraw.min) {
-    Alert.alert(
-      "Minimum Withdrawal",
-      `Minimum withdrawal is ${methodLimits.withdraw.min.toLocaleString()} ${methodLimits.currency}`
-    );
-    return;
-  }
-}  
-if (isDeposit && isMobileMoney) {
-  if (!/^237\d{9}$/.test(formData.phone)) {
-    Alert.alert(
-      "Invalid Phone",
-      "Phone must be in format 2376XXXXXXXX"
-    );
-    return;
-  }
-}
-  try { 
-   setLoading(true);
-
   if (isDeposit) {
-  await handleDeposit();
-} else {
-  await handleWithdrawal();
-}
+    if (amount < methodLimits.deposit.min) {
+      Alert.alert(
+        "Minimum Deposit",
+        `Minimum deposit is ${methodLimits.deposit.min.toLocaleString()} ${methodLimits.currency}`
+      );
+      return;
+    }
 
+    if (amount > methodLimits.deposit.max) {
+      Alert.alert(
+        "Maximum Deposit",
+        `Maximum deposit is ${methodLimits.deposit.max.toLocaleString()} ${methodLimits.currency}`
+      );
+      return;
+    }
+  } else {
+    if (amount < methodLimits.withdraw.min) {
+      Alert.alert(
+        "Minimum Withdrawal",
+        `Minimum withdrawal is ${methodLimits.withdraw.min.toLocaleString()} ${methodLimits.currency}`
+      );
+      return;
+    }
+  }
+
+  // 📱 Phone validation
+  if (isDeposit && isMobileMoney) {
+    if (!/^(237)?6\d{8}$/.test(formData.phone)) {
+      Alert.alert(
+        "Invalid Phone",
+        "Phone must be in format 2376XXXXXXXX"
+      );
+      return;
+    }
+  }
+
+  // ✅ ONLY THIS — NO API CALL HERE
+  setConfirmVisible(true);
+};
+const confirmAndSend = async () => {
+  try {
+    setLoading(true);
+
+    if (isDeposit) {
+      await handleDeposit();
+    } else {
+      await handleWithdrawal();
+    }
+
+    setConfirmVisible(false);
     setModalVisible(false);
-    setFormData({
-      fullName: "",
-      phone: "",
-      amount: "",
-      currency: "XAF",
-      code: "",
-      cardNumber: "",
-      expiry: "",
-      cvv: "",
-      walletAddress: "",
-      note: "",
-      operator: "",  
-    });
+
   } catch {
     Alert.alert("Error", "Something went wrong.");
   } finally {
     setLoading(false);
   }
 };
-
 
   /* -------------------- Auth Guard -------------------- */
   if (!currentUser) {
@@ -605,7 +613,12 @@ placeholder="Enter amount"
               <TouchableOpacity
                 style={[styles.modalButton, { backgroundColor: "#6a5acd" }]}
                 onPress={submitForm}
-                disabled={loading}
+              disabled={
+  loading ||
+  !formData.amount ||
+  Number(formData.amount) <= 0 ||
+  (isMobileMoney && !formData.phone)
+}
               >
                 {loading ? (
   <View style={{ flexDirection: "row", alignItems: "center" }}>
@@ -622,6 +635,48 @@ placeholder="Enter amount"
             </ScrollView>
        </KeyboardAvoidingView>
       </Modal>
+      <Modal visible={confirmVisible} transparent animationType="fade">
+  <View style={styles.modalOverlay}>
+    <View style={styles.modalContainer}>
+      <Text style={styles.modalTitle}>Confirm Transaction</Text>
+
+      <Text style={{ color: "#fff", marginBottom: 10 }}>
+        Type: {isDeposit ? "Deposit" : "Withdraw"}
+      </Text>
+
+      <Text style={{ color: "#fff", marginBottom: 10 }}>
+        Amount: {formData.amount} {formData.currency}
+      </Text>
+
+      <Text style={{ color: "#fff", marginBottom: 10 }}>
+        Method: {activeMethod}
+      </Text>
+
+      {isMobileMoney && (
+        <Text style={{ color: "#fff", marginBottom: 10 }}>
+          Phone: {formData.phone}
+        </Text>
+      )}
+
+      <View style={styles.modalButtons}>
+        <TouchableOpacity
+          style={[styles.modalButton, { backgroundColor: "#FF6B6B" }]}
+          onPress={() => setConfirmVisible(false)}
+        >
+          <Text style={styles.modalButtonText}>Cancel</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+  style={[styles.modalButton, { backgroundColor: "#6a5acd" }]}
+  onPress={confirmAndSend}
+  disabled={loading}
+>
+          <Text style={styles.modalButtonText}>Confirm</Text>
+        </TouchableOpacity>
+      </View>
+    </View>
+  </View>
+</Modal>
     </ScrollView>
   );
 }

@@ -21,6 +21,8 @@ export type Player = {
   balance?: number;
   avatar?: string;
   countryCode?: string;
+  performance?: number;
+initialBalance?: number;
 };
 
 export type LeaderboardBarProps = {
@@ -153,6 +155,10 @@ const LeaderboardBar = ({
 
 
   const { authUser, profile, tournaments } = useApp();
+  const tournamentId =
+  activeAccount.type === "tournament"
+    ? activeAccount.tournamentId
+    : null;
 
 const activeTourney =
   activeAccount.type === "tournament"
@@ -201,7 +207,7 @@ useEffect(() => {
 }, [activeAccount.type]);
 
 useEffect(() => {
-  if (activeAccount.type !== "tournament" || !activeAccount.tournamentId) {
+  if (!tournamentId) {
     setLivePlayers([]);
     setLoadingLive(false);
     return;
@@ -210,35 +216,37 @@ useEffect(() => {
   setLoadingLive(true);
 
   const q = query(
-    collection(
-      db,
-      "tournaments",
-      activeAccount.tournamentId,
-      "players"
-    ),
-    orderBy("balance", "desc")
+    collection(db, "tournaments", tournamentId, "players")
   );
 
   const unsub = onSnapshot(q, (snap) => {
-  const players: Player[] = snap.docs.map((d) => {
-    const data = d.data() as Omit<Player, "id">;
-    return {
-      id: d.id,
-      ...data,
-    };
-  });
+    const players: Player[] = snap.docs.map((d) => {
+      const data = d.data() as any;
+
+      const initialBalance =
+        data.initialBalance ??
+        activeTourney?.startingBalance ??
+        0;
+
+      const balance = data.balance ?? 0;
+
+      const performance = balance - initialBalance;
+
+      return {
+        id: d.id,
+        ...data,
+        performance,
+      };
+    });
+
+    players.sort((a, b) => (b.performance ?? 0) - (a.performance ?? 0));
 
     setLivePlayers(players);
     setLoadingLive(false);
   });
 
   return () => unsub();
-}, [activeAccount]);
-
-
-
-
-
+}, [tournamentId, activeTourney?.startingBalance]);
 
 const isTournamentLive =
   activeAccount.type === "tournament" && !!activeTourney?.tournamentId;
