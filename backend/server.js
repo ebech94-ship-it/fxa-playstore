@@ -2,9 +2,11 @@ console.log("🔥🔥🔥 ACTIVE SERVER.JS LOADED 🔥🔥🔥");
 
 require("dotenv").config();
 
-// 🔒 CHECK WEBHOOK SECRET (ADD THIS HERE)
+// 🔒 CHECK WEBHOOK SECRET
 if (!process.env.SWYCHR_WEBHOOK_SECRET) {
   console.warn("⚠️ SWYCHR_WEBHOOK_SECRET is NOT set");
+} else {
+  console.log("SECRET LOADED:", process.env.SWYCHR_WEBHOOK_SECRET);
 }
 
 const express = require("express");
@@ -163,7 +165,6 @@ app.get("/api/treasury/balances", authenticate, requireAdmin, async (req, res) =
     res.status(500).json({ success: false, error: err.message });
   }
 });
-
 // ---------------------------------------------------------------------
 // TOURNAMENTS HANDLING
 // ---------------------------------------------------------------------
@@ -191,104 +192,195 @@ app.post("/tournament/register", authenticate, async (req, res) => {
       if (playerSnap.exists) throw new Error("Already joined");
 
       const user = userSnap.data();
-
-    if (user.accounts?.activeTournamentId) {
-       throw new Error("User already in a tournament");
-          }
-
-   
-if (user.locks?.joiningTournament) {
-  throw new Error("Tournament join in progress");
-}
-t.update(userRef, {
-  "locks.joiningTournament": true,
-});
-
       const tournament = tournamentSnap.data();
-      // ✅ ADD THIS BLOCK TO ENSURE COFFERS EXIST
-  const cofferRef = db.collection("tournamentCoffers").doc(tournamentId);
-  t.set(
-    cofferRef,
-    {
-      registration: { count: 0, totalAmount: 0 },
-      rebuys: { count: 0, totalAmount: 0 },
-      lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
-    },
-    { merge: true }
-  );
+
+      // 🔒 SAFETY CHECKS
+      if (user.locks?.joiningTournament) {
+        throw new Error("Tournament join in progress");
+      }
+
+      if (user.accounts?.activeTournamentId) {
+        throw new Error("User already in a tournament");
+      }
 
       const entryFee = tournament.entryFee || 0;
       const startingBalance = tournament.startingBalance || 0;
-      
 
       if (entryFee > 0 && (user.realBalance || 0) < entryFee) {
         throw new Error("Insufficient wallet balance");
       }
 
-      // 🔻 Deduct entry fee
+      // 🔒 LOCK FIRST (atomic safety)
+      t.update(userRef, {
+        "locks.joiningTournament": true,
+      });
+
+      // 💰 Ensure coffer exists
+      const cofferRef = db.collection("tournamentCoffers").doc(tournamentId);
+      t.set(
+        cofferRef,
+        {
+          registration: { count: 0, totalAmount: 0 },
+          rebuys: { count: 0, totalAmount: 0 },
+          lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      // 💸 Deduct entry fee
       if (entryFee > 0) {
         t.update(userRef, {
           realBalance: admin.firestore.FieldValue.increment(-entryFee),
         });
 
-        t.update(tournamentRef, {
-  prizePool: admin.firestore.FieldValue.increment(entryFee),
-  collectedFunds: admin.firestore.FieldValue.increment(entryFee),
-  lastUpdated: admin.firestore.Timestamp.now(),
-});
+      // 💰 SEND ENTRY FEE TO TREASURY (NOT PRIZE POOL)
+const treasuryRef = db.collection("treasury").doc("main");
 
+t.set(
+  treasuryRef,
+  {
+    balance: admin.firestore.FieldValue.increment(entryFee),
+    lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+  },
+  { merge: true }
+);
+
+// (optional tracking inside tournament only)
+t.set(
+  tournamentRef,
+  {
+    collectedFunds: admin.firestore.FieldValue.increment(entryFee),
+    lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+  },
+  { merge: true }
+);
       }
 
-      // 🧩 Create tournament player (WITH PERFORMANCE)
-t.set(playerRef, {
-  uid: userId,
-  username: user.username || "Player",
+      // 🧩 Create player
+      t.set(playerRef, {
+        uid: userId,
+        username: user.username || "Player",
+        balance: startingBalance,
+        initialBalance: startingBalance,
+        performance: 0,
+        rebuys: [],
+        joinedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
 
-  balance: startingBalance,
-  initialBalance: startingBalance, // ✅ IMPORTANT
-
-  performance: 0, // ✅ NEW (starts at 0)
-
-  rebuys: [],
-  joinedAt: admin.firestore.FieldValue.serverTimestamp(),
-});
-      // 🧠 Create tournament account snapshot
+      // 🧠 Snapshot
       t.set(
-  userRef,
-  {
-    "accounts.activeTournamentId": tournamentId,
-    [`accounts.tournaments.${tournamentId}`]: {
-      balance: startingBalance,
-      initialBalance: startingBalance,
+        userRef,
+        {
+          "accounts.activeTournamentId": tournamentId,
+          [`accounts.tournaments.${tournamentId}`]: {
+            balance: startingBalance,
+            initialBalance: startingBalance,
+            performance: 0,
+            status: "ongoing",
+            joinedAt: admin.firestore.FieldValue.serverTimestamp(),
+          },
+        },
+        { merge: true }
+      );
 
-  performance: 0, // ✅ ADD THIS
-      status: "ongoing",
-      joinedAt: admin.firestore.FieldValue.serverTimestamp(),
-    },
-  },
-  { merge: true }
-);
-t.set(
-  userRef,
-  {
-    locks: {
-      joiningTournament: admin.firestore.FieldValue.delete(),
-    },
-  },
-  { merge: true }
-);
-
+      // 🔓 UNLOCK
+      t.update(userRef, {
+        "locks.joiningTournament": admin.firestore.FieldValue.delete(),
+      });
     });
-    
 
     res.json({ success: true, message: "Tournament registered successfully" });
   } catch (err) {
     console.error("Tournament register error:", err.message);
     res.status(400).json({ success: false, error: err.message });
   }
-  
 });
+// ---------------------------------------------------------------------
+// TOURNAMENT REBUY (CLEAN + CONSISTENT STATE)
+// ---------------------------------------------------------------------
+app.post("/tournament-rebuy", authenticate, async (req, res) => {
+  try {
+    const userId = req.user.uid;
+    const { tournamentId } = req.body;
 
+    if (!tournamentId) {
+      return res.status(400).json({ error: "Missing tournamentId" });
+    }
+
+    const tournamentRef = db.doc(`tournaments/${tournamentId}`);
+    const playerRef = db.doc(`tournaments/${tournamentId}/players/${userId}`);
+    const userRef = db.doc(`users/${userId}`);
+
+    await db.runTransaction(async (t) => {
+      const tournamentSnap = await t.get(tournamentRef);
+const playerSnap = await t.get(playerRef);
+const userSnap = await t.get(userRef);
+if (!userSnap.exists) throw new Error("User not found");
+
+      if (!tournamentSnap.exists) throw new Error("TOURNAMENT_NOT_FOUND");
+      if (!playerSnap.exists) throw new Error("NOT_REGISTERED");
+
+      const tournament = tournamentSnap.data();
+      const player = playerSnap.data();
+
+      const endTime = tournament.endTime?.toMillis?.() ?? tournament.endTime;
+      if (Date.now() > endTime) throw new Error("TOURNAMENT_ENDED");
+
+      const initialBalance = tournament.startingBalance || 0;
+      const currentBalance = player.balance || 0;
+
+      // 🔒 REBUY RULE
+      if (currentBalance >= initialBalance / 2) {
+        throw new Error("REBUY_NOT_ALLOWED");
+      }
+
+      // ⏳ COOLDOWN
+      const lastRebuy = player.lastRebuyAt || 0;
+      if (Date.now() - lastRebuy < 30 * 1000) {
+        throw new Error("TOO_MANY_REQUESTS");
+      }
+
+      // 💰 TREASURY FIRST
+      await treasury.processRebuy(userId, tournamentId);
+
+      // 🧩 UPDATE PLAYER
+      t.update(playerRef, {
+        balance: admin.firestore.FieldValue.increment(initialBalance),
+        lastRebuyAt: admin.firestore.FieldValue.serverTimestamp(),
+        rebuys: admin.firestore.FieldValue.arrayUnion({
+          time: admin.firestore.FieldValue.serverTimestamp(),
+          amount: initialBalance,
+        }),
+      });
+
+      // 🧠 UPDATE SNAPSHOT
+      t.update(userRef, {
+        [`accounts.tournaments.${tournamentId}.balance`]:
+          admin.firestore.FieldValue.increment(initialBalance),
+      });
+
+      // 📊 COFFER UPDATE
+      const cofferRef = db.doc(`tournamentCoffers/${tournamentId}`);
+
+      t.set(
+        cofferRef,
+        {
+          rebuys: {
+            count: admin.firestore.FieldValue.increment(1),
+            totalAmount: admin.firestore.FieldValue.increment(initialBalance),
+          },
+          lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+    });
+
+    res.json({ success: true, message: "Rebuy successful" });
+  } catch (err) {
+    console.error("Rebuy error:", err.message);
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
 
 app.post("/support/send", authenticate, async (req, res) => {
   try {
@@ -356,27 +448,6 @@ app.post("/support/send", authenticate, async (req, res) => {
     res.status(500).json({ error: "Failed to send message" });
   }
 });
-// ---------------------------------------------------------------------
-// TOURNAMENT REBUY
-// ---------------------------------------------------------------------
-app.post("/tournament-rebuy", authenticate, async (req, res) => {
-
-  try {
-    const userId = req.user.uid;
-const { tournamentId } = req.body;
-if (!tournamentId) {
-  return res.status(400).json({ error: "Missing tournamentId" });
-}
-
-
-    await treasury.processRebuy(userId, tournamentId );
-
-    res.json({ success: true, message: "Rebuy successful" });
-  } catch (err) {
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
 
 // ---------------------------------------------------------------------
 // ADMIN — SEND NOTIFICATION
@@ -658,9 +729,12 @@ app.post("/admin/pay-tournament-winner", authenticate, requireAdmin, async (req,
       const treasuryBalance = treasurySnap.data()?.balance || 0;
 
       // ✅ Ensure tournament is completed
-      const now = Date.now();
+      const endTime =
+  tournament.endTime?.toMillis?.() ?? tournament.endTime;
 
-if (now <= tournament.endTime) {
+const now = Date.now();
+
+if (now <= endTime) {
   throw new Error("Tournament not finished yet");
 }
 
@@ -845,6 +919,17 @@ app.get("/admin/activity-history", authenticate, requireAdmin, async (req, res) 
 });
 app.use("/api/payin", payinRoutes);
 app.use("/api/payout", payoutRouter);     // withdrawals
+// ---------------------------------------------------------------------
+// CURRENCY CONVERTER
+// ---------------------------------------------------------------------
+const { rates, BASE_CURRENCY } = require("./config/currency");
+
+app.get("/api/currency", (req, res) => {
+  res.json({
+    base: BASE_CURRENCY,
+    rates,
+  });
+});
 // ---------------------------------------------------------------------
 // START SERVER
 // ---------------------------------------------------------------------

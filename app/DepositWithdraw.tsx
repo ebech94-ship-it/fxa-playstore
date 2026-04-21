@@ -9,23 +9,23 @@ import { useApp } from "./AppContext";
   collection,
   serverTimestamp,
 } from "firebase/firestore";*/
- import { XAF_TO_USD } from "../config/currency";
-import { useEffect, useState } from "react";
+ import { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Image,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  ScrollView,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View
+    ActivityIndicator,
+    Alert,
+    Image,
+    KeyboardAvoidingView,
+    Modal,
+    Platform,
+    ScrollView,
+    StyleSheet,
+    Switch,
+    Text,
+    TextInput,
+    TouchableOpacity,
+    View
 } from "react-native";
+
 import { auth } from "../firebaseConfig";
 
 // const API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL as string;
@@ -63,20 +63,16 @@ const LIMITS = {
   },
 };
 
-const EXCHANGE_RATES = {
-  USD: 1,
-  XAF: XAF_TO_USD,
-};
-const convertCurrency = (amount: number, from: "USD" | "XAF", to: "USD" | "XAF") => {
-  if (!EXCHANGE_RATES[from] || !EXCHANGE_RATES[to]) return 0;
-  const amountInUSD = amount / EXCHANGE_RATES[from];
-  return +(amountInUSD * EXCHANGE_RATES[to]).toFixed(2);
-};
+type Currency = "USD" | "XAF";
+
 
 export default function DepositWithdraw() {
   const router = useRouter();
   const [currentUser, setCurrentUser] = useState(auth.currentUser);
-
+const [rates, setRates] = useState<Record<Currency, number>>({
+  USD: 1,
+  XAF: 600,
+});
   const [isDeposit, setIsDeposit] = useState(true);
   const [activeMethod, setActiveMethod] = useState("");
   const [modalVisible, setModalVisible] = useState(false);
@@ -106,16 +102,21 @@ const [convertedAmount, setConvertedAmount] = useState(0);
 const methodLimits = isMobileMoney ? LIMITS.mobile : LIMITS.card;
 const [lang, setLang] = useState<"en" | "fr">("en");
 
+const convert = (amount: number, from: Currency, to: Currency) => {
+  const usd = amount / rates[from];
+  return usd * rates[to];
+};
+
   const handleChange = (key: string, value: string) => {
   if (key === "amount") {
   const num = Number(value);
   if (num > 0) {
-    const converted = convertCurrency(
-      num,
-      formData.currency as "XAF" | "USD",
-      formData.currency === "XAF" ? "USD" : "XAF"
-    );
-    setConvertedAmount(converted);
+  const from = formData.currency as Currency;
+const to: Currency = from === "XAF" ? "USD" : "XAF";
+
+const converted = convert(num, from, to);
+
+setConvertedAmount(Number(converted.toFixed(2)));
   } else {
     setConvertedAmount(0);
   }
@@ -142,6 +143,32 @@ useEffect(() => {
     }));
   }
 }, [profile, currentUser?.email]);
+
+useEffect(() => {
+  const loadRates = async () => {
+    try {
+      const API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL;
+
+      const res = await fetch(`${API_BASE}/api/currency`);
+      const data = await res.json();
+
+      if (
+  data?.rates &&
+  typeof data.rates.USD === "number" &&
+  typeof data.rates.XAF === "number"
+) {
+ setRates({
+    USD: data.rates.USD,
+    XAF: data.rates.XAF,
+  });
+}
+    } catch (err) {
+  console.log("Currency load failed, using fallback", err);
+}
+  };
+
+  loadRates();
+}, []);
 
   /* -------------------- Open Modal -------------------- */
   const openForm = (method: string) => {

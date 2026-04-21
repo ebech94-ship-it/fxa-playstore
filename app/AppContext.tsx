@@ -254,15 +254,15 @@ const [rebuyUnlockedMap, setRebuyUnlockedMap] =
 
 const activeBalance = useMemo(() => {
   if (activeAccount.type === "demo") return accounts?.demo?.balance ?? 1000;
-  if (activeAccount.type === "real") return userDoc?.realBalance ?? 0;
+if (activeAccount.type === "real") return accounts?.real?.balance ?? 0;
   return liveTournamentBalances[activeAccount.tournamentId] ?? activeTournament?.balance ?? 0;
-}, [activeAccount, accounts, userDoc, liveTournamentBalances, activeTournament]);
+}, [activeAccount, accounts, liveTournamentBalances, activeTournament]);
 
 const [demoBalance, setDemoBalance] = useState<number>(1000);
 
 const balancesState = {
  demo: demoBalance,  // <-- use local demoBalance
-   real: userDoc?.realBalance ?? 0,
+   real: accounts?.real?.balance ?? 0,
   tournament: activeTournament
   ? liveTournamentBalances[activeTournament.tournamentId] ??
     activeTournament.balance
@@ -308,7 +308,7 @@ const tournamentAccounts = useMemo(() =>
     symbol: tournamentMeta[t.tournamentId]?.symbol ?? "T",
     balance: liveTournamentBalances[t.tournamentId] ?? t.balance,
     initialBalance: t.initialBalance,
-    currency: t.currency,
+    currency: "USD",
     status: t.status ?? "upcoming",
     joined: t.joined,
   })), [tournaments, tournamentMeta, liveTournamentBalances]);
@@ -496,6 +496,7 @@ useEffect(() => {
           .map(([id, t]) => ({
             ...t,
             tournamentId: id,
+              currency: "USD", 
             status: "upcoming" as const, // will be updated by your time-based effect
           }))
           .filter(t => t.joined) // ✅ only include joined tournaments
@@ -539,6 +540,7 @@ useEffect(() => {
     });
   });
 }, [now]);
+
 useEffect(() => {
   // Remove balances and meta for deleted tournaments
   const validIds = tournaments.map(t => t.tournamentId);

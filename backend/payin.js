@@ -7,7 +7,7 @@ const { db } = require("./firebaseAdmin");
 const admin = require("firebase-admin");
 const crypto = require("crypto");
 
-const { XAF_TO_USD, BASE_CURRENCY } = require("../config/currency");
+const { XAF_TO_USD, BASE_CURRENCY } = require("./config/currency");
 // ----------------------
 // TOKEN CACHE
 // ----------------------
@@ -138,12 +138,12 @@ router.post("/create-link", async (req, res) => {
 
     const paymentData = await paymentResponse.json();
 
-const amountInUSD = Number(amount) / XAF_TO_USD;
+const amountUSD = Number(amount) / XAF_TO_USD;
 
 await db.collection("transactions").add({
   userId: uid,
   transactionId,
-  amount: amountInUSD,
+  amount: amountUSD,
 currency: BASE_CURRENCY,
 originalCurrency: "XAF",
 originalAmount: Number(amount),
@@ -229,7 +229,7 @@ router.post("/webhook", async (req, res) => {
         if (!tx.userId) throw new Error("Invalid transaction");
 
         // prevent double processing
-        if (tx.status && tx.status !== "pending") return;
+       if (tx.status === "completed" || tx.status === "failed") return;
 
         // OPTIONAL: amount validation (recommended)
         if (tx.amount && Number(amount) !== tx.amount) {
@@ -238,10 +238,10 @@ router.post("/webhook", async (req, res) => {
 
         const userRef = db.collection("users").doc(tx.userId);
 
-        const amountInUSD = Number(amount) / XAF_TO_USD;
+       const txAmountUSD = Number(tx.amount); // already stored correctly at creation time
 
         t.update(userRef, {
-          realBalance: admin.firestore.FieldValue.increment(amountInUSD),
+          realBalance: admin.firestore.FieldValue.increment(txAmountUSD),
         });
 
         t.update(doc.ref, {

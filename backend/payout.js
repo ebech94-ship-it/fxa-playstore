@@ -5,7 +5,7 @@ const admin = require("firebase-admin");
 const fetch = require("node-fetch");
 const crypto = require("crypto");
 
-const { XAF_TO_USD, BASE_CURRENCY } = require("../config/currency");
+const { XAF_TO_USD, BASE_CURRENCY } = require("./config/currency");
 
 // ----------------------
 // TOKEN CACHE (PAYOUT)
@@ -77,19 +77,19 @@ router.post("/", async (req, res) => {
 
     const userRef = db.collection("users").doc(uid);
 // 💰 AMOUNT LOGIC
-const amountUSD = Number(amount);
+const withdrawalUSD = Number(amount);
 
 // 1. VALIDATION
-if (!amountUSD || amountUSD <= 0) {
+if (!withdrawalUSD || withdrawalUSD <= 0) {
   throw new Error("INVALID_AMOUNT");
 }
 
-if (amountUSD < 1) {
+if (withdrawalUSD < 1) {
   throw new Error("MIN_WITHDRAWAL_1_USD");
 }
 
 // 3. CONVERT USD → XAF FIRST (core payout value)
-const grossXAF = Math.round(amountUSD * XAF_TO_USD);
+const grossXAF = Math.round(withdrawalUSD * XAF_TO_USD);
 
 // 4. XAF FEE (applied after conversion)
 const feeXAF = Math.round(grossXAF * 0.01);
@@ -147,13 +147,13 @@ transactionId = `payout_${Date.now()}_${Math.random()
       const userSnap = await t.get(userRef);
       const balance = userSnap.data()?.realBalance || 0;
 
-      if (balance < amountUSD) {
+      if (balance < withdrawalUSD) {
         throw new Error("INSUFFICIENT_BALANCE");
       }
 
       // 🔒 DEDUCT BALANCE
       t.update(userRef, {
-        realBalance: admin.firestore.FieldValue.increment(-amountUSD),
+        realBalance: admin.firestore.FieldValue.increment(-withdrawalUSD),
       });
 
       // 🧾 STORE PAYOUT
@@ -163,7 +163,7 @@ transactionId = `payout_${Date.now()}_${Math.random()
         userId: uid,
         transactionId,
 
-        amount: amountUSD,
+        amount: withdrawalUSD,
          fee: feeXAF,
        netAmount: netXAF,
         currency: BASE_CURRENCY,
