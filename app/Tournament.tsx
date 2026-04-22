@@ -11,7 +11,7 @@ import { useApp } from "./AppContext"; // <-- add this at the top
 
 
 import {
-  collection, doc, getDoc, limit, onSnapshot, orderBy, query
+  collection, doc, onSnapshot, orderBy, query
 } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import {
@@ -133,16 +133,15 @@ const NameWithFlag = ({
 
 export default function TournamentScreen({ currentUser }: TournamentScreenProps) {
   const [selectedTournament, setSelectedTournament] = useState<Tournament | null>(null);
-  const [leaderboard, setLeaderboard] = useState<LeaderboardUser[]>([]);
+
   const [now, setNow] = useState(new Date().getTime());
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
     const { tournamentId } = useLocalSearchParams<{ tournamentId: string }>();
   // live players list for the currently selected tournament (used for counts / participant preview)
 const [players, setPlayers] = useState<any[]>([]);
-
+const [leaderboard, setLeaderboard] = useState<any[]>([]);
 const [tournamentCounts, setTournamentCounts] = useState<Record<string, number>>({});
 const [tournamentRebuys, setTournamentRebuys] = useState<Record<string, number>>({});
-
 
   const [viewTab, setViewTab] = useState("info"); // "info" | "leaderboard"
   const [adminModal, setAdminModal] = useState(false);
@@ -200,46 +199,11 @@ const { activeAccount,   isAdmin, adminLoaded, tournamentAccounts, profile } = u
     return () => unsub();
   }, []);
 
-
- useEffect(() => {
-  if (!currentUser || tournaments.length === 0) return;
-
-  const unsubs: (() => void)[] = [];
-
-  tournaments.forEach((t) => {
-    const ref = doc(db, "tournaments", t.id, "players", currentUser.uid);
-
-    // ✅ check once immediately
-    getDoc(ref)
-      .then((snap) => {
-        setJoinedMap((prev) => ({
-          ...prev,
-          [t.id]: snap.exists(),
-        }));
-      })
-      .catch((err) => console.error("Error fetching joined state:", err));
-
-    // ✅ also listen for real-time changes
-    const unsub = onSnapshot(ref, (snap) => {
-      setJoinedMap((prev) => ({
-        ...prev,
-        [t.id]: snap.exists(),
-      }));
-    });
-
-    unsubs.push(unsub);
-  });
-
-  return () => {
-    unsubs.forEach((u) => u());
-  };
-}, [tournaments, currentUser]);
-
-
-
 useEffect(() => {
   if (!selectedTournament?.id) return;
 
+
+const startingBalance = selectedTournament?.startingBalance ?? 0;
   const ref = collection(
     db,
     "tournaments",
@@ -248,83 +212,75 @@ useEffect(() => {
   );
 
   const unsub = onSnapshot(ref, (snap) => {
-    let rebuyTotal = 0;
+    const list = snap.docs.map((doc) => {
+      const data = doc.data() as any;
 
-    snap.docs.forEach((d) => {
-      const data = d.data();
-      const count = Array.isArray(data.rebuys) ? data.rebuys.length : 0;
-      rebuyTotal += count;
+    const initialBalance =
+  data.initialBalance ?? startingBalance;
+
+      const balance = data.balance ?? 0;
+
+      return {
+        id: doc.id,
+        ...data,
+        performance: balance - initialBalance,
+      };
     });
 
-    // 👥 participants
+    // 👇 1. PLAYERS
+    setPlayers(list);
+
+    // 👇 2. LEADERBOARD (ONLY HERE)
+    const sorted = [...list].sort((a, b) => b.performance - a.performance);
+    setLeaderboard(sorted);
+
+    // 👇 3. COUNT
     setTournamentCounts((prev) => ({
       ...prev,
-      [selectedTournament.id]: snap.size,
+      [selectedTournament.id]: list.length,
     }));
 
-    // ♻️ rebuys
+    // 👇 4. REBUYS
+    const rebuyTotal = list.reduce((sum, p) => {
+  const rebuy = p.rebuys;
+
+  if (Array.isArray(rebuy)) return sum + rebuy.length;
+  if (rebuy && typeof rebuy === "object") return sum + Object.keys(rebuy).length;
+
+  return sum;
+}, 0);
+
     setTournamentRebuys((prev) => ({
       ...prev,
       [selectedTournament.id]: rebuyTotal,
     }));
   });
 
-  return () => unsub();
-}, [selectedTournament]);
+   return () => {
+    unsub();
+  };
+}, [selectedTournament?.id, selectedTournament?.startingBalance]);
 
-  // ✅ GLOBAL LEADERBOARD (only when no tournament is open)
-  useEffect(() => {
-    if (selectedTournament) return; // stop if modal is open
-
-    const q = query(collection(db, "users"), orderBy("accounts.tournament.balance", "desc"), limit(30));
-    const unsub = onSnapshot(q, (snapshot) => {
-      const list = snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
-      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-      setLeaderboard(list);
-    });
-    return () => unsub();
-  }, [selectedTournament]);
-
-  // ✅ TOURNAMENT LEADERBOARD (active tournament only)
  useEffect(() => {
-  if (!selectedTournament?.id) return;
+  if (!currentUser || !selectedTournament?.id) return;
 
-  const playersRef = collection(
+  const ref = doc(
     db,
     "tournaments",
     selectedTournament.id,
-    "players"
+    "players",
+    currentUser.uid
   );
 
-  const q = query(playersRef); // no sorting from firestore
-
-  const unsub = onSnapshot(q, (snapshot) => {
-    const playerList = snapshot.docs.map((doc) => {
-      const data = doc.data() as any;
-
-      const initialBalance =
-        data.initialBalance ?? selectedTournament.startingBalance ?? 0;
-
-      const balance = data.balance ?? 0;
-
-      const performance = balance - initialBalance;
-
-      return {
-        id: doc.id,
-        ...data,
-        performance,
-      };
-    });
-
-    // ✅ SORT BY PERFORMANCE
-    playerList.sort((a, b) => b.performance - a.performance);
-
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setLeaderboard(playerList);
+  const unsub = onSnapshot(ref, (snap) => {
+    setJoinedMap((prev) => ({
+      ...prev,
+      [selectedTournament.id]: snap.exists(),
+    }));
   });
 
   return () => unsub();
-}, [selectedTournament]);
+}, [selectedTournament?.id, currentUser]);
   
   useEffect(() => {
   if (!tournamentId || tournaments.length === 0) return;
@@ -336,37 +292,6 @@ useEffect(() => {
   }
 }, [tournamentId, tournaments]);
 
-useEffect(() => {
-  if (!selectedTournament?.id) return;
-
-  const ref = collection(
-    db,
-    "tournaments",
-    selectedTournament.id,
-    "players"
-  );
-
-  const unsub = onSnapshot(ref, (snap) => {
-    const list = snap.docs.map((d) => ({
-      id: d.id,
-      ...d.data(),
-    }));
-    setPlayers(list);
-  });
-
-  return () => unsub();
-}, [selectedTournament?.id]);
-
-useEffect(() => {
-  if (!currentUser || !players.length || !selectedTournament) return;
-
-  const joined = players.some(p => p.id === currentUser.uid);
-
-  setJoinedMap(prev => ({
-    ...prev,
-    [selectedTournament.id]: joined,
-  }));
-}, [players, currentUser, selectedTournament]);
 
 
 // ---------- REGISTER USER TO TOURNAMENT ----------
@@ -414,7 +339,7 @@ const handleRegister = async (tournamentId: string) => {
     const token = await user.getIdToken();
 
     const response = await fetch(
-      "https://forexapp2-backend.onrender.com/tournament-register",
+      "https://forexapp2-backend.onrender.com/tournament/register",
       {
         method: "POST",
         headers: {
@@ -592,12 +517,12 @@ const progress =
   const rebuyFee = item.rebuyFee ?? item.entryFee ?? 0;
 
    // Step 4: Rebuy logic (fixed)
-const tAccount = tournamentAccounts.find(t => t.tournamentId === item.id);
+const tAccount = tournamentAccounts?.find(
+  (t) => t.tournamentId === item.id
+);
 
 const currentBalance = tAccount?.balance ?? 0;
-const initialBalance =
-  tAccount?.initialBalance ?? item.startingBalance;
-
+const initialBalance = tAccount?.initialBalance ?? item.startingBalance ?? 0;
 // only allow rebuy if:
 // 1. user joined
 // 2. tournament ongoing
@@ -954,7 +879,7 @@ const allowRebuy =
         </Pressable>
 
         {selectedTournament && (
-     <View style={{ flex: 1 }}>    
+     <View style={{ flex: 1, minHeight: 0 }}>   
             <Text style={styles.modalTitle}>
               {selectedTournament.title || selectedTournament.name || "Tournament"}
             </Text>
@@ -997,12 +922,15 @@ const allowRebuy =
             </View>
 {/* Scrollable content */}
 {viewTab === "info" ? (
-  <ScrollView
+ <ScrollView
   style={{ flex: 1 }}
-  contentContainerStyle={{ paddingBottom: 120,
-    paddingTop: 6  }}
+  contentContainerStyle={{
+    paddingBottom: 140,
+    paddingTop: 10,
+  }}
   showsVerticalScrollIndicator={false}
   keyboardShouldPersistTaps="handled"
+  nestedScrollEnabled={true}   // 🔥 KEY FIX (Android + nested layouts)
 >
     <Text style={styles.sectionTitle}>📖 Information</Text>
     <Text style={styles.infoText}>
@@ -1120,10 +1048,11 @@ modalContent: {
   borderRadius: 18,
   width: "92%",
   height: "90%",
-  paddingTop: 18,
-  paddingBottom: 10,
+
   paddingHorizontal: 16,
   alignSelf: "center",
+
+  overflow: "hidden", // 🔥 critical fix for scroll containment
 },
   closeButton: {
   alignSelf: "flex-end",
@@ -1134,7 +1063,11 @@ modalContent: {
   modalMetaRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 8 },
   modalPrize: { color: "#47f11dff", fontWeight: "800" },
   modalInfo: { color: "#cbd5e1" },
-  tabRow: { flexDirection: "row", marginTop: 12 },
+ tabRow: {
+  flexDirection: "row",
+  marginTop: 12,
+  zIndex: 10, // keeps tabs above scroll glitches
+},
   tabBtn: { flex: 1, padding: 8, borderRadius: 10, alignItems: "center", marginRight: 6, backgroundColor: "#121227" },
   tabActive: { backgroundColor: "#1f2937" },
   tabText: { color: "#9ca3af", fontWeight: "700" },

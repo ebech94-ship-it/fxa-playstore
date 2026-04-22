@@ -321,7 +321,7 @@ return (
     {chunkedPlayers.map((pair, columnIndex) => (
   <View key={columnIndex} style={{ marginRight: 10 }}>
     {pair.map((p, rowIndex) => {
-      const index = columnIndex * 2 + rowIndex;
+     const index = columnIndex * chunkSize + rowIndex;
       const isCurrent = currentUser && p.id === currentUser.uid;
 
       let topColor;

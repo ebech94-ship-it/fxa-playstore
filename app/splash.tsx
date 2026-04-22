@@ -12,6 +12,8 @@ export default function SplashScreen() {
   const [progress] = useState(new Animated.Value(0));
   const glowAnim = useRef(new Animated.Value(0)).current;
   const { setAppReady } = useApp();
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+const slideAnim = useRef(new Animated.Value(10)).current;
 
   // Animate the progress bar
   useEffect(() => {
@@ -43,6 +45,21 @@ export default function SplashScreen() {
     ).start();
   }, [glowAnim]);
 
+  useEffect(() => {
+  Animated.parallel([
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 1500,
+      useNativeDriver: true,
+    }),
+    Animated.timing(slideAnim, {
+      toValue: 0,
+      duration: 1500,
+      useNativeDriver: true,
+    }),
+  ]).start();
+}, [fadeAnim, slideAnim]);
+
   const progressWidth = progress.interpolate({
     inputRange: [0, 1],
     outputRange: ["0%", "100%"],
@@ -58,7 +75,17 @@ export default function SplashScreen() {
       {/* Top content */}
       <View style={styles.topContent}>
         <Text style={styles.title}>FX ARENA</Text>
-        <Text style={styles.subtitle}>MASTERING MARKET PSYCHOLOGY</Text>
+    <Animated.Text
+  style={[
+    styles.subtitle,
+    {
+      opacity: fadeAnim,
+      transform: [{ translateY: slideAnim }],
+    },
+  ]}
+>
+  MASTERING MARKET{"\n"}PSYCHOLOGY
+</Animated.Text>
 
         <Image
           source={require("../assets/images/splashscreen.png")}
@@ -111,11 +138,13 @@ const styles = StyleSheet.create({
   },
 
   subtitle: {
-    fontSize: 20,
-    color: "#E2C13E",
-    fontWeight: "bold",
-    marginBottom: 20,
-  },
+  fontSize: 20,
+  color: "#E2C13E",
+  fontWeight: "bold",
+  marginBottom: 20,
+  textAlign: "center",   // ✅ center text
+  width: "80%",          // ✅ controls wrapping nicely
+},
 
   arenaImage: {
     width: 250,

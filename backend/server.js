@@ -241,6 +241,14 @@ t.set(
   {
     balance: admin.firestore.FieldValue.increment(entryFee),
     lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+ // 👇 ADD THIS
+    transactions: {
+      [userId + "_" + tournamentId]: {
+        amount: entryFee,
+        type: "tournament_entry",
+        timestamp: admin.firestore.FieldValue.serverTimestamp(),
+      }
+    }
   },
   { merge: true }
 );
@@ -288,6 +296,9 @@ t.set(
         "locks.joiningTournament": admin.firestore.FieldValue.delete(),
       });
     });
+    const treasury = await db.collection("treasury").doc("main").get();
+
+console.log("TREASURY SNAPSHOT:", treasury.data());
 
     res.json({ success: true, message: "Tournament registered successfully" });
   } catch (err) {

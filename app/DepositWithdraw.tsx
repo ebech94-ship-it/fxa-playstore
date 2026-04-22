@@ -11,19 +11,19 @@ import { useApp } from "./AppContext";
 } from "firebase/firestore";*/
  import { useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    Image,
-    KeyboardAvoidingView,
-    Modal,
-    Platform,
-    ScrollView,
-    StyleSheet,
-    Switch,
-    Text,
-    TextInput,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  Alert,
+  Image,
+  KeyboardAvoidingView,
+  Modal,
+  Platform,
+  ScrollView,
+  StyleSheet,
+  Switch,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  View
 } from "react-native";
 
 import { auth } from "../firebaseConfig";
@@ -110,13 +110,19 @@ const convert = (amount: number, from: Currency, to: Currency) => {
   const handleChange = (key: string, value: string) => {
   if (key === "amount") {
   const num = Number(value);
+
   if (num > 0) {
-  const from = formData.currency as Currency;
-const to: Currency = from === "XAF" ? "USD" : "XAF";
+    let converted = 0;
 
-const converted = convert(num, from, to);
+    if (isDeposit) {
+      // XAF → USD (user pays XAF, gets USD wallet)
+      converted = convert(num, "XAF", "USD");
+    } else {
+      // USD → XAF (user withdraws from USD wallet to XAF)
+      converted = convert(num, "USD", "XAF");
+    }
 
-setConvertedAmount(Number(converted.toFixed(2)));
+    setConvertedAmount(Number(converted.toFixed(2)));
   } else {
     setConvertedAmount(0);
   }
@@ -607,8 +613,13 @@ placeholder="Enter amount"
 {Number(formData.amount) > 0 && (
   <Text style={{ color: "#00ffff", fontSize: 12, marginBottom: 10 }}>
     {isDeposit
-      ? `You will have ≈ ${convertedAmount.toLocaleString()} USD`
-      : `You will receive ≈ ${convertedAmount.toLocaleString()} XAF`}
+      ? (lang === "fr"
+          ? `Vous recevrez ≈ ${convertedAmount.toLocaleString()} USD`
+          : `You will get ≈ ${convertedAmount.toLocaleString()} USD`)
+      : (lang === "fr"
+          ? `Vous recevrez ≈ ${convertedAmount.toLocaleString()} XAF`
+          : `You will receive ≈ ${convertedAmount.toLocaleString()} XAF`)
+    }
   </Text>
 )}
             {(activeMethod === "Visa" || activeMethod === "MasterCard") && (

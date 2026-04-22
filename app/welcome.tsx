@@ -1136,13 +1136,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
     padding: 20,
   },
-  title: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: "white",
-    marginTop: 60,
-    marginBottom: 15,
-  },
+ title: {
+  fontSize: 24,
+  fontWeight: "bold",
+  color: "white",
+  marginTop: 60,
+  marginBottom: 15,
+  textAlign: "center",   // ✅ centers text horizontally
+  alignSelf: "center",   // ✅ ensures the component itself is centered
+},
   desc: {
     color: "white",
     textAlign: "center",
@@ -1154,7 +1156,8 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: 10,
     marginVertical: 8,
-    width: "90%",
+     width: "100%",          // ✅ prevents overflow weirdness
+  alignItems: "center",
     flexDirection: "row",
     justifyContent: "center",
   },
