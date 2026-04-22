@@ -228,41 +228,37 @@ app.post("/tournament/register", authenticate, async (req, res) => {
       );
 
       // 💸 Deduct entry fee
-      if (entryFee > 0) {
-        t.update(userRef, {
-          realBalance: admin.firestore.FieldValue.increment(-entryFee),
-        });
+     // 💸 Deduct entry fee
+if (entryFee > 0) {
+  t.update(userRef, {
+    realBalance: admin.firestore.FieldValue.increment(-entryFee),
+  });
 
-      // 💰 SEND ENTRY FEE TO TREASURY (NOT PRIZE POOL)
-const treasuryRef = db.collection("treasury").doc("main");
+  // 💰 SEND ENTRY FEE TO TOURNAMENT COFFER (ONLY SOURCE OF TRUTH)
+  const cofferRef = db.collection("tournamentCoffers").doc(tournamentId);
 
-t.set(
-  treasuryRef,
-  {
-    balance: admin.firestore.FieldValue.increment(entryFee),
-    lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
- // 👇 ADD THIS
-    transactions: {
-      [userId + "_" + tournamentId]: {
-        amount: entryFee,
-        type: "tournament_entry",
-        timestamp: admin.firestore.FieldValue.serverTimestamp(),
-      }
-    }
-  },
-  { merge: true }
-);
+  t.set(
+    cofferRef,
+    {
+      registration: {
+        count: admin.firestore.FieldValue.increment(1),
+        totalAmount: admin.firestore.FieldValue.increment(entryFee),
+      },
+      lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
 
-// (optional tracking inside tournament only)
-t.set(
-  tournamentRef,
-  {
-    collectedFunds: admin.firestore.FieldValue.increment(entryFee),
-    lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
-  },
-  { merge: true }
-);
-      }
+  // (optional tracking inside tournament only)
+  t.set(
+    tournamentRef,
+    {
+      collectedFunds: admin.firestore.FieldValue.increment(entryFee),
+      lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+    },
+    { merge: true }
+  );
+}
 
       // 🧩 Create player
       t.set(playerRef, {
@@ -282,16 +278,20 @@ t.set(
   .collection("tournaments")
   .doc(tournamentId);
 
-await tRef.set(
-  {
-    balance: startingBalance,
-    initialBalance: startingBalance,
-    performance: 0,
-    status: "ongoing",
-    joinedAt: admin.firestore.FieldValue.serverTimestamp(),
-  },
-  { merge: true }
-);
+await tRef.set({
+  balance: startingBalance,
+  initialBalance: startingBalance,
+  performance: 0,
+
+  // ✅ ADD THESE (CRITICAL)
+  name: tournament.name || "Tournament",
+  symbol: tournament.symbol || "$",
+  startTime: tournament.startTime || null,
+  endTime: tournament.endTime || null,
+   status: "ongoing",   // ✅ ADD THIS
+  tournamentId,        // (optional but good for consistency) 
+  joinedAt: admin.firestore.FieldValue.serverTimestamp(),
+}, { merge: true });
 
       // 🔓 UNLOCK
       t.update(userRef, {
@@ -325,7 +325,9 @@ app.post("/tournament-rebuy", authenticate, async (req, res) => {
     const userRef = db.doc(`users/${userId}`);
 
     await db.runTransaction(async (t) => {
-      const tournamentSnap = await t.get(tournamentRef);
+    // 💰 TREASURY FIRST
+      await treasury.processRebuy(userId, tournamentId); 
+        const tournamentSnap = await t.get(tournamentRef);
 const playerSnap = await t.get(playerRef);
 const userSnap = await t.get(userRef);
 if (!userSnap.exists) throw new Error("User not found");
@@ -352,9 +354,6 @@ if (!userSnap.exists) throw new Error("User not found");
       if (Date.now() - lastRebuy < 30 * 1000) {
         throw new Error("TOO_MANY_REQUESTS");
       }
-
-      // 💰 TREASURY FIRST
-      await treasury.processRebuy(userId, tournamentId);
 
       // 🧩 UPDATE PLAYER
       t.update(playerRef, {
@@ -391,6 +390,8 @@ await tRef.update({
         { merge: true }
       );
     });
+    
+      
 
     res.json({ success: true, message: "Rebuy successful" });
   } catch (err) {

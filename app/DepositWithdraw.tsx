@@ -133,7 +133,6 @@ const [rates, setRates] = useState<Record<Currency, number>>({
   const [confirmVisible, setConfirmVisible] = useState(false);
   const [loading, setLoading] = useState(false);
 const { appSettings, profile } = useApp();
-const [convertedAmount, setConvertedAmount] = useState(0);
 
   /* -------------------- Form State -------------------- */
   const [formData, setFormData] = useState({
@@ -162,28 +161,11 @@ const convert = (amount: number, from: Currency, to: Currency) => {
 };
 
   const handleChange = (key: string, value: string) => {
-  if (key === "amount") {
-  const num = Number(value);
-
-  if (num > 0) {
-    let converted = 0;
-
-    if (isDeposit) {
-      // XAF → USD (user pays XAF, gets USD wallet)
-      converted = convert(num, "XAF", "USD");
-    } else {
-      // USD → XAF (user withdraws from USD wallet to XAF)
-      converted = convert(num, "USD", "XAF");
-    }
-
-    setConvertedAmount(Number(converted.toFixed(2)));
-  } else {
-    setConvertedAmount(0);
-  }
-}
+ if (key === "amount") {
+   
     setFormData((prev) => ({ ...prev, [key]: value }));
   };
-
+}
   useEffect(() => {
     const unsub = auth.onAuthStateChanged(setCurrentUser);
     return () => unsub();
@@ -191,9 +173,8 @@ const convert = (amount: number, from: Currency, to: Currency) => {
   }, []);
 
   useEffect(() => {
-    setActiveMethod("");
-    setModalVisible(false);
-  }, [isDeposit]);
+  setActiveMethod("");
+}, [isDeposit]);
 
 useEffect(() => {
   if (profile?.displayName) {
@@ -444,13 +425,17 @@ const submitForm = async () => {
       return;
     }
   } else {
-    if (amount < methodLimits.withdraw.min) {
-      Alert.alert(
-        "Minimum Withdrawal",
-        `Minimum withdrawal is ${methodLimits.withdraw.min.toLocaleString()} ${methodLimits.currency}`
-      );
-      return;
-    }
+    const normalizedAmount = isMobileMoney
+  ? convert(amount, "USD", "XAF")
+  : amount;
+
+if (normalizedAmount < methodLimits.withdraw.min) {
+  Alert.alert(
+    "Minimum Withdrawal",
+    `Minimum withdrawal is ${methodLimits.withdraw.min.toLocaleString()} ${methodLimits.currency}`
+  );
+  return;
+}
   }
 
   // 📱 Phone validation
@@ -490,6 +475,18 @@ const minWithdrawDisplay = isMobileMoney
   ? convert(methodLimits.withdraw.min, "XAF", "USD")
   : methodLimits.withdraw.min;
   const t = TEXT[lang];
+const FEE_RATE = 0.01;
+
+// FRONTEND MIRROR OF BACKEND LOGIC
+const amount = Number(formData.amount || 0);
+
+const grossXAF = Math.round(convert(amount, "USD", "XAF"));
+const feeXAF = Math.round(grossXAF * FEE_RATE);
+const netXAF = grossXAF - feeXAF;
+const getConvertedAmount = (amount: number) => {
+  if (isDeposit) return convert(amount, "XAF", "USD");
+  return convert(amount, "USD", "XAF");
+};
 
   /* -------------------- Auth Guard -------------------- */
   if (!currentUser) {
@@ -556,8 +553,6 @@ You can navigate and explore the app safely without making any real transactions
   {isDeposit ? t.deposit : t.withdraw}
 </Text>
 
-<Text style={{ color: "#fff" }}>{t.deposit}</Text>
-<Text style={{ color: "#fff" }}>{t.withdraw}</Text>
       </LinearGradient>
 
       <View style={styles.switchContainer}>
@@ -669,18 +664,7 @@ You can navigate and explore the app safely without making any real transactions
 />
   
 )}
-{Number(formData.amount) > 0 && (
-  <Text style={{ color: "#00ffff", fontSize: 12, marginBottom: 10 }}>
-    {isDeposit
-      ? (lang === "fr"
-          ? `Vous recevrez ≈ ${convertedAmount.toLocaleString()} USD`
-          : `You will get ≈ ${convertedAmount.toLocaleString()} USD`)
-      : (lang === "fr"
-          ? `Vous recevrez ≈ ${convertedAmount.toLocaleString()} XAF`
-          : `You will receive ≈ ${convertedAmount.toLocaleString()} XAF`)
-    }
-  </Text>
-)}
+
             {(activeMethod === "Visa" || activeMethod === "MasterCard") && (
               <>
                 <TextInput placeholder="Card Number" style={styles.modalInput} />
@@ -741,9 +725,31 @@ You can navigate and explore the app safely without making any real transactions
         Type: {isDeposit ? "Deposit" : "Withdraw"}
       </Text>
 
-      <Text style={{ color: "#fff", marginBottom: 10 }}>
-        Amount: {formData.amount} {formData.currency}
-      </Text>
+<Text style={{ color: "#fff", marginBottom: 10 }}>
+  Amount: {Number(formData.amount).toFixed(2)} {isDeposit ? "XAF/USD" : "USD"}
+</Text>
+
+{!isDeposit && (
+  <>
+    <Text style={{ color: "#00ffff", marginBottom: 10 }}>
+      Gross: {grossXAF.toLocaleString()} XAF
+    </Text>
+
+    <Text style={{ color: "#FB7185", marginBottom: 10 }}>
+      Fee (1%): -{feeXAF.toLocaleString()} XAF
+    </Text>
+
+    <Text style={{ color: "#00ff99", marginBottom: 10 }}>
+      You receive: {netXAF.toLocaleString()} XAF
+    </Text>
+  </>
+)}
+
+{isDeposit && (
+  <Text style={{ color: "#00ff99", marginBottom: 10 }}>
+    You receive ≈ {getConvertedAmount.toLocaleString()} USD
+  </Text>
+)}
 
       <Text style={{ color: "#fff", marginBottom: 10 }}>
         Method: {activeMethod}

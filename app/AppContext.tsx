@@ -2,7 +2,7 @@
 import { auth, db } from "@/lib/firebase";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { onAuthStateChanged, User } from "firebase/auth";
-import { collection, doc, getDoc, onSnapshot, query, setDoc, updateDoc, where } from "firebase/firestore";
+import { collection, collectionGroup, doc, getDoc, onSnapshot, query, setDoc, updateDoc, where } from "firebase/firestore";
 
 
 import {
@@ -493,44 +493,58 @@ useEffect(() => {
   });
 
   // 🔥 NEW: LIVE TOURNAMENT LISTENER (THIS IS THE FIX)
-  const tRef = collection(db, "users", authUser.uid, "tournaments");
+  
 
-  const unsubTournaments = onSnapshot(tRef, (snap) => {
-    const list: PlayerTournament[] = snap.docs.map((d) => {
-      const t = d.data();
+const playersQuery = query(
+  collectionGroup(db, "players"),
+  where("__name__", "==", authUser.uid)
+);
 
-      return {
-        tournamentId: d.id,
-        balance: t.balance ?? 0,
-        initialBalance: t.initialBalance ?? 0,
-        currency: "USD",
-        joined: true,
-        status: "upcoming",
-        name: t.name ?? "Tournament",
-        symbol: t.symbol ?? "T",
-        startTime: t.startTime,
-        endTime: t.endTime,
-        startingBalance: t.startingBalance ?? 0,
-      };
+const unsubTournaments = onSnapshot(playersQuery, async (snap) => {
+  const list: PlayerTournament[] = [];
+
+  for (const docSnap of snap.docs) {
+    const data = docSnap.data();
+
+    // 🔥 extract tournamentId from path
+    const tournamentId = docSnap.ref.parent.parent?.id;
+    if (!tournamentId) continue;
+
+    // 🔥 get tournament meta
+    const tDoc = await getDoc(doc(db, "tournaments", tournamentId));
+    const tMeta = tDoc.exists() ? tDoc.data() : {};
+
+    list.push({
+      tournamentId,
+      balance: data.balance ?? 0,
+      initialBalance: data.initialBalance ?? 0,
+      currency: "USD",
+      joined: true,
+      status: "upcoming",
+      name: tMeta.name ?? "Tournament",
+      symbol: tMeta.symbol ?? "T",
+      startTime: tMeta.startTime,
+      endTime: tMeta.endTime,
+      startingBalance: tMeta.startingBalance ?? 0,
     });
-
-    setTournaments(list);
-
-    // 🔥 keep active tournament safe
-    // 🔥 keep active tournament safe
-const active = activeAccountRef.current;
-
-if (active.type === "tournament") {
-  const exists = list.find(
-    (t) => t.tournamentId === active.tournamentId
-  );
-
-  if (!exists) {
-    setActiveAccount({ type: "demo" });
-    setActiveTournament(null);
   }
-}
-  });
+
+  setTournaments(list);
+
+  // 🔥 keep active tournament safe
+  const active = activeAccountRef.current;
+
+  if (active.type === "tournament") {
+    const exists = list.find(
+      (t) => t.tournamentId === active.tournamentId
+    );
+
+    if (!exists) {
+      setActiveAccount({ type: "demo" });
+      setActiveTournament(null);
+    }
+  }
+});
 
   return () => {
     unsubUser();
