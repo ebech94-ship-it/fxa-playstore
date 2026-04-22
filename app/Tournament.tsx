@@ -11,7 +11,7 @@ import { useApp } from "./AppContext"; // <-- add this at the top
 
 
 import {
-  collection, doc, onSnapshot, orderBy, query
+  collection, doc, getDoc, limit, onSnapshot, orderBy, query
 } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import {
@@ -133,15 +133,16 @@ const NameWithFlag = ({
 
 export default function TournamentScreen({ currentUser }: TournamentScreenProps) {
   const [selectedTournament, setSelectedTournament] = useState<Tournament | null>(null);
-
+  const [leaderboard, setLeaderboard] = useState<LeaderboardUser[]>([]);
   const [now, setNow] = useState(new Date().getTime());
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
     const { tournamentId } = useLocalSearchParams<{ tournamentId: string }>();
   // live players list for the currently selected tournament (used for counts / participant preview)
 const [players, setPlayers] = useState<any[]>([]);
-const [leaderboard, setLeaderboard] = useState<any[]>([]);
+
 const [tournamentCounts, setTournamentCounts] = useState<Record<string, number>>({});
 const [tournamentRebuys, setTournamentRebuys] = useState<Record<string, number>>({});
+
 
   const [viewTab, setViewTab] = useState("info"); // "info" | "leaderboard"
   const [adminModal, setAdminModal] = useState(false);
@@ -199,11 +200,46 @@ const { activeAccount,   isAdmin, adminLoaded, tournamentAccounts, profile } = u
     return () => unsub();
   }, []);
 
+
+ useEffect(() => {
+  if (!currentUser || tournaments.length === 0) return;
+
+  const unsubs: (() => void)[] = [];
+
+  tournaments.forEach((t) => {
+    const ref = doc(db, "tournaments", t.id, "players", currentUser.uid);
+
+    // ✅ check once immediately
+    getDoc(ref)
+      .then((snap) => {
+        setJoinedMap((prev) => ({
+          ...prev,
+          [t.id]: snap.exists(),
+        }));
+      })
+      .catch((err) => console.error("Error fetching joined state:", err));
+
+    // ✅ also listen for real-time changes
+    const unsub = onSnapshot(ref, (snap) => {
+      setJoinedMap((prev) => ({
+        ...prev,
+        [t.id]: snap.exists(),
+      }));
+    });
+
+    unsubs.push(unsub);
+  });
+
+  return () => {
+    unsubs.forEach((u) => u());
+  };
+}, [tournaments, currentUser]);
+
+
+
 useEffect(() => {
   if (!selectedTournament?.id) return;
 
-
-const startingBalance = selectedTournament?.startingBalance ?? 0;
   const ref = collection(
     db,
     "tournaments",
@@ -212,75 +248,83 @@ const startingBalance = selectedTournament?.startingBalance ?? 0;
   );
 
   const unsub = onSnapshot(ref, (snap) => {
-    const list = snap.docs.map((doc) => {
-      const data = doc.data() as any;
+    let rebuyTotal = 0;
 
-    const initialBalance =
-  data.initialBalance ?? startingBalance;
-
-      const balance = data.balance ?? 0;
-
-      return {
-        id: doc.id,
-        ...data,
-        performance: balance - initialBalance,
-      };
+    snap.docs.forEach((d) => {
+      const data = d.data();
+      const count = Array.isArray(data.rebuys) ? data.rebuys.length : 0;
+      rebuyTotal += count;
     });
 
-    // 👇 1. PLAYERS
-    setPlayers(list);
-
-    // 👇 2. LEADERBOARD (ONLY HERE)
-    const sorted = [...list].sort((a, b) => b.performance - a.performance);
-    setLeaderboard(sorted);
-
-    // 👇 3. COUNT
+    // 👥 participants
     setTournamentCounts((prev) => ({
       ...prev,
-      [selectedTournament.id]: list.length,
+      [selectedTournament.id]: snap.size,
     }));
 
-    // 👇 4. REBUYS
-    const rebuyTotal = list.reduce((sum, p) => {
-  const rebuy = p.rebuys;
-
-  if (Array.isArray(rebuy)) return sum + rebuy.length;
-  if (rebuy && typeof rebuy === "object") return sum + Object.keys(rebuy).length;
-
-  return sum;
-}, 0);
-
+    // ♻️ rebuys
     setTournamentRebuys((prev) => ({
       ...prev,
       [selectedTournament.id]: rebuyTotal,
     }));
   });
 
-   return () => {
-    unsub();
-  };
-}, [selectedTournament?.id, selectedTournament?.startingBalance]);
+  return () => unsub();
+}, [selectedTournament]);
 
+  // ✅ GLOBAL LEADERBOARD (only when no tournament is open)
+  useEffect(() => {
+    if (selectedTournament) return; // stop if modal is open
+
+    const q = query(collection(db, "users"), orderBy("accounts.tournament.balance", "desc"), limit(30));
+    const unsub = onSnapshot(q, (snapshot) => {
+      const list = snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setLeaderboard(list);
+    });
+    return () => unsub();
+  }, [selectedTournament]);
+
+  // ✅ TOURNAMENT LEADERBOARD (active tournament only)
  useEffect(() => {
-  if (!currentUser || !selectedTournament?.id) return;
+  if (!selectedTournament?.id) return;
 
-  const ref = doc(
+  const playersRef = collection(
     db,
     "tournaments",
     selectedTournament.id,
-    "players",
-    currentUser.uid
+    "players"
   );
 
-  const unsub = onSnapshot(ref, (snap) => {
-    setJoinedMap((prev) => ({
-      ...prev,
-      [selectedTournament.id]: snap.exists(),
-    }));
+  const q = query(playersRef); // no sorting from firestore
+
+  const unsub = onSnapshot(q, (snapshot) => {
+    const playerList = snapshot.docs.map((doc) => {
+      const data = doc.data() as any;
+
+      const initialBalance =
+        data.initialBalance ?? selectedTournament.startingBalance ?? 0;
+
+      const balance = data.balance ?? 0;
+
+      const performance = balance - initialBalance;
+
+      return {
+        id: doc.id,
+        ...data,
+        performance,
+      };
+    });
+
+    // ✅ SORT BY PERFORMANCE
+    playerList.sort((a, b) => b.performance - a.performance);
+
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    setLeaderboard(playerList);
   });
 
   return () => unsub();
-}, [selectedTournament?.id, currentUser]);
+}, [selectedTournament]);
   
   useEffect(() => {
   if (!tournamentId || tournaments.length === 0) return;
@@ -292,6 +336,37 @@ const startingBalance = selectedTournament?.startingBalance ?? 0;
   }
 }, [tournamentId, tournaments]);
 
+useEffect(() => {
+  if (!selectedTournament?.id) return;
+
+  const ref = collection(
+    db,
+    "tournaments",
+    selectedTournament.id,
+    "players"
+  );
+
+  const unsub = onSnapshot(ref, (snap) => {
+    const list = snap.docs.map((d) => ({
+      id: d.id,
+      ...d.data(),
+    }));
+    setPlayers(list);
+  });
+
+  return () => unsub();
+}, [selectedTournament?.id]);
+
+useEffect(() => {
+  if (!currentUser || !players.length || !selectedTournament) return;
+
+  const joined = players.some(p => p.id === currentUser.uid);
+
+  setJoinedMap(prev => ({
+    ...prev,
+    [selectedTournament.id]: joined,
+  }));
+}, [players, currentUser, selectedTournament]);
 
 
 // ---------- REGISTER USER TO TOURNAMENT ----------
@@ -517,12 +592,12 @@ const progress =
   const rebuyFee = item.rebuyFee ?? item.entryFee ?? 0;
 
    // Step 4: Rebuy logic (fixed)
-const tAccount = tournamentAccounts?.find(
-  (t) => t.tournamentId === item.id
-);
+const tAccount = tournamentAccounts.find(t => t.tournamentId === item.id);
 
 const currentBalance = tAccount?.balance ?? 0;
-const initialBalance = tAccount?.initialBalance ?? item.startingBalance ?? 0;
+const initialBalance =
+  tAccount?.initialBalance ?? item.startingBalance;
+
 // only allow rebuy if:
 // 1. user joined
 // 2. tournament ongoing

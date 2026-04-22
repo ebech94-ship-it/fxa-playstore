@@ -62,6 +62,60 @@ const LIMITS = {
     },
   },
 };
+const TEXT = {
+  en: {
+    fullName: "Full Name",
+    amount: "Enter amount",
+    phone: "Enter your Mobile Money number (237...)",
+    minDeposit: "Min deposit",
+    maxDeposit: "Max deposit",
+    minWithdraw: "Min withdrawal",
+    submit: "Submit",
+    cancel: "Cancel",
+    confirm: "Confirm",
+    invalidAmount: "Enter a valid amount.",
+    belowMin: "Amount is below minimum allowed",
+    youGet: "You will get ≈",
+    youReceive: "You will receive ≈",
+    deposit: "Deposit",
+withdraw: "Withdraw",
+selectMethod: "Select Method",
+ form: "Form",
+ invalidAmountTitle: "Invalid Amount",
+phoneRequired: "Phone Required",
+authError: "Auth Error",
+requestSent: "Request Sent",
+comingSoon: "Coming Soon",
+notAvailable: "not available yet"
+  },
+
+  fr: {
+    fullName: "Nom complet",
+    amount: "Entrez le montant",
+    phone: "Entrez votre numéro Mobile Money (237...)",
+    minDeposit: "Dépôt minimum",
+    maxDeposit: "Dépôt maximum",
+    minWithdraw: "Retrait minimum",
+    submit: "Soumettre",
+    cancel: "Annuler",
+    confirm: "Confirmer",
+    invalidAmount: "Entrez un montant valide.",
+    belowMin: "Le montant est inférieur au minimum autorisé",
+    youGet: "Vous recevrez ≈",
+    youReceive: "Vous recevrez ≈",
+    deposit: "Dépôt",
+withdraw: "Retrait",
+  selectMethod: "Choisir une méthode", 
+form: "Formulaire",
+invalidAmountTitle: "Montant invalide",
+phoneRequired: "Téléphone requis",
+authError: "Erreur d'authentification",
+requestSent: "Demande envoyée",
+comingSoon: "Bientôt disponible",
+notAvailable: "sera bientôt disponible"
+
+},
+};
 
 type Currency = "USD" | "XAF";
 
@@ -198,7 +252,7 @@ const handleDeposit = async () => {
     const numericAmount = Number(formData.amount);
 
     if (!numericAmount || numericAmount <= 0) {
-      Alert.alert("Invalid Amount", "Enter a valid amount.");
+     Alert.alert(t.invalidAmountTitle, t.invalidAmount);
       return;
     }
 
@@ -432,6 +486,10 @@ const confirmAndSend = async () => {
     setLoading(false);
   }
 };
+const minWithdrawDisplay = isMobileMoney
+  ? convert(methodLimits.withdraw.min, "XAF", "USD")
+  : methodLimits.withdraw.min;
+  const t = TEXT[lang];
 
   /* -------------------- Auth Guard -------------------- */
   if (!currentUser) {
@@ -494,18 +552,21 @@ You can navigate and explore the app safely without making any real transactions
   return (
     <ScrollView style={styles.container}>
       <LinearGradient colors={["#6a5acd", "#00ffff"]} style={styles.headerContainer}>
-        <Text style={styles.headerText}>
-          {isDeposit ? "Deposit" : "Withdraw"}
-        </Text>
+       <Text style={styles.headerText}>
+  {isDeposit ? t.deposit : t.withdraw}
+</Text>
+
+<Text style={{ color: "#fff" }}>{t.deposit}</Text>
+<Text style={{ color: "#fff" }}>{t.withdraw}</Text>
       </LinearGradient>
 
       <View style={styles.switchContainer}>
-        <Text style={{ color: "#fff" }}>Deposit</Text>
+        <Text style={{ color: "#fff" }}>{t.deposit}</Text>
         <Switch value={isDeposit} onValueChange={() => setIsDeposit(!isDeposit)} />
-        <Text style={{ color: "#fff" }}>Withdraw</Text>
+        <Text style={{ color: "#fff" }}>{t.withdraw}</Text>
       </View>
 
-      <Text style={styles.methodHeader}>Select Method</Text>
+      <Text style={styles.methodHeader}>{t.selectMethod}</Text>
       <View style={styles.methodsContainer}>
         {paymentMethods.map((m, i) => (
           <TouchableOpacity
@@ -513,7 +574,7 @@ You can navigate and explore the app safely without making any real transactions
             style={[styles.methodButton, { backgroundColor: m.color, opacity: m.enabled ? 1 : 0.4 }]}
             onPress={() => {
               if (!m.enabled) {
-                Alert.alert("Coming Soon", `${m.name} not available yet.`);
+                Alert.alert(  t.comingSoon,  `${m.name} ${t.notAvailable}`);
                 return;
               }
               openForm(m.name);
@@ -538,7 +599,7 @@ You can navigate and explore the app safely without making any real transactions
       showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
     >
-            <Text style={styles.modalTitle}>{activeMethod} Form</Text>
+            <Text style={styles.modalTitle}>{activeMethod} {t.form}</Text>
             <View style={{ flexDirection: "row", justifyContent: "flex-end", marginBottom: 10 }}>
   <TouchableOpacity onPress={() => setLang("en")}>
     <Text style={{ color: lang === "en" ? "#FACC15" : "#888", marginRight: 10 }}>EN</Text>
@@ -547,17 +608,15 @@ You can navigate and explore the app safely without making any real transactions
     <Text style={{ color: lang === "fr" ? "#FACC15" : "#888" }}>FR</Text>
   </TouchableOpacity>
 </View>
-
-            <TextInput
-              placeholder="Full Name"
-              value={formData.fullName}
-              onChangeText={(v) => handleChange("fullName", v)}
-              style={styles.modalInput}
-              placeholderTextColor="#888"
-            />
-
-            <TextInput
-placeholder="Enter amount"
+<TextInput
+  placeholder={t.fullName}
+  value={formData.fullName}
+  onChangeText={(v) => handleChange("fullName", v)}
+  style={styles.modalInput}
+  placeholderTextColor="#888"
+/>
+<TextInput
+  placeholder={t.amount}
   value={formData.amount}
   onChangeText={(v) => handleChange("amount", v)}
   keyboardType="numeric"
@@ -571,43 +630,43 @@ placeholder="Enter amount"
   (isDeposit
     ? methodLimits.deposit.min
     : methodLimits.withdraw.min) && (
-    <Text style={styles.amountError}>
-      Amount is below minimum allowed
-    </Text>
-)}<Text style={styles.amountHint}>
+   <Text style={styles.amountError}>
+  {t.belowMin}
+</Text>
+)}
+<Text style={styles.amountHint}>
   {isDeposit ? (
     <>
-      Min deposit:{" "}
+      {t.minDeposit}:{" "}
       <Text style={styles.amountHighlight}>
-        {methodLimits.deposit.min.toLocaleString()}{" "}
-        {methodLimits.currency}
+        {methodLimits.deposit.min.toLocaleString()} {methodLimits.currency}
       </Text>{" "}
-      • Max deposit:{" "}
+      • {t.maxDeposit}:{" "}
       <Text style={styles.amountHighlight}>
-        {methodLimits.deposit.max.toLocaleString()}{" "}
-        {methodLimits.currency}
+        {methodLimits.deposit.max.toLocaleString()} {methodLimits.currency}
       </Text>
     </>
   ) : (
     <>
-      Min withdrawal:{" "}
-      <Text style={styles.amountHighlight}>
-        {methodLimits.withdraw.min.toLocaleString()}{" "}
-        {methodLimits.currency}
-      </Text>
+  {t.minWithdraw}:{" "}
+<Text style={styles.amountHighlight}>
+  {isMobileMoney
+    ? `$${minWithdrawDisplay.toFixed(2)} (≈ ${methodLimits.withdraw.min.toLocaleString()} XAF)`
+    : `$${methodLimits.withdraw.min.toFixed(2)} USD`}
+</Text>
     </>
   )}
 </Text>
 
 {(activeMethod === "MTN" || activeMethod === "Orange") && (
-  <TextInput
-  placeholder="Enter your Mobile Money number (237...)"
-    value={formData.phone}
-    onChangeText={(v) => handleChange("phone", v)}
-    keyboardType="phone-pad"
-    style={styles.modalInput}
-    placeholderTextColor="#888"
-  />
+ <TextInput
+  placeholder={t.phone}
+  value={formData.phone}
+  onChangeText={(v) => handleChange("phone", v)}
+  keyboardType="phone-pad"
+  style={styles.modalInput}
+  placeholderTextColor="#888"
+/>
   
 )}
 {Number(formData.amount) > 0 && (
@@ -645,7 +704,7 @@ placeholder="Enter amount"
                 style={[styles.modalButton, { backgroundColor: "#FF6B6B" }]}
                 onPress={() => setModalVisible(false)}
               >
-                <Text style={styles.modalButtonText}>Cancel</Text>
+                <Text style={styles.modalButtonText}>{t.cancel}</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
@@ -666,7 +725,7 @@ placeholder="Enter amount"
     </Text>
   </View>
 ) : (
-  <Text style={styles.modalButtonText}>Submit</Text>
+  <Text style={styles.modalButtonText}>{t.submit}</Text>
 )}
               </TouchableOpacity>
             </View>
@@ -701,7 +760,7 @@ placeholder="Enter amount"
           style={[styles.modalButton, { backgroundColor: "#FF6B6B" }]}
           onPress={() => setConfirmVisible(false)}
         >
-          <Text style={styles.modalButtonText}>Cancel</Text>
+          <Text style={styles.modalButtonText}>{t.cancel}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -709,7 +768,7 @@ placeholder="Enter amount"
   onPress={confirmAndSend}
   disabled={loading}
 >
-          <Text style={styles.modalButtonText}>Confirm</Text>
+          <Text style={styles.modalButtonText}>{t.confirm}</Text>
         </TouchableOpacity>
       </View>
     </View>

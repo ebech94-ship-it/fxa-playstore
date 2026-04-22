@@ -472,9 +472,9 @@ useEffect(() => {
     return;
   }
 
-  const ref = doc(db, "users", authUser.uid);
+  const userRef = doc(db, "users", authUser.uid);
 
-  const unsub = onSnapshot(ref, (snap) => {
+  const unsubUser = onSnapshot(userRef, (snap) => {
     if (!snap.exists()) {
       setLoading(false);
       return;
@@ -483,44 +483,59 @@ useEffect(() => {
     const data = snap.data() as FirestoreUserDoc;
     setUserDoc(data);
 
-    // 🔐 ADMIN CHECK
     setIsAdmin(data?.roles?.admin === true || data?.isAdmin === true);
     setAdminLoaded(true);
 
     const acc: Accounts = data.accounts ?? {};
     setAccounts(acc);
 
-    // Build tournament list from user accounts, only include joined tournaments
-    const tournamentList = acc.tournaments
-      ? Object.entries(acc.tournaments)
-          .map(([id, t]) => ({
-            ...t,
-            tournamentId: id,
-              currency: "USD", 
-            status: "upcoming" as const, // will be updated by your time-based effect
-          }))
-          .filter(t => t.joined) // ✅ only include joined tournaments
-      : [];
-
-    setTournaments(tournamentList);
-
-    // ✅ Reset active tournament if it was deleted
-    if (activeAccountRef.current.type === "tournament") {
-      const activeTournamentId = activeAccountRef.current.tournamentId;
-      const stillExists = tournamentList.find(
-        (t) => t.tournamentId === activeTournamentId
-      );
-
-      if (!stillExists) {
-        setActiveAccount({ type: "demo" });
-        setActiveTournament(null);
-      }
-    }
-
     setLoading(false);
   });
 
-  return unsub;
+  // 🔥 NEW: LIVE TOURNAMENT LISTENER (THIS IS THE FIX)
+  const tRef = collection(db, "users", authUser.uid, "tournaments");
+
+  const unsubTournaments = onSnapshot(tRef, (snap) => {
+    const list: PlayerTournament[] = snap.docs.map((d) => {
+      const t = d.data();
+
+      return {
+        tournamentId: d.id,
+        balance: t.balance ?? 0,
+        initialBalance: t.initialBalance ?? 0,
+        currency: "USD",
+        joined: true,
+        status: "upcoming",
+        name: t.name ?? "Tournament",
+        symbol: t.symbol ?? "T",
+        startTime: t.startTime,
+        endTime: t.endTime,
+        startingBalance: t.startingBalance ?? 0,
+      };
+    });
+
+    setTournaments(list);
+
+    // 🔥 keep active tournament safe
+    // 🔥 keep active tournament safe
+const active = activeAccountRef.current;
+
+if (active.type === "tournament") {
+  const exists = list.find(
+    (t) => t.tournamentId === active.tournamentId
+  );
+
+  if (!exists) {
+    setActiveAccount({ type: "demo" });
+    setActiveTournament(null);
+  }
+}
+  });
+
+  return () => {
+    unsubUser();
+    unsubTournaments();
+  };
 }, [authUser]);
 
 useEffect(() => {

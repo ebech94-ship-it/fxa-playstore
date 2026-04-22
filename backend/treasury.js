@@ -159,10 +159,16 @@ async processRebuy(t, userId, tournamentId) {
   });
 
   // 🔁 sync snapshot
-  t.update(userRef, {
-    [`accounts.tournaments.${tournamentId}.balance`]:
-      admin.firestore.FieldValue.increment(startingBalance),
-  });
+  const tRef = db
+  .collection("users")
+   .doc(userId)
+  .collection("tournaments")
+  .doc(tournamentId);
+
+// 🔁 sync snapshot
+await tRef.update({
+  balance: admin.firestore.FieldValue.increment(startingBalance),
+});
 
   // 📊 coffers
   const cofferRef = db.collection("tournamentCoffers").doc(tournamentId);

@@ -276,20 +276,22 @@ t.set(
       });
 
       // 🧠 Snapshot
-      t.set(
-        userRef,
-        {
-          "accounts.activeTournamentId": tournamentId,
-          [`accounts.tournaments.${tournamentId}`]: {
-            balance: startingBalance,
-            initialBalance: startingBalance,
-            performance: 0,
-            status: "ongoing",
-            joinedAt: admin.firestore.FieldValue.serverTimestamp(),
-          },
-        },
-        { merge: true }
-      );
+      const tRef = db
+  .collection("users")
+  .doc(userId)
+  .collection("tournaments")
+  .doc(tournamentId);
+
+await tRef.set(
+  {
+    balance: startingBalance,
+    initialBalance: startingBalance,
+    performance: 0,
+    status: "ongoing",
+    joinedAt: admin.firestore.FieldValue.serverTimestamp(),
+  },
+  { merge: true }
+);
 
       // 🔓 UNLOCK
       t.update(userRef, {
@@ -365,11 +367,15 @@ if (!userSnap.exists) throw new Error("User not found");
       });
 
       // 🧠 UPDATE SNAPSHOT
-      t.update(userRef, {
-        [`accounts.tournaments.${tournamentId}.balance`]:
-          admin.firestore.FieldValue.increment(initialBalance),
-      });
+    const tRef = db
+  .collection("users")
+   .doc(userId)
+  .collection("tournaments")
+  .doc(tournamentId);
 
+await tRef.update({
+  balance: admin.firestore.FieldValue.increment(initialBalance),
+});
       // 📊 COFFER UPDATE
       const cofferRef = db.doc(`tournamentCoffers/${tournamentId}`);
 
