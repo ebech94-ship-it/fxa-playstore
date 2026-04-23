@@ -164,8 +164,7 @@ app.get("/api/treasury/balances", authenticate, requireAdmin, async (req, res) =
     console.error("Treasury check error:", err.message);
     res.status(500).json({ success: false, error: err.message });
   }
-});
-// ---------------------------------------------------------------------
+});// ---------------------------------------------------------------------
 // TOURNAMENTS HANDLING
 // ---------------------------------------------------------------------
 app.post("/tournament/register", authenticate, async (req, res) => {
@@ -210,57 +209,33 @@ app.post("/tournament/register", authenticate, async (req, res) => {
         throw new Error("Insufficient wallet balance");
       }
 
-      // 🔒 LOCK FIRST (atomic safety)
+      // 🔒 LOCK USER
       t.update(userRef, {
         "locks.joiningTournament": true,
       });
 
-      // 💰 Ensure coffer exists
       const cofferRef = db.collection("tournamentCoffers").doc(tournamentId);
-      t.set(
-        cofferRef,
-        {
-          registration: { count: 0, totalAmount: 0 },
-          rebuys: { count: 0, totalAmount: 0 },
-          lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      );
 
-      // 💸 Deduct entry fee
-     // 💸 Deduct entry fee
-if (entryFee > 0) {
-  t.update(userRef, {
-    realBalance: admin.firestore.FieldValue.increment(-entryFee),
-  });
+      // 💰 ENTRY FEE PROCESS (SINGLE SOURCE OF TRUTH = COFFER)
+      if (entryFee > 0) {
+        t.update(userRef, {
+          realBalance: admin.firestore.FieldValue.increment(-entryFee),
+        });
 
-  // 💰 SEND ENTRY FEE TO TOURNAMENT COFFER (ONLY SOURCE OF TRUTH)
-  const cofferRef = db.collection("tournamentCoffers").doc(tournamentId);
+        t.set(
+          cofferRef,
+          {
+            registration: {
+              count: admin.firestore.FieldValue.increment(1),
+              totalAmount: admin.firestore.FieldValue.increment(entryFee),
+            },
+            lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+      }
 
-  t.set(
-    cofferRef,
-    {
-      registration: {
-        count: admin.firestore.FieldValue.increment(1),
-        totalAmount: admin.firestore.FieldValue.increment(entryFee),
-      },
-      lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
-    },
-    { merge: true }
-  );
-
-  // (optional tracking inside tournament only)
-  t.set(
-    tournamentRef,
-    {
-      collectedFunds: admin.firestore.FieldValue.increment(entryFee),
-      lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
-    },
-    { merge: true }
-  );
-}
-
-      // 🧩 Create player
+      // 🧩 Create player (tournament player record)
       t.set(playerRef, {
         uid: userId,
         username: user.username || "Player",
@@ -271,38 +246,39 @@ if (entryFee > 0) {
         joinedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
-      // 🧠 Snapshot
+      // 🧠 User snapshot (local tracking only)
       const tRef = db
-  .collection("users")
-  .doc(userId)
-  .collection("tournaments")
-  .doc(tournamentId);
+        .collection("users")
+        .doc(userId)
+        .collection("tournaments")
+        .doc(tournamentId);
 
-await tRef.set({
-  balance: startingBalance,
-  initialBalance: startingBalance,
-  performance: 0,
+      await tRef.set(
+        {
+          balance: startingBalance,
+          initialBalance: startingBalance,
+          performance: 0,
+          name: tournament.name || "Tournament",
+          symbol: tournament.symbol || "$",
+          startTime: tournament.startTime || null,
+          endTime: tournament.endTime || null,
+          status: "ongoing",
+          tournamentId,
+          joinedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
 
-  // ✅ ADD THESE (CRITICAL)
-  name: tournament.name || "Tournament",
-  symbol: tournament.symbol || "$",
-  startTime: tournament.startTime || null,
-  endTime: tournament.endTime || null,
-   status: "ongoing",   // ✅ ADD THIS
-  tournamentId,        // (optional but good for consistency) 
-  joinedAt: admin.firestore.FieldValue.serverTimestamp(),
-}, { merge: true });
-
-      // 🔓 UNLOCK
+      // 🔓 UNLOCK USER
       t.update(userRef, {
         "locks.joiningTournament": admin.firestore.FieldValue.delete(),
       });
     });
-    const treasury = await db.collection("treasury").doc("main").get();
 
-console.log("TREASURY SNAPSHOT:", treasury.data());
-
-    res.json({ success: true, message: "Tournament registered successfully" });
+    res.json({
+      success: true,
+      message: "Tournament registered successfully",
+    });
   } catch (err) {
     console.error("Tournament register error:", err.message);
     res.status(400).json({ success: false, error: err.message });
