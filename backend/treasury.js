@@ -108,26 +108,29 @@ async processRebuy(t, userId, tournamentId) {
 
   const userRef = db.collection("users").doc(userId);
   const tournamentRef = db.collection("tournaments").doc(tournamentId);
-  const playerRef = tournamentRef.collection("players").doc(userId);
 
-  const [userSnap, tournamentSnap, playerSnap] = await Promise.all([
-    t.get(userRef),
-    t.get(tournamentRef),
-    t.get(playerRef),
-  ]);
+const utRef = db.collection("userTournaments")
+  .doc(`${userId}_${tournamentId}`);
+
+  const [userSnap, tournamentSnap, utSnap] = await Promise.all([
+  t.get(userRef),
+  t.get(tournamentRef),
+  t.get(utRef),
+]);
 
   if (!userSnap.exists) throw new Error("User not found");
   if (!tournamentSnap.exists) throw new Error("Tournament not found");
-  if (!playerSnap.exists) throw new Error("Player not in tournament");
+
+
+if (!utSnap.exists) throw new Error("User not in tournament");
+const ut = utSnap.data();
 
   const wallet = userSnap.data().realBalance || 0;
   const tournament = tournamentSnap.data();
 
   const rebuyFee = tournament.rebuyFee;
   const startingBalance = tournament.startingBalance;
-
-  const player = playerSnap.data();
-  const currentBalance = player.balance || 0;
+const currentBalance = ut.balance || 0;
 
   if (currentBalance >= startingBalance / 2) {
     throw new Error("REBUY_NOT_ALLOWED");
@@ -138,8 +141,7 @@ async processRebuy(t, userId, tournamentId) {
   }
 
   const now = Date.now();
-
-  if (player.lastRebuyAt && now - player.lastRebuyAt < 3000) {
+if (ut.lastRebuyAt && now - ut.lastRebuyAt < 3000) {
     throw new Error("Too many requests");
   }
 
@@ -148,26 +150,14 @@ async processRebuy(t, userId, tournamentId) {
     realBalance: admin.firestore.FieldValue.increment(-rebuyFee),
   });
 
-  // 🎯 restore balance
-  t.update(playerRef, {
-    balance: admin.firestore.FieldValue.increment(startingBalance),
-    lastRebuyAt: now,
-    rebuys: admin.firestore.FieldValue.arrayUnion({
-      amount: rebuyFee,
-      at: admin.firestore.Timestamp.now(),
-    }),
-  });
-
-  // 🔁 sync snapshot
-  const tRef = db
-  .collection("users")
-   .doc(userId)
-  .collection("tournaments")
-  .doc(tournamentId);
-
-// 🔁 sync snapshot
-await tRef.update({
+// 🎯 restore balance
+t.update(utRef, {
   balance: admin.firestore.FieldValue.increment(startingBalance),
+  lastRebuyAt: now,
+  rebuys: admin.firestore.FieldValue.arrayUnion({
+    amount: rebuyFee,
+    at: admin.firestore.Timestamp.now(),
+  }),
 });
 
   // 📊 coffers
@@ -398,28 +388,28 @@ async processTournamentPayout(tournamentId) {
   }
 
   // 🏆 Get winners ordered by performance
-  const playersSnap = await tournamentRef
-    .collection("players")
-    .orderBy("performance", "desc")
-    .orderBy("balance", "desc")
-    .limit(payoutStructure.length)
-    .get();
+  const userTournamentsSnap = await db
+  .collection("userTournaments")
+  .where("tournamentId", "==", tournamentId)
+  .orderBy("performance", "desc")
+  .orderBy("balance", "desc")
+  .limit(payoutStructure.length)
+  .get();
+if (userTournamentsSnap.empty) {
+  throw new Error("No participants found");
+}
 
-  if (playersSnap.empty) {
-    throw new Error("No players found");
-  }
-
-  const winners = playersSnap.docs.map((doc, index) => ({
-    userId: doc.id,
-    payout: payoutStructure[index],
-  }));
+const winners = userTournamentsSnap.docs.map((doc, index) => ({
+  userId: doc.data().userId,
+  payout: payoutStructure[index],
+}));
 
   const payoutLogs = [];
-
-  // ---------------------------------
-  // STEP 2: PAYOUT (INSIDE TX)
-  // ---------------------------------
-  await db.runTransaction(async (t) => {
+  
+// ---------------------------------
+// STEP 2: PAYOUT (INSIDE TX)
+// ---------------------------------
+await db.runTransaction(async (t) => {
 
   const tournamentSnap = await t.get(tournamentRef);
   const tournament = tournamentSnap.data();
@@ -441,61 +431,60 @@ async processTournamentPayout(tournamentId) {
     throw new Error("Treasury insufficient");
   }
 
-  // 🔒 2. LOCK PAYOUT (VERY IMPORTANT)
+  // 🔒 2. LOCK PAYOUT
   t.update(tournamentRef, {
     payoutLocked: true,
   });
 
   let distributed = 0;
-if (distributed > prizePool) {
-  throw new Error("Distribution exceeds prize pool");
-}
+
+  // ✅ move this OUTSIDE loop
+  const paidUsers = tournament.paidUsers || {};
+
   for (const winner of winners) {
 
     const amount = winner.payout.amount;
-
     const userRef = db.collection("users").doc(winner.userId);
-    const playerRef = tournamentRef.collection("players").doc(winner.userId);
 
-    const [userSnap, playerSnap] = await Promise.all([
-      t.get(userRef),
-      t.get(playerRef),
-    ]);
+    const userSnap = await t.get(userRef);
+    if (!userSnap.exists) continue;
 
-    if (!userSnap.exists || !playerSnap.exists) continue;
+    // 🚨 prevent double payout
+    if (paidUsers[winner.userId]) continue;
 
-    const player = playerSnap.data();
-
-    // 🚨 prevent double payout per player
-    if (player.paidOut === true) continue;
-
-    // 💰 pay user
+    // 💰 pay FIRST
     t.update(userRef, {
       realBalance: admin.firestore.FieldValue.increment(amount),
       lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    // 🔒 mark paid
-    t.update(playerRef, {
-      paidOut: true,
+    // 🔒 THEN mark paid
+    paidUsers[winner.userId] = true;
+
+    t.update(tournamentRef, {
+      [`paidUsers.${winner.userId}`]: true,
     });
 
     distributed += amount;
-    // ✅ ADD THIS RIGHT HERE 👇
-  payoutLogs.push({
-    userId: winner.userId,
-    tournamentId,
-    amount,
-    type: "tournament_win",
-    createdAt: admin.firestore.Timestamp.now(),
-  });
+
+    if (distributed > prizePool) {
+      throw new Error("Distribution exceeds prize pool");
+    }
+
+    payoutLogs.push({
+      userId: winner.userId,
+      tournamentId,
+      amount,
+      type: "tournament_win",
+      createdAt: admin.firestore.Timestamp.now(),
+    });
   }
 
   // 🔻 treasury update
   t.update(treasuryRef, {
-  balance: admin.firestore.FieldValue.increment(-distributed),
-  lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
-});
+    balance: admin.firestore.FieldValue.increment(-distributed),
+    lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+  });
 
   // ✅ finalize tournament
   t.update(tournamentRef, {
