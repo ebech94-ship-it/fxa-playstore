@@ -33,7 +33,7 @@ status?: "upcoming" | "ongoing" | "finished";
   symbol?: string;  // optional, e.g., "$" or "T"
     startTime?: number;
   endTime?: number;
- startingBalance: number; // ✅ ADD THIS
+ 
 };
 
 type AppSettings = {
@@ -463,7 +463,7 @@ const unsubTournaments = onSnapshot(participantsQuery, async (snap) => {
       symbol: tMeta.symbol ?? "T",
       startTime: tMeta.startTime,
       endTime: tMeta.endTime,
-      startingBalance: tMeta.startingBalance ?? 0,
+   
     });
   }
 

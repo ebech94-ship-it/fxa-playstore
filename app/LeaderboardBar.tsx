@@ -225,9 +225,9 @@ useEffect(() => {
       const data = d.data() as any;
 
       const initialBalance =
-        data.initialBalance ??
-        activeTourney?.startingBalance ??
-        0;
+  data.initialBalance ??
+  activeTourney?.initialBalance ??
+  0;
 
       const balance = data.balance ?? 0;
 
@@ -247,7 +247,7 @@ useEffect(() => {
   });
 
   return () => unsub();
-}, [tournamentId, activeTourney?.startingBalance]);
+}, [tournamentId, activeTourney?.initialBalance]);
 
 const isTournamentLive =
   activeAccount.type === "tournament" && !!activeTourney?.tournamentId;

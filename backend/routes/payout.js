@@ -218,9 +218,14 @@ transactionId = `payout_${Date.now()}_${Math.random()
 // WEBHOOK (SECURED)
 // ----------------------
 router.post("/webhook", async (req, res) => {
+  let auditRef;
+
   try {
     const signature = req.headers["x-swychr-signature"];
 
+    // ----------------------
+    // 1. VERIFY SIGNATURE
+    // ----------------------
     if (process.env.SWYCHR_WEBHOOK_SECRET) {
       const expectedSignature = crypto
         .createHmac("sha256", process.env.SWYCHR_WEBHOOK_SECRET)
@@ -228,20 +233,27 @@ router.post("/webhook", async (req, res) => {
         .digest("hex");
 
       if (signature !== expectedSignature) {
-        console.error("❌ Invalid webhook signature");
+        auditRef = db.collection("webhookAudit").doc();
+
+        await auditRef.set({
+          type: "invalid_signature",
+          payload: req.body,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
         return res.status(401).json({ error: "Invalid signature" });
       }
     }
 
     const payload = req.body;
 
-    const transaction_id =
+    const transactionId =
       payload?.data?.transaction_id || payload?.transaction_id;
 
     const rawStatus =
       payload?.data?.status || payload?.status;
 
-    if (!transaction_id || !rawStatus) {
+    if (!transactionId || !rawStatus) {
       return res.status(200).json({ received: true });
     }
 
@@ -255,57 +267,117 @@ router.post("/webhook", async (req, res) => {
       raw === "processing" ? "processing" :
       "unknown";
 
+    // ----------------------
+    // 2. FIND PAYOUT
+    // ----------------------
     const snapshot = await db
       .collection("payouts")
-      .where("transactionId", "==", transaction_id)
+      .where("transactionId", "==", transactionId)
       .limit(1)
       .get();
 
     if (snapshot.empty) {
+      await db.collection("webhookAudit").add({
+        type: "payout_not_found",
+        transactionId,
+        status: newStatus,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
       return res.status(200).json({ received: true });
     }
 
-    const docRef = snapshot.docs[0].ref;
+    const payoutRef = snapshot.docs[0].ref;
 
+    // ----------------------
+    // 3. SAFE TRANSACTION
+    // ----------------------
     await db.runTransaction(async (t) => {
-      const docSnap = await t.get(docRef);
-      const payout = docSnap.data();
+      const snap = await t.get(payoutRef);
+      const payout = snap.data();
 
-      const processedKey = `${payout.transactionId}_${newStatus}`;
+      const processedKey = `${transactionId}_${newStatus}`;
 
-      if (
+      // ✅ IDENTITY GUARD (prevents double processing)
+      const alreadyProcessed =
         payout.status === newStatus ||
-        (payout.processedStatuses || []).includes(processedKey)
-      ) {
-        return;
-      }
+        (payout.processedStatuses || []).includes(processedKey);
 
-      t.update(docRef, {
+      if (alreadyProcessed) return;
+
+      // ----------------------
+      // UPDATE PAYOUT STATUS
+      // ----------------------
+      t.update(payoutRef, {
         status: newStatus,
         lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
         processedStatuses: admin.firestore.FieldValue.arrayUnion(processedKey),
       });
 
-      // 💰 REFUND LOGIC
+      const userRef = db.collection("users").doc(payout.userId);
+
+      // ----------------------
+      // REFUND LOGIC (SAFE)
+      // ----------------------
       if (["failed", "cancelled", "refunded"].includes(newStatus)) {
-        const userRef = db.collection("users").doc(payout.userId);
         const userSnap = await t.get(userRef);
+        const refunds = userSnap.data()?.refunds || [];
 
-        const refundedList = userSnap.data()?.refunds || [];
-
-        if (!refundedList.includes(payout.transactionId)) {
+        if (!refunds.includes(transactionId)) {
           t.update(userRef, {
             realBalance: admin.firestore.FieldValue.increment(payout.amount),
-            refunds: admin.firestore.FieldValue.arrayUnion(payout.transactionId),
+            refunds: admin.firestore.FieldValue.arrayUnion(transactionId),
+          });
+
+          t.set(db.collection("transactions").doc(), {
+            userId: payout.userId,
+            type: "refund",
+            amount: payout.amount,
+            reason: `Payout ${newStatus}`,
+            transactionId,
+            status: "completed",
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
           });
         }
       }
+
+      // ----------------------
+      // SUCCESS LOG
+      // ----------------------
+      if (newStatus === "success") {
+        t.set(db.collection("transactions").doc(), {
+          userId: payout.userId,
+          type: "payout",
+          amount: payout.amount,
+          transactionId,
+          status: "completed",
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      }
+    });
+
+    // ----------------------
+    // 4. FINAL AUDIT LOG
+    // ----------------------
+    await db.collection("webhookAudit").add({
+      type: "processed",
+      transactionId,
+      status: newStatus,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
     return res.status(200).json({ received: true });
 
   } catch (err) {
-    console.error("Webhook error:", err.message);
+    console.error("Webhook error:", err);
+
+    await db.collection("webhookAudit").add({
+      type: "error",
+      error: err.message,
+      stack: err.stack,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    }).catch(() => {});
+
     return res.status(200).json({ received: true });
   }
 });

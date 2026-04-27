@@ -332,6 +332,7 @@ const handleRegister = async (tournamentId: string) => {
       "Preview Mode",
       "You are in preview mode. Registration will not affect real accounts."
     );
+    return;
   }
 
   if (loadingActions[tournamentId]?.register) return;
@@ -373,22 +374,25 @@ const handleRegister = async (tournamentId: string) => {
     );
 
     const result = await response.json();
+    const msg = result?.error || result?.message;
 
-    
-     const msg = result?.error || result?.message;
-
-if (!response.ok) {
-  throw new Error(msg || "Registration failed");
-}
+    if (!response.ok) {
+      throw new Error(msg || "Registration failed");
+    }
 
     Alert.alert("Success", "Successfully joined tournament!");
+
+    // 🔥 SIMPLE STATE UPDATE (CORRECT FOR YOUR STRUCTURE)
+    setTournamentCounts((prev: Record<string, number>) => ({
+      ...prev,
+      [tournamentId]: (prev[tournamentId] || 0) + 1,
+    }));
   } catch (error: any) {
     Alert.alert("Error", error.message || "Registration failed.");
   } finally {
     setLoadingFor(tournamentId, "register", false);
   }
 };
-
 
 // ----------- REBUY ACTION (SECURE BACKEND VERSION) -----------
 const handleRebuy = async (tournamentId: string) => {

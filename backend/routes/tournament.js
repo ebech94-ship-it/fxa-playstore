@@ -171,7 +171,7 @@ router.post("/rebuy", authenticate, async (req, res) => {
 
       const participant = participantSnap.data();
 
-      await treasuryService.processRebuyTransaction(
+      await treasuryService.processRebuy(
         t,
         userId,
         tournamentId,
