@@ -61,7 +61,7 @@ export default function TournamentPayoutSection() {
 
     const q = query(
       collection(db, "tournaments", selectedTournament.id, "participants"),
-      orderBy("balance", "desc")
+      orderBy("performance", "desc")
     );
 
     const unsub = onSnapshot(q, async (snap) => {
