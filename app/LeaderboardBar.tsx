@@ -15,7 +15,7 @@ import { AccountType, useApp } from "./AppContext";
 
 
 
-export type Player = {
+export type Participant = {
   id: string;
   username?: string;
   balance?: number;
@@ -47,7 +47,7 @@ const PlayerRow = ({ username, countryCode }: PlayerRowProps) => (
 );
 
 // Fallback preview players
-const PREVIEW_PLAYERS: Player[] = [
+const PREVIEW_PLAYERS: Participant[] = [
   { id: "p1", username: "WolfTrader", balance: 950, avatar: "https://i.pravatar.cc/150?img=32", countryCode: "US" },
   { id: "p2", username: "PipHunter", balance: 870, avatar: "https://i.pravatar.cc/150?img=12", countryCode: "GB" },
   { id: "p3", username: "GoldKing", balance: 790, avatar: "https://i.pravatar.cc/150?img=50", countryCode: "FR" },
@@ -170,12 +170,13 @@ const { width, height } = useWindowDimensions();
 const isLandscape = width > height;
   
  const [showFull, setShowFull] = useState(false); 
-  const [livePlayers, setLivePlayers] = useState<Player[]>([]);
+  const [liveParticipants, setLiveParticipants] = useState<Participant[]>([]);
 
 const [loadingLive, setLoadingLive] = useState(false);
 const PAGE_SIZE = 50;
 const [page, setPage] = useState(1);
-const [pagedPlayers, setPagedPlayers] = useState<Player[]>([]);
+
+const [pagedParticipants, setPagedParticipants] = useState<Participant[]>([]);
 
 
 
@@ -192,14 +193,14 @@ useEffect(() => {
   );
 
   const unsub = onSnapshot(q, (snap) => {
-    const players: Player[] = snap.docs.map((d) => {
-      const data = d.data() as Omit<Player, "id">;
+    const participants: Participant[] = snap.docs.map((d) => {
+      const data = d.data() as Omit<Participant, "id">;
       return {
         id: d.id,
         ...data,
       };
     });
-    setLivePlayers(players);
+    setLiveParticipants(participants);
     setLoadingLive(false);
   });
 
@@ -208,7 +209,7 @@ useEffect(() => {
 
 useEffect(() => {
   if (!tournamentId) {
-    setLivePlayers([]);
+    setLiveParticipants([]);
     setLoadingLive(false);
     return;
   }
@@ -216,11 +217,11 @@ useEffect(() => {
   setLoadingLive(true);
 
   const q = query(
-    collection(db, "tournaments", tournamentId, "players")
+    collection(db, "tournaments", tournamentId, "participants")
   );
 
   const unsub = onSnapshot(q, (snap) => {
-    const players: Player[] = snap.docs.map((d) => {
+    const participants: Participant[] = snap.docs.map((d) => {
       const data = d.data() as any;
 
       const initialBalance =
@@ -239,9 +240,9 @@ useEffect(() => {
       };
     });
 
-    players.sort((a, b) => (b.performance ?? 0) - (a.performance ?? 0));
+    participants.sort((a, b) => (b.performance ?? 0) - (a.performance ?? 0));
 
-    setLivePlayers(players);
+    setLiveParticipants(participants);
     setLoadingLive(false);
   });
 
@@ -252,14 +253,14 @@ const isTournamentLive =
   activeAccount.type === "tournament" && !!activeTourney?.tournamentId;
 
 
-const players: Player[] = activeAccount.type === "demo"
-  ? livePlayers          // Fetch from demoAccounts collection
+const participants: Participant[] = activeAccount.type === "demo"
+  ? liveParticipants          // Fetch from demoAccounts collection
   : isTournamentLive
-  ? livePlayers          // Tournament live leaderboard
+  ? liveParticipants          // Tournament live leaderboard
   : PREVIEW_PLAYERS;     // Fallback
 
 // ✅ Override current user's balance for instant demo updates
-const displayPlayers = players.map((p) => {
+const displayParticipants = participants.map((p) => {
   const isCurrent = currentUser && p.id === currentUser.uid;
 
   // If this is the demo account of the current user, force the local demoBalance
@@ -287,15 +288,15 @@ const displayPlayers = players.map((p) => {
 }, [showFull]);
 
 useEffect(() => {
-  setPagedPlayers(displayPlayers.slice(0, page * PAGE_SIZE));
-}, [displayPlayers, page]);
+  setPagedParticipants(displayParticipants.slice(0, page * PAGE_SIZE));
+}, [displayParticipants, page]);
 
 const chunkSize = isLandscape ? 1 : 2; // 1 row in landscape, 2 rows in portrait
 
-const chunkedPlayers: Player[][] = [];
+const chunkedPlayers: Participant[][] = [];
 
-for (let i = 0; i < displayPlayers.length; i += chunkSize) {
-  chunkedPlayers.push(displayPlayers.slice(i, i + chunkSize));
+for (let i = 0; i < displayParticipants.length; i += chunkSize) {
+  chunkedPlayers.push(displayParticipants.slice(i, i + chunkSize));
 
 }
 
@@ -441,7 +442,7 @@ return (
 </Pressable>
 
          <FlatList
-  data={pagedPlayers}                     // only the players for current page
+  data={pagedParticipants}                     // only the players for current page
   keyExtractor={(p) => p.id}
   numColumns={3}                           // keep grid-like layout
   columnWrapperStyle={{ justifyContent: "space-between", marginBottom: 10 }}

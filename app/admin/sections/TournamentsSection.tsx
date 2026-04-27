@@ -18,7 +18,7 @@ import {
 } from "react-native";
 import { db } from "../../../firebaseConfig";
 
-interface Player {
+interface Participant {
   id: string;
   username: string;
   balance: number;
@@ -92,8 +92,8 @@ const [deleting, setDeleting] = useState(false);
 
 
   // Data
-  const [players, setPlayers] = useState<Player[]>([]);
-const [loadingPlayers, setLoadingPlayers] = useState(true);
+ const [participants, setParticipants] = useState<Participant[]>([]);
+const [loadingParticipants, setLoadingParticipants] = useState(true);
 
   // FORM FIELDS
   const [formName, setFormName] = useState("");
@@ -248,62 +248,74 @@ useEffect(() => {
   }, []);
 
   // Fetch participant count for a tournament and patch into tournaments state
-  const fetchParticipantCount = async (tournamentId: string) => {
-    try {
-      const q = query(collection(db, "tournaments", tournamentId, "players"));
-      const snap = await getDocs(q);
-      const cnt = snap.size;
-      setTournaments((prev) => prev.map((t) => (t.id === tournamentId ? { ...t, participantsCount: cnt } : t)));
-    } catch (err) {
-      // silent fail - we don't want the UI to crash on count fetch fail
-      console.warn("Failed to fetch participant count:", err);
-    }
-  };
-
-  // loadParticipants returns unsubscribe and we manage it in an effect
-  const loadPlayers = (tournamentId: string) => {
-    setLoadingPlayers(true);
-    setPlayers([]); // clear previous to avoid stale flash
-
-    const q = query(collection(db, "tournaments", tournamentId, "players"), orderBy("balance", "desc"));
-
-    const unsub = onSnapshot(
-      q,
-      (snap) => {
-        const list = snap.docs.map((d) => {
-          const data = d.data() as any;
-          return {
-            id: d.id,
-           username: data.username ?? "Player",
-
-            balance: Number(data.balance ?? 0),
-          } as Player;
-        });
-        setPlayers(list);
-        setLoadingPlayers(false);
-      },
-      (error) => {
-        console.warn("participants onSnapshot error:", error);
-        setLoadingPlayers(false);
-      }
+ const fetchParticipantCount = async (tournamentId: string) => {
+  try {
+    const q = query(
+      collection(db, "tournaments", tournamentId, "participants")
     );
 
-    return unsub;
-  };
+    const snap = await getDocs(q);
+    const cnt = snap.size;
 
+    setTournaments((prev) =>
+      prev.map((t) =>
+        t.id === tournamentId
+          ? { ...t, participantsCount: cnt }
+          : t
+      )
+    );
+  } catch (err) {
+    console.warn("Failed to fetch participant count:", err);
+  }
+};
+
+  // loadParticipants returns unsubscribe and we manage it in an effect
+  const loadParticipants = (tournamentId: string) => {
+  setLoadingParticipants(true);
+  setParticipants([]); // you can rename this later if you want
+
+  const q = query(
+    collection(db, "tournaments", tournamentId, "participants"),
+    orderBy("balance", "desc")
+  );
+
+  const unsub = onSnapshot(
+    q,
+    (snap) => {
+      const list = snap.docs.map((d) => {
+        const data = d.data() as any;
+
+        return {
+          id: d.id,
+          username: data.username ?? "Participant",
+          balance: Number(data.balance ?? 0),
+        } as Participant;
+      });
+
+      setParticipants(list);
+      setLoadingParticipants(false);
+    },
+    (error) => {
+      console.warn("participants onSnapshot error:", error);
+      setLoadingParticipants(false);
+    }
+  );
+
+  return unsub;
+};
   // Effect to subscribe/unsubscribe to participants when leaderboardVisible changes
   useEffect(() => {
     let unsub: (() => void) | undefined;
     if (leaderboardVisible && selectedTournament) {
-      unsub = loadPlayers(selectedTournament.id);
+      unsub = loadParticipants(selectedTournament.id);
     }
     return () => {
       if (unsub) unsub();
       // small cleanup: clear participants so old data doesn't flash when reopened
       if (!leaderboardVisible) {
-        setPlayers([]);
-        setLoadingPlayers(true);
-      }
+  setParticipants([]);
+  setLoadingParticipants(true);
+}
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [leaderboardVisible, selectedTournament?.id]);
@@ -353,8 +365,8 @@ useEffect(() => {
     }
 
     // ensure stale participants are cleared to avoid showing wrong leaderboard
-    setPlayers([]);
-    setLoadingPlayers(true);
+    setParticipants([]);
+    setLoadingParticipants(true);
 
     setModalVisible(true);
   
@@ -643,7 +655,7 @@ setSaving(false);
           {/* <Text style={styles.meta}>💰 Prize: {t.prizePool}</Text> */}
 <Text style={styles.meta}>🏆 Top Rank: {RANK_TIERS[0].name}</Text>
           <Text style={styles.meta}>
-            👥 Players: {t.participantsCount ?? 0}
+            👥 Participants: {t.participantsCount ?? 0}
           </Text>
         </View>
       </Pressable>
@@ -912,10 +924,10 @@ setSaving(false);
             <Text style={styles.modalHeader}>🏆 {selectedTournament?.name} Leaderboard</Text>
 
             <ScrollView>
-              {loadingPlayers ? (
+              {loadingParticipants ? (
                 <Text style={styles.noResults}>Loading...</Text>
-              ) : players.length > 0 ? (
-                players.map((p, i) => (
+              ) : participants.length > 0 ? (
+                participants.map((p, i) => (
                  <View key={p.id} style={styles.leaderCard}>
   <Text style={styles.rank}>{i + 1}</Text>
 

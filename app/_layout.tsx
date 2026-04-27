@@ -21,13 +21,13 @@ import { AppProvider, useApp } from "./AppContext";
    AUTH GATE (OUTSIDE)
    =============================== */
 function AuthGate() {
-  const { authUser, loading, appReady } = useApp();
+  const { authUser, loading, appReady,hydrated } = useApp();
   const router = useRouter();
   const hasRedirected = useRef(false);
 
 
   useEffect(() => {
-    if (loading || !appReady) return;
+  if (!hydrated || loading || !appReady) return;
     if (hasRedirected.current) return;
 
     hasRedirected.current = true;
@@ -37,7 +37,7 @@ function AuthGate() {
     } else {
       router.replace("/welcome");
     }
-  }, [authUser, loading, appReady, router]);
+  }, [authUser, loading, appReady, router, hydrated]);
 
   return null;
 }

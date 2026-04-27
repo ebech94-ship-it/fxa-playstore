@@ -27,7 +27,7 @@ interface Tournament {
   payoutStructure?: { rank: number; amount: number }[];
 }
 
-interface Player {
+interface Participant {
   id: string;
   username?: string;
   email?: string;
@@ -38,7 +38,7 @@ export default function TournamentPayoutSection() {
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
   const [selectedTournament, setSelectedTournament] =
     useState<Tournament | null>(null);
-  const [players, setPlayers] = useState<Player[]>([]);
+ const [participants, setParticipants] = useState<Participant[]>([]);
   const [paidMap, setPaidMap] = useState<Record<string, boolean>>({});
   const [loadingPay, setLoadingPay] = useState<string | null>(null);
 
@@ -60,7 +60,7 @@ export default function TournamentPayoutSection() {
     if (!selectedTournament) return;
 
     const q = query(
-      collection(db, "tournaments", selectedTournament.id, "players"),
+      collection(db, "tournaments", selectedTournament.id, "participants"),
       orderBy("balance", "desc")
     );
 
@@ -70,7 +70,7 @@ export default function TournamentPayoutSection() {
         ...(d.data() as any),
       }));
 
-      setPlayers(list);
+      setParticipants(list);
 
       // check already paid users
       const payoutsSnap = await getDocs(
@@ -113,7 +113,7 @@ export default function TournamentPayoutSection() {
           },
           body: JSON.stringify({
             tournamentId: selectedTournament?.id,
-            userId,
+             participantId: userId,
             amount,
             rank,
           }),
@@ -163,7 +163,7 @@ export default function TournamentPayoutSection() {
           </TouchableOpacity>
 
           <FlatList
-            data={players}
+            data={participants}
             keyExtractor={(item) => item.id}
             renderItem={({ item, index }) => {
               const rank = index + 1;

@@ -10,9 +10,7 @@ import { getAuth } from "firebase/auth";
 import { useApp } from "./AppContext"; // <-- add this at the top
 
 
-import {
-  collection, doc, getDoc, limit, onSnapshot, orderBy, query
-} from "firebase/firestore";
+import { collection, limit, onSnapshot, orderBy, query } from "firebase/firestore";
 import { useEffect, useState } from "react";
 import {
   Alert, FlatList,
@@ -138,7 +136,7 @@ export default function TournamentScreen({ currentUser }: TournamentScreenProps)
   const [tournaments, setTournaments] = useState<Tournament[]>([]);
     const { tournamentId } = useLocalSearchParams<{ tournamentId: string }>();
   // live players list for the currently selected tournament (used for counts / participant preview)
-const [players, setPlayers] = useState<any[]>([]);
+
 
 const [tournamentCounts, setTournamentCounts] = useState<Record<string, number>>({});
 const [tournamentRebuys, setTournamentRebuys] = useState<Record<string, number>>({});
@@ -176,218 +174,173 @@ const { activeAccount,   isAdmin, adminLoaded, tournamentAccounts, profile } = u
     },
   }));
 };
+// ---------- TIMER ----------
+useEffect(() => {
+  const interval = setInterval(() => {
+    setNow(Date.now());
+  }, 1000);
+
+  return () => clearInterval(interval);
+}, []);
 
 
-  // tick every second for countdowns
-  useEffect(() => {
-    const interval = setInterval(() => setNow(new Date().getTime()), 1000);
-    return () => clearInterval(interval);
-  }, []);
+// ---------- TOURNAMENTS + DEEPLINK AUTO SELECT ----------
+useEffect(() => {
+  const q = query(
+    collection(db, "tournaments"),
+    orderBy("createdAt", "desc")
+  );
 
-  // ✅ TOURNAMENTS LISTENER (for all tournaments list)
-  useEffect(() => {
-    const q = query(collection(db, "tournaments"), orderBy("createdAt", "desc"));
-    const unsub = onSnapshot(q, (snapshot) => {
-      const list = snapshot.docs.map((d) => ({
-        id: d.id,
-        ...(d.data() as Omit<Tournament, "id">),
-      })) as Tournament[];
+  const unsub = onSnapshot(q, (snapshot) => {
+    const list = snapshot.docs.map((d) => ({
+      id: d.id,
+      ...(d.data() as Omit<Tournament, "id">),
+    })) as Tournament[];
 
-      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-      setTournaments(list);
-    });
+    setTournaments(list);
 
-    return () => unsub();
-  }, []);
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
 
+    // ✅ FIX: remove selectedTournament dependency issue
+    if (tournamentId) {
+      const match = list.find((t) => t.id === tournamentId);
 
- useEffect(() => {
-  if (!currentUser || tournaments.length === 0) return;
+      if (match) {
+        setSelectedTournament((prev) => {
+          // prevent unnecessary state updates
+          if (prev?.id === match.id) return prev;
+          return match;
+        });
 
-  const unsubs: (() => void)[] = [];
-
-  tournaments.forEach((t) => {
-    const ref = doc(db, "tournaments", t.id, "players", currentUser.uid);
-
-    // ✅ check once immediately
-    getDoc(ref)
-      .then((snap) => {
-        setJoinedMap((prev) => ({
-          ...prev,
-          [t.id]: snap.exists(),
-        }));
-      })
-      .catch((err) => console.error("Error fetching joined state:", err));
-
-    // ✅ also listen for real-time changes
-    const unsub = onSnapshot(ref, (snap) => {
-      setJoinedMap((prev) => ({
-        ...prev,
-        [t.id]: snap.exists(),
-      }));
-    });
-
-    unsubs.push(unsub);
+        setViewTab("info");
+      }
+    }
   });
 
-  return () => {
-    unsubs.forEach((u) => u());
-  };
-}, [tournaments, currentUser]);
+  return () => unsub();
+}, [tournamentId]); // ✅ ONLY tournamentId
 
 
-
+// ---------- USER JOINED TOURNAMENTS ----------
 useEffect(() => {
-  if (!selectedTournament?.id) return;
+  if (!currentUser?.uid) return;
+
+  const ref = collection(
+    db,
+    "users",
+    currentUser.uid,
+    "joinedTournaments"
+  );
+
+  const unsub = onSnapshot(ref, (snapshot) => {
+    const map: Record<string, boolean> = {};
+
+    snapshot.forEach((doc) => {
+      map[doc.id] = true;
+    });
+
+    setJoinedMap(map);
+  });
+
+  return () => unsub();
+}, [currentUser?.uid]);
+
+
+// ---------- SELECTED TOURNAMENT LIVE ENGINE (STATS + LEADERBOARD MERGED) ----------
+useEffect(() => {
+  if (!tournamentId) return;
 
   const ref = collection(
     db,
     "tournaments",
-    selectedTournament.id,
-    "players"
+    tournamentId,
+    "participants"
   );
 
   const unsub = onSnapshot(ref, (snap) => {
     let rebuyTotal = 0;
 
-    snap.docs.forEach((d) => {
-      const data = d.data();
-      const count = Array.isArray(data.rebuys) ? data.rebuys.length : 0;
-      rebuyTotal += count;
-    });
-
-    // 👥 participants
-    setTournamentCounts((prev) => ({
-      ...prev,
-      [selectedTournament.id]: snap.size,
-    }));
-
-    // ♻️ rebuys
-    setTournamentRebuys((prev) => ({
-      ...prev,
-      [selectedTournament.id]: rebuyTotal,
-    }));
-  });
-
-  return () => unsub();
-}, [selectedTournament]);
-
-  // ✅ GLOBAL LEADERBOARD (only when no tournament is open)
-  useEffect(() => {
-    if (selectedTournament) return; // stop if modal is open
-
-    const q = query(collection(db, "users"), orderBy("accounts.tournament.balance", "desc"), limit(30));
-    const unsub = onSnapshot(q, (snapshot) => {
-      const list = snapshot.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
-      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-      setLeaderboard(list);
-    });
-    return () => unsub();
-  }, [selectedTournament]);
-
-  // ✅ TOURNAMENT LEADERBOARD (active tournament only)
- useEffect(() => {
-  if (!selectedTournament?.id) return;
-
-  const playersRef = collection(
-    db,
-    "tournaments",
-    selectedTournament.id,
-    "players"
-  );
-
-  const q = query(playersRef); // no sorting from firestore
-
-  const unsub = onSnapshot(q, (snapshot) => {
-    const playerList = snapshot.docs.map((doc) => {
+    const leaderboardList = snap.docs.map((doc) => {
       const data = doc.data() as any;
 
+      rebuyTotal += data.rebuyCount ?? 0;
+
       const initialBalance =
-        data.initialBalance ?? selectedTournament.startingBalance ?? 0;
+        data.initialBalance ??
+        selectedTournament?.startingBalance ??
+        0;
 
       const balance = data.balance ?? 0;
-
-      const performance = balance - initialBalance;
 
       return {
         id: doc.id,
         ...data,
-        performance,
+        performance: balance - initialBalance,
       };
     });
 
-    // ✅ SORT BY PERFORMANCE
-    playerList.sort((a, b) => b.performance - a.performance);
+    leaderboardList.sort((a, b) => b.performance - a.performance);
+
+    setLeaderboard(leaderboardList);
+
+    // ⚡ avoid useless rerenders
+    setTournamentCounts((prev) => {
+      if (prev[tournamentId] === snap.size) return prev;
+      return { ...prev, [tournamentId]: snap.size };
+    });
+
+    setTournamentRebuys((prev) => {
+      if (prev[tournamentId] === rebuyTotal) return prev;
+      return { ...prev, [tournamentId]: rebuyTotal };
+    });
 
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    setLeaderboard(playerList);
   });
 
   return () => unsub();
-}, [selectedTournament]);
-  
-  useEffect(() => {
-  if (!tournamentId || tournaments.length === 0) return;
+}, [tournamentId, selectedTournament?.startingBalance]);
 
-  const found = tournaments.find((t) => t.id === tournamentId);
-  if (found) {
-    setSelectedTournament(found);
-    setViewTab("info");
-  }
-}, [tournamentId, tournaments]);
 
+// ---------- GLOBAL LEADERBOARD ----------
 useEffect(() => {
-  if (!selectedTournament?.id) return;
+  if (selectedTournament?.id) return;
 
-  const ref = collection(
-    db,
-    "tournaments",
-    selectedTournament.id,
-    "players"
+  const q = query(
+    collection(db, "users"),
+    orderBy("accounts.tournament.balance", "desc"),
+    limit(30)
   );
 
-  const unsub = onSnapshot(ref, (snap) => {
-    const list = snap.docs.map((d) => ({
+  const unsub = onSnapshot(q, (snapshot) => {
+    const list = snapshot.docs.map((d) => ({
       id: d.id,
-      ...d.data(),
+      ...(d.data() as any),
     }));
-    setPlayers(list);
+
+    setLeaderboard(list);
+
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
   });
 
   return () => unsub();
 }, [selectedTournament?.id]);
 
-useEffect(() => {
-  if (!currentUser || !players.length || !selectedTournament) return;
-
-  const joined = players.some(p => p.id === currentUser.uid);
-
-  setJoinedMap(prev => ({
-    ...prev,
-    [selectedTournament.id]: joined,
-  }));
-}, [players, currentUser, selectedTournament]);
-
-
 // ---------- REGISTER USER TO TOURNAMENT ----------
 const handleRegister = async (tournamentId: string) => {
-  // 🔒 PREVIEW MODE BLOCK
   if (profile?.preview) {
     Alert.alert(
       "Preview Mode",
-      "You are in preview mode. Registration is temporary and will not affect real accounts."
+      "You are in preview mode. Registration will not affect real accounts."
     );
-    // Do NOT return; allow registration to proceed
   }
 
-  // 🚫 DOUBLE TAP GUARD
   if (loadingActions[tournamentId]?.register) return;
 
   const auth = getAuth();
   const user = auth.currentUser;
 
   if (!user) {
-    Alert.alert("Error", "You must be logged in to register.");
+    Alert.alert("Error", "You must be logged in.");
     return;
   }
 
@@ -399,12 +352,6 @@ const handleRegister = async (tournamentId: string) => {
 
   if (Date.now() > tour.endTime) {
     Alert.alert("Closed", "This tournament has already ended.");
-    return;
-  }
-
-  const entryFee = Number(tour.entryFee ?? 0);
-  if (isNaN(entryFee) || entryFee < 0) {
-    Alert.alert("Error", "Invalid tournament entry fee.");
     return;
   }
 
@@ -421,52 +368,31 @@ const handleRegister = async (tournamentId: string) => {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          tournamentId,
-        }),
+        body: JSON.stringify({ tournamentId }),
       }
     );
 
-    const data = await response.json();
+    const result = await response.json();
 
-    if (!response.ok) {
-      throw new Error(data.message || "Registration failed");
-    }
+    
+     const msg = result?.error || result?.message;
 
-    Alert.alert("Success", "Registered successfully!");
+if (!response.ok) {
+  throw new Error(msg || "Registration failed");
+}
+
+    Alert.alert("Success", "Successfully joined tournament!");
   } catch (error: any) {
-    let message = "Registration failed.";
-
-    if (error.message === "ALREADY_REGISTERED") {
-      message = "You are already registered in this tournament.";
-    } else if (error.message === "USER_NOT_FOUND") {
-      message = "User profile not found.";
-    } else if (error.message === "INSUFFICIENT_FUNDS") {
-      message = "Insufficient balance to register.";
-    } else if (error.message === "INVALID_WALLET") {
-      message = "Wallet error. Contact support.";
-    } else if (error.message) {
-      message = error.message;
-    }
-
-    Alert.alert("Error", message);
-
-
+    Alert.alert("Error", error.message || "Registration failed.");
   } finally {
     setLoadingFor(tournamentId, "register", false);
   }
 };
 
 
-
 // ----------- REBUY ACTION (SECURE BACKEND VERSION) -----------
 const handleRebuy = async (tournamentId: string) => {
-
-  // 🚫 DOUBLE TAP GUARD
-  if (loadingActions[tournamentId]?.rebuy) {
-  console.log("Rebuy blocked: already processing");
-  return;
-}
+  if (loadingActions[tournamentId]?.rebuy) return;
 
   if (!currentUser) {
     Alert.alert("Error", "You must be logged in.");
@@ -479,9 +405,8 @@ const handleRebuy = async (tournamentId: string) => {
     return;
   }
 
-  const now = Date.now();
-  if (now > tour.endTime) {
-    Alert.alert("Rebuy Closed", "This tournament has already ended.");
+  if (Date.now() > tour.endTime) {
+    Alert.alert("Closed", "Tournament already ended.");
     return;
   }
 
@@ -491,28 +416,26 @@ const handleRebuy = async (tournamentId: string) => {
     const token = await currentUser.getIdToken();
 
     const response = await fetch(
-      "https://forexapp2-backend.onrender.com/tournament-rebuy",
+      "https://forexapp2-backend.onrender.com/tournament/rebuy",
       {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`, // ✅ VERY IMPORTANT
+          Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          tournamentId, // ✅ ONLY send tournamentId
-        }),
+        body: JSON.stringify({ tournamentId }),
       }
     );
 
     const result = await response.json();
 
     if (!response.ok) {
-      throw new Error(result?.message || "Server rejected the rebuy.");
+      throw new Error(result?.error || result?.message || "Rebuy failed");
     }
 
-    Alert.alert("Rebuy Successful", "You have re-entered the tournament!");
+    Alert.alert("Success", "Rebuy successful!");
   } catch (error: any) {
-    Alert.alert("Rebuy Failed", error.message || "Could not complete rebuy.");
+    Alert.alert("Error", error.message || "Rebuy failed.");
   } finally {
     setLoadingFor(tournamentId, "rebuy", false);
   }
@@ -969,8 +892,8 @@ const allowRebuy =
             </View>
 
             <Text style={styles.modalInfo}>
-              👥 {players.length} participants
-            </Text>
+  👥 {tournamentCounts[selectedTournament.id] ?? 0} participants
+</Text>
 
             <Text style={styles.modalInfo}>
               ♻️ Rebuys: {tournamentRebuys[selectedTournament.id] ?? 0}

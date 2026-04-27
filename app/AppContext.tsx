@@ -2,7 +2,7 @@
 import { auth, db } from "@/lib/firebase";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { onAuthStateChanged, User } from "firebase/auth";
-import { collection, collectionGroup, doc, getDoc, onSnapshot, query, setDoc, updateDoc, where } from "firebase/firestore";
+import { collection, collectionGroup, doc, getDoc, onSnapshot, query, setDoc, where } from "firebase/firestore";
 
 
 import {
@@ -10,7 +10,7 @@ import {
   ReactNode,
   useContext,
   useEffect,
-  useMemo,
+  useMemo,  
   useRef,
   useState,
 } from "react";
@@ -22,7 +22,7 @@ export type AccountType =
   | { type: "real" }
   | { type: "tournament"; tournamentId: string };
 
-export type PlayerTournament = {
+export type ParticipantTournament = {
   tournamentId: string;
   balance: number;
   initialBalance: number; 
@@ -51,7 +51,7 @@ type Accounts = {
     balance: number;
     currency: string;
   };
-  tournaments?: Record<string, PlayerTournament>;
+  tournaments?: Record<string, ParticipantTournament>;
 
 };
 type UserProfile = {
@@ -104,6 +104,7 @@ type FirestoreUserDoc = {
 
 type AppContextType = {
   appSettings: AppSettings;
+  hydrated: boolean;
   // 🔐 admin
   isAdmin: boolean;
   adminLoaded: boolean;
@@ -113,16 +114,16 @@ type AppContextType = {
 
   accounts: Accounts | null;
 
-  tournaments: PlayerTournament[];
+  tournaments: ParticipantTournament[];
   demoBalance: number;
 setDemoBalance: React.Dispatch<React.SetStateAction<number>>;
 
   // UI / trading
   activeAccount: AccountType;
-  activeTournament: PlayerTournament | null;
+  activeTournament: ParticipantTournament | null;
 
   setActiveAccount: (a: AccountType) => void;
-  setActiveTournament: (t: PlayerTournament | null) => void;
+  setActiveTournament: (t: ParticipantTournament | null) => void;
 
    appReady: boolean;
 setAppReady: (value: boolean) => void;
@@ -191,7 +192,7 @@ const AppContext = createContext<AppContextType>({
   appReady: false,
 setAppReady: () => {},
 
-
+hydrated: false,
   // 🔥 ADD THESE TWO LINES
   demoBalance: 1000,
   setDemoBalance: () => {},
@@ -228,11 +229,11 @@ const [adminLoaded, setAdminLoaded] = useState(false);
 
   const [accounts, setAccounts] = useState<Accounts | null>(null);
 
-  const [tournaments, setTournaments] = useState<PlayerTournament[]>([]);
+  const [tournaments, setTournaments] = useState<ParticipantTournament[]>([]);
 const [activeTournament, setActiveTournament] =
-  useState<PlayerTournament | null>(null);
+  useState<ParticipantTournament | null>(null);
 const activeAccountRef = useRef<AccountType>({ type: "demo" });
-const activeTournamentRef = useRef<PlayerTournament | null>(null);
+const activeTournamentRef = useRef<ParticipantTournament | null>(null);
 
 const [appSettings, setAppSettings] = useState<AppSettings>({
   enablePayouts: true,
@@ -243,6 +244,7 @@ const [appSettings, setAppSettings] = useState<AppSettings>({
   type: "demo", // default account
 });
 const [userDoc, setUserDoc] = useState<FirestoreUserDoc | null>(null);
+const [hydrated, setHydrated] = useState(false);
 
 const [liveTournamentBalances, setLiveTournamentBalances] = useState<Record<string, number>>({});
 const [tournamentMeta, setTournamentMeta] = useState<
@@ -316,33 +318,6 @@ const tournamentAccounts = useMemo(() =>
 
 /* ---------------- HELPERS ---------------- */
 
-// Generate a new unique publicId for a user
-const generateUserId = async (): Promise<string> => {
-  const counterRef = doc(db, "meta", "userCounter");
-
-  try {
-    let newId = await (async () => {
-      // Simple transaction to increment a counter
-      const snap = await getDoc(counterRef);
-      if (!snap.exists()) {
-        // initialize counter if missing
-        await updateDoc(counterRef, { count: 1 }).catch(() => {});
-        return `USR-000001`;
-      }
-      const current = snap.data()?.count ?? 0;
-      const next = current + 1;
-
-      await updateDoc(counterRef, { count: next });
-
-      return `USR-${String(next).padStart(6, "0")}`;
-    })();
-
-    return newId;
-  } catch (err) {
-    console.error("Failed to generate userId:", err);
-    return `USR-${Date.now()}`; // fallback
-  }
-};
 useEffect(() => {
   const ref = doc(db, "settings", "app");
 
@@ -358,50 +333,13 @@ useEffect(() => {
 
   return unsub;
 }, []);
-useEffect(() => {
-  const fetchUserProfile = async () => {
-    if (!auth.currentUser) return;
-
-    const userRef = doc(db, "users", auth.currentUser.uid);
-    const userSnap = await getDoc(userRef);
-
-    if (userSnap.exists()) {
-      const data = userSnap.data();
-
-      // Generate missing publicId
-      if (!data.publicId) {
-        const newId = await generateUserId();
-        await updateDoc(userRef, { publicId: newId });
-        data.publicId = newId;
-      }
-
-      const mappedProfile: UserProfile = {
-  publicId: data.publicId,
-  username: data.username ?? "New User",
-  displayName: data.displayName ?? data.username ?? "New User",
-  email: data.email ?? "",
-  phone: data.phone ?? "",
-  country: data.country ?? "",
-  dateOfBirth: data.dateOfBirth ?? "",
-  avatarUrl: data.avatarUrl ?? "",
-  preview: false,
-  verified: !!data.username && !!data.country && !!data.avatarUrl, // only true if all filled
-  profileCompleted: data.profileCompleted ?? false,
-};
-
-      setProfile(mappedProfile);
-    }
-  };
-
-  fetchUserProfile();
-}, []);
 
 
   /* 🔐 Auth listener */
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
       setAuthUser(user);
-      
+       setHydrated(true);
     });
     return unsub;
   }, []);
@@ -495,13 +433,13 @@ useEffect(() => {
   // 🔥 NEW: LIVE TOURNAMENT LISTENER (THIS IS THE FIX)
   
 
-const playersQuery = query(
-  collectionGroup(db, "players"),
+const participantsQuery = query(
+  collectionGroup(db, "participants"),
   where("__name__", "==", authUser.uid)
 );
 
-const unsubTournaments = onSnapshot(playersQuery, async (snap) => {
-  const list: PlayerTournament[] = [];
+const unsubTournaments = onSnapshot(participantsQuery, async (snap) => {
+  const list: ParticipantTournament[] = [];
 
   for (const docSnap of snap.docs) {
     const data = docSnap.data();
@@ -667,7 +605,7 @@ useEffect(() => {
       db,
       "tournaments",
       t.tournamentId,
-      "players",
+      "participants",
       authUser.uid
     );
 
@@ -729,6 +667,7 @@ useEffect(() => {
 
   return () => unsubs.forEach((u) => u());
 }, [tournaments]);
+
 useEffect(() => {
   if (!authUser?.uid) {
     setUnreadCount(0);
@@ -766,6 +705,7 @@ useEffect(() => {
     <AppContext.Provider
   value={{
     appReady,
+    hydrated,
   setAppReady,
      unreadCount,
     setUnreadCount,

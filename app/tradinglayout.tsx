@@ -109,21 +109,21 @@ const payoutTournamentWin = async (
   uid: string,
   payout: number
 ) => {
-  const playerRef = doc(
+  const participantRef = doc(
     db,
     "tournaments",
     tournamentId,
-    "players",
+    "participants",
     uid
   );
 
   await runTransaction(db, async (tx) => {
-    const snap = await tx.get(playerRef);
+    const snap = await tx.get(participantRef);
     if (!snap.exists()) return;
 
     const balance = snap.data().balance ?? 0;
 
-    tx.update(playerRef, {
+    tx.update(participantRef, {
       balance: balance + payout,
       updatedAt: serverTimestamp(),
     });
@@ -184,10 +184,7 @@ const expiryPanResponder = useRef(
   const [profitPercent] = useState<number>(PAYOUT);
   const { unreadCount } = useApp();
 
- const [balances, setBalances] = useState({
-  real: 0,
-  tournament: 0,
-});
+ 
 
 const [tournamentBalances, setTournamentBalances] = useState<
   Record<string, number>
@@ -212,14 +209,14 @@ const handleKeyPress = (key: string) => {
     return Number(next);
   });
 };
-const { 
-  profile, 
-  tournaments, 
-  activeAccount, 
-  setActiveAccount, 
-  activeTournament, 
-  balances: ctxBalances,
-  demoBalance,
+const {
+  profile,
+  tournaments = [],
+  activeAccount,
+  setActiveAccount,
+  activeTournament,
+  balances: ctxBalances = { real: 0, tournament: 0 },
+  demoBalance = 0,
   setDemoBalance
 } = useApp();
 
@@ -244,33 +241,6 @@ const panResponder = useRef(
     },
   })
 ).current;
-
-useEffect(() => {
-  // 🔐 Only run if activeAccount is a tournament account
-  if (!activeAccount || activeAccount.type !== "tournament") return;
-
-  const tid = activeAccount.tournamentId; // TS knows this exists now
-  if (!tid) return;
-
-  const uid = auth.currentUser?.uid;
-  if (!uid) return;
-
-  const playerRef = doc(db, "tournaments", tid, "players", uid);
-
-  let isSubscribed = true; // guard to prevent updates after unmount
-
-  const unsub = onSnapshot(playerRef, (snap) => {
-    if (!snap.exists() || !isSubscribed) return;
-
-    const newBalance = snap.data()?.balance ?? 0;
-    setBalances((prev) => ({ ...prev, tournament: newBalance }));
-  });
-
-  return () => {
-    isSubscribed = false;
-    unsub(); // clean up listener
-  };
-}, [activeAccount]);
 
 
 useEffect(() => {
@@ -313,12 +283,6 @@ useEffect(() => {
   chartRef.current?.setWickCompression(compressWicks ? 0.3 : 1);
 }, [compressWicks]);
 
-useEffect(() => {
-  setBalances((prev) => ({
-    ...prev,
-    real: ctxBalances.real,
-  }));
-}, [ctxBalances.real]);
 
  const chartRef = useRef<ChartViewHandle | null>(null);
 
@@ -406,20 +370,20 @@ const handleTrade = async (type: "buy" | "sell") => {
 
   // ---------------- TOURNAMENT ACCOUNT ----------------
   if (activeAccount.type === "tournament" && activeAccount.tournamentId) {
-    const playerRef = doc(
+    const participantRef = doc(
       db,
       "tournaments",
       activeAccount.tournamentId,
-      "players",
+      "participants",
       uid
     );
 
     try {
       await runTransaction(db, async (tx) => {
-        const snap = await tx.get(playerRef);
+        const snap = await tx.get(participantRef);
 
         if (!snap.exists()) {
-          throw new Error("PLAYER_NOT_FOUND");
+          throw new Error("PARTICIPANT_NOT_FOUND");
         }
 
         const balance = snap.data().balance ?? 0;
@@ -430,16 +394,12 @@ const handleTrade = async (type: "buy" | "sell") => {
 
         const newBalance = balance - stake;
 
-        tx.update(playerRef, {
+        tx.update(participantRef, {
           balance: newBalance,
           updatedAt: serverTimestamp(),
         });
 
-        // ✅ Immediately update local balances for UI
-        setBalances((prev) => ({
-          ...prev,
-          tournament: newBalance,
-        }));
+      
 
         setTournamentBalances((prev) => ({
           ...prev,
@@ -616,8 +576,8 @@ if (t.account.type === "demo") {
 
 
 useEffect(() => {
-  console.log("🔥 TradingLayout balances:", balances);
-}, [balances]);
+  console.log("🔥 TradingLayout balances:", ctxBalances);
+}, [ctxBalances]);
 
   // Marquee
   const screenWidth = Dimensions.get("window").width;
@@ -747,9 +707,9 @@ const [tradeToast, setTradeToast] = useState<{
 {/* 🔥 FLOATING ACCOUNT SWITCHER – top-right */}
 <AccountSwitcher
   balances={{
-     demo: demoBalance,
-   real: ctxBalances.real, 
-    tournament: balances.tournament,
+    demo: demoBalance ?? 0,
+    real: ctxBalances?.real ?? 0,
+    tournament: ctxBalances?.tournament ?? 0,
   }}
   onTopUp={() => setDemoBalance(10000)}
   tournamentBalances={tournamentBalances}
@@ -824,7 +784,7 @@ const [tradeToast, setTradeToast] = useState<{
   activeAccount={activeAccount}
   username={profile?.username}
   countryCode={profile?.country}
-  tournamentBalance={balances.tournament}
+  tournamentBalance={ctxBalances.tournament}
 demoBalance={demoBalance}
  
 />

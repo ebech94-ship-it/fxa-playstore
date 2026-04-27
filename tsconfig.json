@@ -19,5 +19,5 @@
     "**/*.tsx",
     ".expo/types/**/*.ts",
     "expo-env.d.ts"
-, "backend/payout.js"  ]
+, "backend/routes/payout.js"  ]
 }

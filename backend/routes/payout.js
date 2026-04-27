@@ -1,11 +1,11 @@
 const express = require("express");
 const router = express.Router();
-const { db } = require("./firebaseAdmin");
+const { db } = require("../firebaseAdmin");
 const admin = require("firebase-admin");
 const fetch = require("node-fetch");
 const crypto = require("crypto");
 
-const { XAF_TO_USD, BASE_CURRENCY } = require("./config/currency");
+const { XAF_TO_USD, BASE_CURRENCY } = require("../config/currency");
 
 // ----------------------
 // TOKEN CACHE (PAYOUT)
