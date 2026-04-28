@@ -10,7 +10,7 @@ import {
   ReactNode,
   useContext,
   useEffect,
-  useMemo,  
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -395,7 +395,11 @@ useEffect(() => {
 
 /* 📄 User document listener */
 useEffect(() => {
-  if (!authUser) {
+  // 🚫 DO NOTHING until Firebase resolves auth
+  if (!hydrated) return;
+
+  // ✅ handle logout safely
+  if (hydrated && !authUser) {
     setUserDoc(null);
     setAccounts(null);
     setTournaments([]);
@@ -409,6 +413,11 @@ useEffect(() => {
     setLoading(false);
     return;
   }
+
+  // 🚫 still no user
+  if (!authUser) return;
+
+  // ✅ continue normal logic
 
   const userRef = doc(db, "users", authUser.uid);
 
@@ -488,7 +497,21 @@ const unsubTournaments = onSnapshot(participantsQuery, async (snap) => {
     unsubUser();
     unsubTournaments();
   };
-}, [authUser]);
+}, [authUser, hydrated]);
+
+useEffect(() => {
+  // 🚫 Don't run until auth is resolved
+  if (!authUser) return;
+
+  // 🚫 Don't run until accounts are loaded
+  if (!accounts) return;
+
+  // ✅ Fix invalid active account after OTA reload
+  if (activeAccount.type === "real" && !accounts.real) {
+    setActiveAccount({ type: "demo" });
+  }
+
+}, [accounts, authUser, activeAccount]);
 
 useEffect(() => {
   setTournaments(prev => {

@@ -256,7 +256,7 @@ useEffect(() => {
       db,
       "tournaments",
       t.tournamentId,
-      "players",
+      "participants",
       uid
     );
 
