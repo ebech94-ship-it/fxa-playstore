@@ -2,7 +2,7 @@
 import { auth, db } from "@/lib/firebase";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { onAuthStateChanged, User } from "firebase/auth";
-import { collection, collectionGroup, doc, getDoc, onSnapshot, query, setDoc, where } from "firebase/firestore";
+import { collection, doc, getDoc, onSnapshot, query, setDoc, updateDoc, where } from "firebase/firestore";
 
 
 import {
@@ -22,7 +22,7 @@ export type AccountType =
   | { type: "real" }
   | { type: "tournament"; tournamentId: string };
 
-export type ParticipantTournament = {
+export type PlayerTournament = {
   tournamentId: string;
   balance: number;
   initialBalance: number; 
@@ -33,7 +33,7 @@ status?: "upcoming" | "ongoing" | "finished";
   symbol?: string;  // optional, e.g., "$" or "T"
     startTime?: number;
   endTime?: number;
- 
+
 };
 
 type AppSettings = {
@@ -51,7 +51,7 @@ type Accounts = {
     balance: number;
     currency: string;
   };
-  tournaments?: Record<string, ParticipantTournament>;
+  tournaments?: Record<string, PlayerTournament>;
 
 };
 type UserProfile = {
@@ -104,7 +104,6 @@ type FirestoreUserDoc = {
 
 type AppContextType = {
   appSettings: AppSettings;
-  hydrated: boolean;
   // 🔐 admin
   isAdmin: boolean;
   adminLoaded: boolean;
@@ -114,16 +113,16 @@ type AppContextType = {
 
   accounts: Accounts | null;
 
-  tournaments: ParticipantTournament[];
+  tournaments: PlayerTournament[];
   demoBalance: number;
 setDemoBalance: React.Dispatch<React.SetStateAction<number>>;
 
   // UI / trading
   activeAccount: AccountType;
-  activeTournament: ParticipantTournament | null;
+  activeTournament: PlayerTournament | null;
 
   setActiveAccount: (a: AccountType) => void;
-  setActiveTournament: (t: ParticipantTournament | null) => void;
+  setActiveTournament: (t: PlayerTournament | null) => void;
 
    appReady: boolean;
 setAppReady: (value: boolean) => void;
@@ -192,7 +191,7 @@ const AppContext = createContext<AppContextType>({
   appReady: false,
 setAppReady: () => {},
 
-hydrated: false,
+
   // 🔥 ADD THESE TWO LINES
   demoBalance: 1000,
   setDemoBalance: () => {},
@@ -229,11 +228,11 @@ const [adminLoaded, setAdminLoaded] = useState(false);
 
   const [accounts, setAccounts] = useState<Accounts | null>(null);
 
-  const [tournaments, setTournaments] = useState<ParticipantTournament[]>([]);
+  const [tournaments, setTournaments] = useState<PlayerTournament[]>([]);
 const [activeTournament, setActiveTournament] =
-  useState<ParticipantTournament | null>(null);
+  useState<PlayerTournament | null>(null);
 const activeAccountRef = useRef<AccountType>({ type: "demo" });
-const activeTournamentRef = useRef<ParticipantTournament | null>(null);
+const activeTournamentRef = useRef<PlayerTournament | null>(null);
 
 const [appSettings, setAppSettings] = useState<AppSettings>({
   enablePayouts: true,
@@ -244,7 +243,6 @@ const [appSettings, setAppSettings] = useState<AppSettings>({
   type: "demo", // default account
 });
 const [userDoc, setUserDoc] = useState<FirestoreUserDoc | null>(null);
-const [hydrated, setHydrated] = useState(false);
 
 const [liveTournamentBalances, setLiveTournamentBalances] = useState<Record<string, number>>({});
 const [tournamentMeta, setTournamentMeta] = useState<
@@ -256,15 +254,15 @@ const [rebuyUnlockedMap, setRebuyUnlockedMap] =
 
 const activeBalance = useMemo(() => {
   if (activeAccount.type === "demo") return accounts?.demo?.balance ?? 1000;
-if (activeAccount.type === "real") return accounts?.real?.balance ?? 0;
+  if (activeAccount.type === "real") return userDoc?.realBalance ?? 0;
   return liveTournamentBalances[activeAccount.tournamentId] ?? activeTournament?.balance ?? 0;
-}, [activeAccount, accounts, liveTournamentBalances, activeTournament]);
+}, [activeAccount, accounts, userDoc, liveTournamentBalances, activeTournament]);
 
 const [demoBalance, setDemoBalance] = useState<number>(1000);
 
 const balancesState = {
  demo: demoBalance,  // <-- use local demoBalance
-   real: accounts?.real?.balance ?? 0,
+   real: userDoc?.realBalance ?? 0,
   tournament: activeTournament
   ? liveTournamentBalances[activeTournament.tournamentId] ??
     activeTournament.balance
@@ -310,7 +308,7 @@ const tournamentAccounts = useMemo(() =>
     symbol: tournamentMeta[t.tournamentId]?.symbol ?? "T",
     balance: liveTournamentBalances[t.tournamentId] ?? t.balance,
     initialBalance: t.initialBalance,
-    currency: "USD",
+    currency: t.currency,
     status: t.status ?? "upcoming",
     joined: t.joined,
   })), [tournaments, tournamentMeta, liveTournamentBalances]);
@@ -318,6 +316,33 @@ const tournamentAccounts = useMemo(() =>
 
 /* ---------------- HELPERS ---------------- */
 
+// Generate a new unique publicId for a user
+const generateUserId = async (): Promise<string> => {
+  const counterRef = doc(db, "meta", "userCounter");
+
+  try {
+    let newId = await (async () => {
+      // Simple transaction to increment a counter
+      const snap = await getDoc(counterRef);
+      if (!snap.exists()) {
+        // initialize counter if missing
+        await updateDoc(counterRef, { count: 1 }).catch(() => {});
+        return `USR-000001`;
+      }
+      const current = snap.data()?.count ?? 0;
+      const next = current + 1;
+
+      await updateDoc(counterRef, { count: next });
+
+      return `USR-${String(next).padStart(6, "0")}`;
+    })();
+
+    return newId;
+  } catch (err) {
+    console.error("Failed to generate userId:", err);
+    return `USR-${Date.now()}`; // fallback
+  }
+};
 useEffect(() => {
   const ref = doc(db, "settings", "app");
 
@@ -333,13 +358,50 @@ useEffect(() => {
 
   return unsub;
 }, []);
+useEffect(() => {
+  const fetchUserProfile = async () => {
+    if (!auth.currentUser) return;
+
+    const userRef = doc(db, "users", auth.currentUser.uid);
+    const userSnap = await getDoc(userRef);
+
+    if (userSnap.exists()) {
+      const data = userSnap.data();
+
+      // Generate missing publicId
+      if (!data.publicId) {
+        const newId = await generateUserId();
+        await updateDoc(userRef, { publicId: newId });
+        data.publicId = newId;
+      }
+
+      const mappedProfile: UserProfile = {
+  publicId: data.publicId,
+  username: data.username ?? "New User",
+  displayName: data.displayName ?? data.username ?? "New User",
+  email: data.email ?? "",
+  phone: data.phone ?? "",
+  country: data.country ?? "",
+  dateOfBirth: data.dateOfBirth ?? "",
+  avatarUrl: data.avatarUrl ?? "",
+  preview: false,
+  verified: !!data.username && !!data.country && !!data.avatarUrl, // only true if all filled
+  profileCompleted: data.profileCompleted ?? false,
+};
+
+      setProfile(mappedProfile);
+    }
+  };
+
+  fetchUserProfile();
+}, []);
 
 
   /* 🔐 Auth listener */
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
       setAuthUser(user);
-       setHydrated(true);
+      
     });
     return unsub;
   }, []);
@@ -395,11 +457,7 @@ useEffect(() => {
 
 /* 📄 User document listener */
 useEffect(() => {
-  // 🚫 DO NOTHING until Firebase resolves auth
-  if (!hydrated) return;
-
-  // ✅ handle logout safely
-  if (hydrated && !authUser) {
+  if (!authUser) {
     setUserDoc(null);
     setAccounts(null);
     setTournaments([]);
@@ -414,14 +472,9 @@ useEffect(() => {
     return;
   }
 
-  // 🚫 still no user
-  if (!authUser) return;
+  const ref = doc(db, "users", authUser.uid);
 
-  // ✅ continue normal logic
-
-  const userRef = doc(db, "users", authUser.uid);
-
-  const unsubUser = onSnapshot(userRef, (snap) => {
+  const unsub = onSnapshot(ref, (snap) => {
     if (!snap.exists()) {
       setLoading(false);
       return;
@@ -430,88 +483,44 @@ useEffect(() => {
     const data = snap.data() as FirestoreUserDoc;
     setUserDoc(data);
 
+    // 🔐 ADMIN CHECK
     setIsAdmin(data?.roles?.admin === true || data?.isAdmin === true);
     setAdminLoaded(true);
 
     const acc: Accounts = data.accounts ?? {};
     setAccounts(acc);
 
+    // Build tournament list from user accounts, only include joined tournaments
+    const tournamentList = acc.tournaments
+      ? Object.entries(acc.tournaments)
+          .map(([id, t]) => ({
+            ...t,
+            tournamentId: id,
+            status: "upcoming" as const, // will be updated by your time-based effect
+          }))
+          .filter(t => t.joined) // ✅ only include joined tournaments
+      : [];
+
+    setTournaments(tournamentList);
+
+    // ✅ Reset active tournament if it was deleted
+    if (activeAccountRef.current.type === "tournament") {
+      const activeTournamentId = activeAccountRef.current.tournamentId;
+      const stillExists = tournamentList.find(
+        (t) => t.tournamentId === activeTournamentId
+      );
+
+      if (!stillExists) {
+        setActiveAccount({ type: "demo" });
+        setActiveTournament(null);
+      }
+    }
+
     setLoading(false);
   });
 
-  // 🔥 NEW: LIVE TOURNAMENT LISTENER (THIS IS THE FIX)
-  
-
-const participantsQuery = query(
-  collectionGroup(db, "participants"),
-  where("__name__", "==", authUser.uid)
-);
-
-const unsubTournaments = onSnapshot(participantsQuery, async (snap) => {
-  const list: ParticipantTournament[] = [];
-
-  for (const docSnap of snap.docs) {
-    const data = docSnap.data();
-
-    // 🔥 extract tournamentId from path
-    const tournamentId = docSnap.ref.parent.parent?.id;
-    if (!tournamentId) continue;
-
-    // 🔥 get tournament meta
-    const tDoc = await getDoc(doc(db, "tournaments", tournamentId));
-    const tMeta = tDoc.exists() ? tDoc.data() : {};
-
-    list.push({
-      tournamentId,
-      balance: data.balance ?? 0,
-      initialBalance: data.initialBalance ?? 0,
-      currency: "USD",
-      joined: true,
-      status: "upcoming",
-      name: tMeta.name ?? "Tournament",
-      symbol: tMeta.symbol ?? "T",
-      startTime: tMeta.startTime,
-      endTime: tMeta.endTime,
-   
-    });
-  }
-
-  setTournaments(list);
-
-  // 🔥 keep active tournament safe
-  const active = activeAccountRef.current;
-
-  if (active.type === "tournament") {
-    const exists = list.find(
-      (t) => t.tournamentId === active.tournamentId
-    );
-
-    if (!exists) {
-      setActiveAccount({ type: "demo" });
-      setActiveTournament(null);
-    }
-  }
-});
-
-  return () => {
-    unsubUser();
-    unsubTournaments();
-  };
-}, [authUser, hydrated]);
-
-useEffect(() => {
-  // 🚫 Don't run until auth is resolved
-  if (!authUser) return;
-
-  // 🚫 Don't run until accounts are loaded
-  if (!accounts) return;
-
-  // ✅ Fix invalid active account after OTA reload
-  if (activeAccount.type === "real" && !accounts.real) {
-    setActiveAccount({ type: "demo" });
-  }
-
-}, [accounts, authUser, activeAccount]);
+  return unsub;
+}, [authUser]);
 
 useEffect(() => {
   setTournaments(prev => {
@@ -530,7 +539,6 @@ useEffect(() => {
     });
   });
 }, [now]);
-
 useEffect(() => {
   // Remove balances and meta for deleted tournaments
   const validIds = tournaments.map(t => t.tournamentId);
@@ -628,7 +636,7 @@ useEffect(() => {
       db,
       "tournaments",
       t.tournamentId,
-      "participants",
+      "players",
       authUser.uid
     );
 
@@ -690,7 +698,6 @@ useEffect(() => {
 
   return () => unsubs.forEach((u) => u());
 }, [tournaments]);
-
 useEffect(() => {
   if (!authUser?.uid) {
     setUnreadCount(0);
@@ -728,7 +735,6 @@ useEffect(() => {
     <AppContext.Provider
   value={{
     appReady,
-    hydrated,
   setAppReady,
      unreadCount,
     setUnreadCount,

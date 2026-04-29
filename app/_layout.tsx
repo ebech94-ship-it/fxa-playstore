@@ -21,22 +21,23 @@ import { AppProvider, useApp } from "./AppContext";
    AUTH GATE (OUTSIDE)
    =============================== */
 function AuthGate() {
-  const { authUser, loading, hydrated } = useApp();
+  const { authUser, loading, appReady,hydrated } = useApp();
   const router = useRouter();
+  const hasRedirected = useRef(false);
 
-  const lastRouteRef = useRef<string | null>(null);
 
   useEffect(() => {
-    if (!hydrated || loading) return;
+  if (!hydrated || loading || !appReady) return;
+    if (hasRedirected.current) return;
 
-    const target = authUser ? "/tradinglayout" : "/welcome";
+    hasRedirected.current = true;
 
-    if (lastRouteRef.current === target) return;
-
-    lastRouteRef.current = target;
-    router.replace(target);
-
-  }, [authUser, loading, hydrated, router]);
+    if (authUser) {
+      router.replace("/tradinglayout");
+    } else {
+      router.replace("/welcome");
+    }
+  }, [authUser, loading, appReady, router, if (!hydrated || lo]);
 
   return null;
 }
