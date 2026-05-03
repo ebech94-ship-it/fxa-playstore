@@ -1,6 +1,6 @@
 module.exports = {
   BASE_CURRENCY: "USD",
-
+XAF_TO_USD: 600, 
   rates: {
     USD: 1,
     XAF: 600,

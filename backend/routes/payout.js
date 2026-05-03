@@ -76,35 +76,43 @@ router.post("/", async (req, res) => {
     const uid = decodedToken.uid;
 
     const userRef = db.collection("users").doc(uid);
-// 💰 AMOUNT LOGIC
-const withdrawalUSD = Number(amount);
 
-// 1. VALIDATION
-if (!withdrawalUSD || withdrawalUSD <= 0) {
-  throw new Error("INVALID_AMOUNT");
-}
+    // 💰 AMOUNT LOGIC
+    const withdrawalUSD = Number(amount);
 
-if (withdrawalUSD < 1) {
-  throw new Error("MIN_WITHDRAWAL_1_USD");
-}
+    if (!withdrawalUSD || withdrawalUSD <= 0) {
+      throw new Error("INVALID_AMOUNT");
+    }
 
-// 3. CONVERT USD → XAF FIRST (core payout value)
-const grossXAF = Math.round(withdrawalUSD * XAF_TO_USD);
+    if (withdrawalUSD < 1) {
+      throw new Error("MIN_WITHDRAWAL_1_USD");
+    }
 
-// 4. XAF FEE (applied after conversion)
-const feeXAF = Math.round(grossXAF * 0.01);
+    // 🔄 CONVERSION
+    const grossXAF = Math.round(withdrawalUSD * XAF_TO_USD);
+    const feeXAF = Math.round(grossXAF * 0.01);
+    const netXAF = grossXAF - feeXAF;
 
-// 5. FINAL PAYOUT AMOUNT (XAF)
-const netXAF = grossXAF - feeXAF;
+    // 🆔 TRANSACTION ID
+    transactionId = `payout_${Date.now()}_${Math.random()
+      .toString(36)
+      .substring(2, 8)}`;
 
-// 6. TRANSACTION ID
-transactionId = `payout_${Date.now()}_${Math.random()
-  .toString(36)
-  .substring(2, 8)}`;
-    // 🔑 GET TOKEN OUTSIDE TRANSACTION
+    // 🔑 GET TOKEN
     const token = await getPayoutToken();
 
-    // 🌐 CALL PAYOUT API WITH TIMEOUT
+    // 🚫 PREVENT DUPLICATE PROCESSING
+const existing = await db
+  .collection("payouts")
+  .where("userId", "==", uid)
+  .where("status", "in", ["processing"])
+  .limit(1)
+  .get();
+
+if (!existing.empty) {
+  throw new Error("PAYOUT_ALREADY_PROCESSING");
+}
+    // 🌐 CALL API
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15000);
 
@@ -121,7 +129,7 @@ transactionId = `payout_${Date.now()}_${Math.random()
           country_code,
           beneficiary_name,
           mobile_no,
-         amount: netXAF,
+          amount: netXAF,
           transaction_id: transactionId,
           payment_method,
           remarks: remarks || "",
@@ -139,6 +147,9 @@ transactionId = `payout_${Date.now()}_${Math.random()
     }
 
     const payoutData = await response.json();
+    if (!payoutData || payoutData.status === "error") {
+  throw new Error("PAYOUT_FAILED");
+}
 
     // ----------------------
     // FIRESTORE TRANSACTION
@@ -151,12 +162,12 @@ transactionId = `payout_${Date.now()}_${Math.random()
         throw new Error("INSUFFICIENT_BALANCE");
       }
 
-      // 🔒 DEDUCT BALANCE
+      // 🔒 Deduct user balance
       t.update(userRef, {
         realBalance: admin.firestore.FieldValue.increment(-withdrawalUSD),
       });
 
-      // 🧾 STORE PAYOUT
+      // 🧾 Store payout
       const payoutRef = db.collection("payouts").doc(transactionId);
 
       t.set(payoutRef, {
@@ -164,8 +175,8 @@ transactionId = `payout_${Date.now()}_${Math.random()
         transactionId,
 
         amount: withdrawalUSD,
-         fee: feeXAF,
-       netAmount: netXAF,
+        fee: feeXAF,
+        netAmount: netXAF,
         currency: BASE_CURRENCY,
 
         payoutAmount: netXAF,
@@ -176,19 +187,33 @@ transactionId = `payout_${Date.now()}_${Math.random()
         payment_method,
 
         status: "processing",
+        retryCount: 0,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         payoutResponse: payoutData,
 
         processedStatuses: [],
       });
 
-      // 💰 STORE FEE
-      const treasuryRef = db.collection("treasury").doc(`${transactionId}_fee`);
+      // ✅ FIXED: ADD FEE TO MAIN TREASURY
+      const treasuryRef = db.collection("treasury").doc("main");
 
-      t.set(treasuryRef, {
+      t.set(
+        treasuryRef,
+        {
+          balance: admin.firestore.FieldValue.increment(feeXAF),
+          totalFees: admin.firestore.FieldValue.increment(feeXAF),
+          lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      // 🧾 OPTIONAL AUDIT LOG
+      const auditRef = db.collection("withdrawalFees").doc(transactionId);
+
+      t.set(auditRef, {
         type: "withdrawal_fee",
-         amount: feeXAF,
-          currency: "XAF",
+        amount: feeXAF,
+        currency: "XAF",
         userId: uid,
         transactionId,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -197,6 +222,7 @@ transactionId = `payout_${Date.now()}_${Math.random()
 
     return res.json({
       success: true,
+      message: "Payout initiated successfully",
       transactionId,
     });
 

@@ -227,14 +227,19 @@ router.post("/webhook", async (req, res) => {
         const tx = snap.data();
 
         if (!tx.userId) throw new Error("Invalid transaction");
+        
 
         // prevent double processing
-       if (tx.status === "completed" || tx.status === "failed") return;
+       if (tx.status === "completed") return;
+if (tx.processedWebhook) return;
 
-        // OPTIONAL: amount validation (recommended)
-        if (tx.amount && Number(amount) !== tx.amount) {
-          throw new Error("Amount mismatch");
-        }
+        // Convert webhook amount from XAF to USD for comparison
+const { XAF_TO_USD } = require("../config/currency");
+const webhookAmountUSD = Number(amount) / XAF_TO_USD;
+
+if (tx.originalAmount && Math.abs(Number(amount) - tx.originalAmount) > 0.01) {
+  throw new Error("Amount mismatch");
+}
 
         const userRef = db.collection("users").doc(tx.userId);
 
@@ -243,10 +248,22 @@ router.post("/webhook", async (req, res) => {
         t.update(userRef, {
           realBalance: admin.firestore.FieldValue.increment(txAmountUSD),
         });
+        // 🏦 UPDATE TREASURY (MIRROR DEPOSIT)
+const treasuryRef = db.collection("treasury").doc("main");
+
+t.set(
+  treasuryRef,
+  {
+    balance: admin.firestore.FieldValue.increment(txAmountUSD),
+    lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+  },
+  { merge: true }
+);
 
         t.update(doc.ref, {
           status: "completed",
           completedAt: admin.firestore.FieldValue.serverTimestamp(),
+         processedWebhook: true,
         });
       });
 
