@@ -1,240 +1,113 @@
-// PaymentsSection.tsx
-import { db } from "@/lib/firebase";
 import { getAuth } from "firebase/auth";
-import { collection, onSnapshot, query, QueryDocumentSnapshot, QuerySnapshot, where } from "firebase/firestore";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import {
-  ActivityIndicator,
-  Alert,
-  Animated,
-  Modal,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
-  TouchableOpacity,
   View,
 } from "react-native";
 
-type PaymentDoc = {
+type Transaction = {
   id: string;
   userId: string;
   username?: string;
   amount: number;
-  method?: string;
   type: "deposit" | "withdrawal";
-  status: "pending" | "deposit completed" | "REJECTED";
-  createdAt: any;
+  status: "pending" | "completed" | "failed";
+  method?: string;
+  createdAt?: any;
 };
 
-const PaymentsSection = () => {
+export default function PaymentsSection() {
   const API_BASE = process.env.EXPO_PUBLIC_BACKEND_URL as string;
 
-  const [payments, setPayments] = useState<PaymentDoc[]>([]);
-  const [selected, setSelected] = useState<PaymentDoc | null>(null);
-  const [modalVisible, setModalVisible] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [rejectReason, setRejectReason] = useState("");
-  const [rejectModal, setRejectModal] = useState(false);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
 
-  const auth = getAuth();
-  const glow = useRef(new Animated.Value(0)).current;
 
-  /* Glow animation */
+  // -----------------------------
+  // FETCH TRANSACTIONS (READ ONLY)
+  // -----------------------------
+  const fetchTransactions = useCallback(async () => {
+  try {
+    const user = getAuth().currentUser; // 👈 FIX HERE (no dependency issue)
+    if (!user) return;
+
+    const token = await user.getIdToken();
+
+    const res = await fetch(
+      `${API_BASE}/admin/transactions?type=deposit`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      }
+    );
+
+    const data = await res.json();
+    setTransactions(data || []);
+  } catch (err) {
+    console.error("Fetch error:", err);
+  }
+}, [API_BASE]);
+
   useEffect(() => {
-    Animated.loop(
-      Animated.sequence([
-        Animated.timing(glow, { toValue: 1, duration: 1200, useNativeDriver: false }),
-        Animated.timing(glow, { toValue: 0, duration: 1200, useNativeDriver: false }),
-      ])
-    ).start();
-  }, [glow]);
-
-  /* Fetch pending payments */
-useEffect(() => {
-  const q = query(
-    collection(db, "transactions"),
-    where("status", "==", "pending"),
-    where("type", "==", "deposit")
-  );
-
-  const unsubscribe = onSnapshot(q, (snap: QuerySnapshot) => {
-    const docs = snap.docs.map((d: QueryDocumentSnapshot) => ({
-      id: d.id,
-      ...d.data(),
-    }));
-    setPayments(docs as PaymentDoc[]);
-  });
-
-  return () => unsubscribe();
-}, []);
-  /* Approve */
-  const approve = async () => {
-    if (!selected || loading) return;
-
-    setLoading(true);
-    try {
-      const user = auth.currentUser;
-      if (!user) throw new Error("Not authenticated");
-
-      const token = await user.getIdToken();
-
-      const res = await fetch(`${API_BASE}/transactions/approve`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ txId: selected.id }),
-      });
-
-      if (!res.ok) throw new Error("Approval failed");
-
-      Alert.alert("Success", "Payment approved");
-
-      setPayments((prev) => prev.filter((p) => p.id !== selected.id));
-      setModalVisible(false);
-      setSelected(null);
-    } catch (e: any) {
-      Alert.alert("Error", e.message || "Approval error");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  /* Reject */
-  const reject = async () => {
-    if (!selected || loading) return;
-
-    setLoading(true);
-    try {
-      const user = auth.currentUser;
-      if (!user) throw new Error("Not authenticated");
-
-      const token = await user.getIdToken();
-
-      const res = await fetch(`${API_BASE}/transactions/reject`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          txId: selected.id,
-          reason: rejectReason || "Rejected by admin",
-        }),
-      });
-
-      if (!res.ok) throw new Error("Reject failed");
-
-      setPayments((prev) => prev.filter((p) => p.id !== selected.id));
-      setRejectModal(false);
-      setModalVisible(false);
-      setSelected(null);
-      setRejectReason("");
-    } catch (e: any) {
-      Alert.alert("Error", e?.message || "Rejection failed");
-    } finally {
-      setLoading(false);
-    }
-  };
+    fetchTransactions();
+  }, [fetchTransactions]);
 
   return (
     <View style={styles.container}>
-      <Animated.Text style={styles.header}>💳 Deposit Approvals</Animated.Text>
+      <Text style={styles.header}>📊 Deposits Monitor</Text>
 
-      <ScrollView contentContainerStyle={{ flexGrow: 1 }}>
-        {payments.length === 0 ? (
-          <View style={styles.emptyWrap}>
-            <Animated.Text
-              style={[
-                styles.emptyText,
-                { opacity: glow.interpolate({ inputRange: [0, 1], outputRange: [0.4, 1] }) },
-              ]}
-            >
-              No pending payments
-            </Animated.Text>
-          </View>
+      <ScrollView>
+        {transactions.length === 0 ? (
+          <Text style={styles.emptyText}>No transactions yet</Text>
         ) : (
-          payments.map((p) => (
-            <TouchableOpacity
-              key={p.id}
-              style={styles.card}
-              onPress={() => {
-                setSelected(p);
-                setModalVisible(true);
-              }}
-            >
-              <Text style={styles.username}>{p.username}</Text>
-              <Text style={styles.amount}>${p.amount}</Text>
-              <Text style={{ color: "#aaa", fontSize: 12 }}>
-                {p.method || "Method"} • ID: {p.id}
+          transactions.map((t) => (
+            <View key={t.id} style={styles.card}>
+              <Text style={styles.username}>
+                {t.username || t.userId}
               </Text>
-            </TouchableOpacity>
+
+              <Text style={styles.amount}>
+                ${t.amount}
+              </Text>
+
+              <Text style={styles.meta}>
+                {t.type} • {t.status}
+              </Text>
+
+              <Text style={styles.meta}>
+                Method: {t.method || "N/A"}
+              </Text>
+
+              <Text style={styles.meta}>
+                ID: {t.id}
+              </Text>
+            </View>
           ))
         )}
       </ScrollView>
-
-      {/* Details Modal */}
-      <Modal visible={modalVisible} transparent>
-        <View style={styles.overlay}>
-          <View style={styles.box}>
-            <Text style={styles.title}>Payment Details</Text>
-            <Text style={styles.text}>User: {selected?.username}</Text>
-            <Text style={styles.text}>Amount: ${selected?.amount}</Text>
-            <Text style={styles.text}>Method: {selected?.method || "N/A"}</Text>
-            <Text style={styles.text}>
-              Date: {selected?.createdAt ? new Date(selected.createdAt).toLocaleString() : "No date"}
-            </Text>
-
-            <TouchableOpacity style={styles.approve} onPress={approve} disabled={loading}>
-              {loading ? <ActivityIndicator color="#fff" /> : <Text style={styles.btn}>Approve</Text>}
-            </TouchableOpacity>
-
-            <TouchableOpacity style={styles.reject} onPress={() => setRejectModal(true)} disabled={loading}>
-              <Text style={styles.btn}>Reject</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
-
-      {/* Reject Modal */}
-      <Modal visible={rejectModal} transparent>
-        <View style={styles.overlay}>
-          <View style={styles.box}>
-            <TextInput
-              value={rejectReason}
-              onChangeText={setRejectReason}
-              placeholder="Reason"
-              placeholderTextColor="#777"
-              style={styles.input}
-            />
-            <TouchableOpacity style={styles.reject} onPress={reject}>
-              <Text style={styles.btn}>Confirm Reject</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
     </View>
   );
-};
-
-export default PaymentsSection;
+}
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 16, backgroundColor: "#07070a" },
-  header: { color: "#fff", fontSize: 22, fontWeight: "800", textAlign: "center", marginBottom: 12 },
-  card: { backgroundColor: "#111", padding: 14, borderRadius: 12, marginBottom: 10 },
+  header: {
+    color: "#fff",
+    fontSize: 22,
+    fontWeight: "800",
+    textAlign: "center",
+    marginBottom: 12,
+  },
+  card: {
+    backgroundColor: "#111",
+    padding: 14,
+    borderRadius: 12,
+    marginBottom: 10,
+  },
   username: { color: "#fff", fontWeight: "700" },
   amount: { color: "#7cf" },
-  overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "center", padding: 20 },
-  box: { backgroundColor: "#0b0c10", padding: 18, borderRadius: 14 },
-  title: { color: "#fff", fontSize: 18, fontWeight: "800", marginBottom: 10 },
-  text: { color: "#ddd", marginBottom: 6 },
-  approve: { backgroundColor: "#19a974", padding: 12, borderRadius: 10, marginTop: 10 },
-  reject: { backgroundColor: "#b00020", padding: 12, borderRadius: 10, marginTop: 10 },
-  btn: { color: "#fff", fontWeight: "800", textAlign: "center" },
-  input: { backgroundColor: "#111", color: "#fff", borderRadius: 8, padding: 10 },
-  emptyWrap: { flex: 1, alignItems: "center", justifyContent: "center", paddingTop: 40 },
-  emptyText: { color: "#6b7280", fontSize: 14, fontWeight: "600" },
+  meta: { color: "#aaa", fontSize: 12 },
+  emptyText: { color: "#666", textAlign: "center", marginTop: 20 },
 });

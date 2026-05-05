@@ -47,6 +47,7 @@ router.post("/create-request", async (req, res, next) => {
   req.url = "/";
   return router.handle(req, res, next);
 });
+
 // ----------------------
 // CREATE PAYOUT
 // ----------------------
@@ -90,29 +91,102 @@ router.post("/", async (req, res) => {
 
     // 🔄 CONVERSION
     const grossXAF = Math.round(withdrawalUSD * XAF_TO_USD);
-    const feeXAF = Math.round(grossXAF * 0.01);
+
+    const feeUSD = Number((withdrawalUSD * 0.01).toFixed(2)); // 1%
+    const feeXAF = Math.round(feeUSD * XAF_TO_USD);
+
     const netXAF = grossXAF - feeXAF;
 
     // 🆔 TRANSACTION ID
-    transactionId = `payout_${Date.now()}_${Math.random()
-      .toString(36)
-      .substring(2, 8)}`;
+   transactionId = `payout_${Date.now()}_${Math.random()
+  .toString(36)
+  .substring(2, 8)}`;
 
-    // 🔑 GET TOKEN
+    // 🚫 PREVENT DUPLICATE PROCESSING (MOVED UP - SAFE)
+    const existing = await db
+      .collection("payouts")
+      .where("userId", "==", uid)
+      .where("status", "in", ["processing"])
+      .limit(1)
+      .get();
+
+    if (!existing.empty) {
+      throw new Error("PAYOUT_ALREADY_PROCESSING");
+    }
+
+    // ----------------------
+    // FIRESTORE TRANSACTION FIRST (LOCK FUNDS)
+    // ----------------------
+    let payoutRef;
+
+    await db.runTransaction(async (t) => {
+      const userSnap = await t.get(userRef);
+      const balance = userSnap.data()?.realBalance || 0;
+
+      if (balance < withdrawalUSD) {
+        throw new Error("INSUFFICIENT_BALANCE");
+      }
+
+      // 🔒 Deduct user balance
+      t.update(userRef, {
+        realBalance: admin.firestore.FieldValue.increment(-withdrawalUSD),
+      });
+
+      // 🧾 Create payout (LOCKED STATE)
+      payoutRef = db.collection("payouts").doc(transactionId);
+
+      t.set(payoutRef, {
+        userId: uid,
+        transactionId,
+
+        amount: withdrawalUSD,
+        fee: feeUSD,
+        netAmount: withdrawalUSD - feeUSD,
+        
+         currency: BASE_CURRENCY, 
+        payoutAmount: netXAF,
+        payoutCurrency: "XAF",
+
+        beneficiary_name,
+        mobile_no,
+        payment_method,
+
+        status: "locked",
+        retryCount: 0,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        processedStatuses: [],
+      });
+
+      // 💰 Treasury update
+      const treasuryRef = db.collection("treasury").doc("main");
+
+      t.set(
+        treasuryRef,
+        {
+          balance: admin.firestore.FieldValue.increment(feeUSD),
+          totalFees: admin.firestore.FieldValue.increment(feeUSD),
+          lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true }
+      );
+
+      // 🧾 Audit log
+      const auditRef = db.collection("withdrawalFees").doc(transactionId);
+
+      t.set(auditRef, {
+        type: "withdrawal_fee",
+        amount: feeUSD,
+        currency: "USD",
+        userId: uid,
+        transactionId,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    });
+
+    // 🔑 GET TOKEN (MOVED AFTER LOCK)
     const token = await getPayoutToken();
 
-    // 🚫 PREVENT DUPLICATE PROCESSING
-const existing = await db
-  .collection("payouts")
-  .where("userId", "==", uid)
-  .where("status", "in", ["processing"])
-  .limit(1)
-  .get();
-
-if (!existing.empty) {
-  throw new Error("PAYOUT_ALREADY_PROCESSING");
-}
-    // 🌐 CALL API
+    // 🌐 CALL API (NOW SAFE)
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15000);
 
@@ -145,79 +219,20 @@ if (!existing.empty) {
     if (!response.ok) {
       throw new Error("PAYOUT_FAILED");
     }
+    await payoutRef.update({
+  status: "failed",
+});
 
     const payoutData = await response.json();
+
     if (!payoutData || payoutData.status === "error") {
-  throw new Error("PAYOUT_FAILED");
-}
+      throw new Error("PAYOUT_FAILED");
+    }
 
-    // ----------------------
-    // FIRESTORE TRANSACTION
-    // ----------------------
-    await db.runTransaction(async (t) => {
-      const userSnap = await t.get(userRef);
-      const balance = userSnap.data()?.realBalance || 0;
-
-      if (balance < withdrawalUSD) {
-        throw new Error("INSUFFICIENT_BALANCE");
-      }
-
-      // 🔒 Deduct user balance
-      t.update(userRef, {
-        realBalance: admin.firestore.FieldValue.increment(-withdrawalUSD),
-      });
-
-      // 🧾 Store payout
-      const payoutRef = db.collection("payouts").doc(transactionId);
-
-      t.set(payoutRef, {
-        userId: uid,
-        transactionId,
-
-        amount: withdrawalUSD,
-        fee: feeXAF,
-        netAmount: netXAF,
-        currency: BASE_CURRENCY,
-
-        payoutAmount: netXAF,
-        payoutCurrency: "XAF",
-
-        beneficiary_name,
-        mobile_no,
-        payment_method,
-
-        status: "processing",
-        retryCount: 0,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-        payoutResponse: payoutData,
-
-        processedStatuses: [],
-      });
-
-      // ✅ FIXED: ADD FEE TO MAIN TREASURY
-      const treasuryRef = db.collection("treasury").doc("main");
-
-      t.set(
-        treasuryRef,
-        {
-          balance: admin.firestore.FieldValue.increment(feeXAF),
-          totalFees: admin.firestore.FieldValue.increment(feeXAF),
-          lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
-        },
-        { merge: true }
-      );
-
-      // 🧾 OPTIONAL AUDIT LOG
-      const auditRef = db.collection("withdrawalFees").doc(transactionId);
-
-      t.set(auditRef, {
-        type: "withdrawal_fee",
-        amount: feeXAF,
-        currency: "XAF",
-        userId: uid,
-        transactionId,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
+    // 🔄 UPDATE STATUS AFTER SUCCESS API CALL
+    await payoutRef.update({
+      status: "processing",
+      payoutResponse: payoutData,
     });
 
     return res.json({
@@ -280,6 +295,12 @@ router.post("/webhook", async (req, res) => {
       payload?.data?.status || payload?.status;
 
     if (!transactionId || !rawStatus) {
+      await db.collection("webhookAudit").add({
+        type: "invalid_payload",
+        payload: req.body,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
       return res.status(200).json({ received: true });
     }
 
@@ -322,14 +343,26 @@ router.post("/webhook", async (req, res) => {
       const snap = await t.get(payoutRef);
       const payout = snap.data();
 
-      const processedKey = `${transactionId}_${newStatus}`;
+      const userRef = db.collection("users").doc(payout.userId);
+      const userSnap = await t.get(userRef);
 
-      // ✅ IDENTITY GUARD (prevents double processing)
+      const beforeBalance = userSnap.data()?.realBalance || 0;
+
+      const processedKey = `${transactionId}_${newStatus}`;
+      const refundKey = `${transactionId}_${newStatus}`;
+
+      // ----------------------
+      // IDENTITY GUARD (SAFE EXIT)
+      // ----------------------
       const alreadyProcessed =
         payout.status === newStatus ||
         (payout.processedStatuses || []).includes(processedKey);
 
-      if (alreadyProcessed) return;
+      if (alreadyProcessed) {
+        return t.update(payoutRef, {
+          lastChecked: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      }
 
       // ----------------------
       // UPDATE PAYOUT STATUS
@@ -340,19 +373,38 @@ router.post("/webhook", async (req, res) => {
         processedStatuses: admin.firestore.FieldValue.arrayUnion(processedKey),
       });
 
-      const userRef = db.collection("users").doc(payout.userId);
+      const treasuryRef = db.collection("treasury").doc("main");
 
       // ----------------------
-      // REFUND LOGIC (SAFE)
+      // REFUND LOGIC
       // ----------------------
       if (["failed", "cancelled", "refunded"].includes(newStatus)) {
-        const userSnap = await t.get(userRef);
         const refunds = userSnap.data()?.refunds || [];
 
-        if (!refunds.includes(transactionId)) {
+        if (!refunds.includes(refundKey)) {
           t.update(userRef, {
             realBalance: admin.firestore.FieldValue.increment(payout.amount),
-            refunds: admin.firestore.FieldValue.arrayUnion(transactionId),
+            refunds: admin.firestore.FieldValue.arrayUnion(refundKey),
+          });
+
+          t.set(
+            treasuryRef,
+            {
+              balance: admin.firestore.FieldValue.increment(payout.amount),
+              lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+            },
+            { merge: true }
+          );
+
+          t.set(db.collection("ledger").doc(), {
+            userId: payout.userId,
+            type: "refund",
+            amount: payout.amount,
+            currency: "USD",
+            beforeBalance,
+            afterBalance: beforeBalance + payout.amount,
+            reference: transactionId,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
           });
 
           t.set(db.collection("transactions").doc(), {
@@ -368,9 +420,29 @@ router.post("/webhook", async (req, res) => {
       }
 
       // ----------------------
-      // SUCCESS LOG
+      // SUCCESS LOGIC
       // ----------------------
       if (newStatus === "success") {
+        t.set(
+          treasuryRef,
+          {
+            balance: admin.firestore.FieldValue.increment(-payout.amount),
+            lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        t.set(db.collection("ledger").doc(), {
+          userId: payout.userId,
+          type: "payout",
+          amount: payout.amount,
+          currency: "USD",
+          beforeBalance,
+          afterBalance: beforeBalance,
+          reference: transactionId,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
         t.set(db.collection("transactions").doc(), {
           userId: payout.userId,
           type: "payout",
@@ -407,7 +479,6 @@ router.post("/webhook", async (req, res) => {
     return res.status(200).json({ received: true });
   }
 });
-
 // ----------------------
 // STATUS CHECK
 // ----------------------

@@ -1,13 +1,13 @@
 import { getAuth } from "firebase/auth";
 import { useCallback, useEffect, useState } from "react";
 import {
-    ActivityIndicator,
-    Alert,
-    FlatList,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View
 } from "react-native";
 
 type Log = { id: string; message: string; timestamp: number };
@@ -15,23 +15,31 @@ type Activity = { id: string; admin: string; action: string; timestamp: number }
 type LogOrActivity = Log | Activity;
 
 export default function LogsAndActivitySection() {
+  const API_BASE = process.env.EXPO_PUBLIC_BACKEND_URL as string;
+
   const [tab, setTab] = useState<"logs" | "activity">("logs");
   const [logs, setLogs] = useState<Log[]>([]);
   const [activities, setActivities] = useState<Activity[]>([]);
   const [loading, setLoading] = useState(false);
 
-  // fetchData wrapped in useCallback to fix useEffect dependency warning
   const fetchData = useCallback(async () => {
     setLoading(true);
+
     try {
-      const auth = getAuth();
-      const token = await auth.currentUser?.getIdToken();
+      const user = getAuth().currentUser;
+      if (!user) return;
+
+      const token = await user.getIdToken();
+
       const endpoint =
         tab === "logs"
-          ? "https://forexapp2-backend.onrender.com/admin/system-logs"
-          : "https://forexapp2-backend.onrender.com/admin/activity-history";
+          ? `${API_BASE}/admin/system-logs`
+          : `${API_BASE}/admin/activity-history`;
 
-      const res = await fetch(endpoint, { headers: { Authorization: `Bearer ${token}` } });
+      const res = await fetch(endpoint, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
 
@@ -42,18 +50,23 @@ export default function LogsAndActivitySection() {
     } finally {
       setLoading(false);
     }
-  }, [tab]);
+  }, [API_BASE, tab]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
-  // renderItem uses proper type and runtime check for union type
   const renderItem = ({ item, index }: { item: LogOrActivity; index: number }) => (
     <View style={styles.row}>
       <Text style={styles.index}>{index + 1}.</Text>
+
       <Text style={styles.message}>
         {"message" in item ? item.message : `${item.admin} → ${item.action}`}
       </Text>
-      <Text style={styles.timestamp}>{new Date(item.timestamp).toLocaleString()}</Text>
+
+      <Text style={styles.timestamp}>
+        {new Date(item.timestamp).toLocaleString()}
+      </Text>
     </View>
   );
 
@@ -68,7 +81,9 @@ export default function LogsAndActivitySection() {
             onPress={() => setTab(t as "logs" | "activity")}
             style={[styles.tabBtn, tab === t && styles.tabActive]}
           >
-            <Text style={styles.tabText}>{t === "logs" ? "Audit Logs" : "Admin Activity"}</Text>
+            <Text style={styles.tabText}>
+              {t === "logs" ? "Audit Logs" : "Admin Activity"}
+            </Text>
           </TouchableOpacity>
         ))}
       </View>

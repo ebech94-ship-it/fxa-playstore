@@ -8,6 +8,7 @@ const admin = require("firebase-admin");
 const crypto = require("crypto");
 
 const { XAF_TO_USD, BASE_CURRENCY } = require("../config/currency");
+
 // ----------------------
 // TOKEN CACHE
 // ----------------------
@@ -164,13 +165,12 @@ originalAmount: Number(amount),
   }
 });
 // ----------------------
-// WEBHOOK (PRODUCTION SAFE - FIXED)
+// WEBHOOK (PRODUCTION SAFE + AUDIT READY)
 // ----------------------
 router.post("/webhook", async (req, res) => {
   try {
     const signature = req.headers["x-swychr-signature"];
 
-    // ❌ ALWAYS REQUIRE SECRET (no optional mode)
     if (!process.env.SWYCHR_WEBHOOK_SECRET) {
       throw new Error("SWYCHR_WEBHOOK_SECRET is required");
     }
@@ -180,9 +180,7 @@ router.post("/webhook", async (req, res) => {
       return res.status(401).send("Unauthorized");
     }
 
-    // ----------------------
     // VERIFY SIGNATURE
-    // ----------------------
     const expected = crypto
       .createHmac("sha256", process.env.SWYCHR_WEBHOOK_SECRET)
       .update(req.rawBody)
@@ -190,6 +188,15 @@ router.post("/webhook", async (req, res) => {
 
     if (signature !== expected) {
       console.log("❌ Invalid signature");
+
+      await db.collection("webhook_logs").add({
+        transactionId: null,
+        status: "invalid_signature",
+        rawPayload: req.body,
+        signatureValid: false,
+        receivedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
       return res.status(401).send("Unauthorized");
     }
 
@@ -197,6 +204,15 @@ router.post("/webhook", async (req, res) => {
 
     if (!payload?.data?.data?.attributes) {
       console.log("❌ Invalid payload");
+
+      await db.collection("webhook_logs").add({
+        transactionId: null,
+        status: "invalid_payload",
+        rawPayload: payload,
+        signatureValid: true,
+        receivedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
       return res.status(200).json({ received: true });
     }
 
@@ -213,6 +229,15 @@ router.post("/webhook", async (req, res) => {
 
     if (snapshot.empty) {
       console.log("❌ Transaction not found");
+
+      await db.collection("webhook_logs").add({
+        transactionId: transaction_id,
+        status: "not_found",
+        rawPayload: payload,
+        signatureValid: true,
+        receivedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
       return res.status(200).json({ received: true });
     }
 
@@ -222,50 +247,107 @@ router.post("/webhook", async (req, res) => {
     // SUCCESS PAYMENT
     // ----------------------
     if (Number(status) === 1) {
+      let ledgerData = null;
+      let treasuryData = null;
+
       await db.runTransaction(async (t) => {
         const snap = await t.get(doc.ref);
         const tx = snap.data();
 
         if (!tx.userId) throw new Error("Invalid transaction");
-        
 
-        // prevent double processing
-       if (tx.status === "completed") return;
-if (tx.processedWebhook) return;
+        if (tx.status === "completed") return;
+        if (tx.processedWebhook) return;
 
-        // Convert webhook amount from XAF to USD for comparison
-const { XAF_TO_USD } = require("../config/currency");
-const webhookAmountUSD = Number(amount) / XAF_TO_USD;
+        const txAmountUSD = Number(tx.amount);
+        const webhookAmountUSD = Number(amount) / XAF_TO_USD;
 
-if (tx.originalAmount && Math.abs(Number(amount) - tx.originalAmount) > 0.01) {
-  throw new Error("Amount mismatch");
-}
+        // VALIDATION
+        if (
+          tx.originalAmount &&
+          Math.abs(Number(amount) - Number(tx.originalAmount)) > 1
+        ) {
+          throw new Error("XAF amount mismatch");
+        }
+
+        if (
+          tx.amount &&
+          Math.abs(webhookAmountUSD - txAmountUSD) > 0.01
+        ) {
+          throw new Error("USD amount mismatch");
+        }
 
         const userRef = db.collection("users").doc(tx.userId);
 
-       const txAmountUSD = Number(tx.amount); // already stored correctly at creation time
+        const userSnap = await t.get(userRef);
+        const beforeBalance = userSnap.data()?.realBalance || 0;
+        const afterBalance = beforeBalance + txAmountUSD;
 
+        // UPDATE USER
         t.update(userRef, {
           realBalance: admin.firestore.FieldValue.increment(txAmountUSD),
         });
-        // 🏦 UPDATE TREASURY (MIRROR DEPOSIT)
-const treasuryRef = db.collection("treasury").doc("main");
 
-t.set(
-  treasuryRef,
-  {
-    balance: admin.firestore.FieldValue.increment(txAmountUSD),
-    lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
-  },
-  { merge: true }
-);
+        // UPDATE TREASURY
+        const treasuryRef = db.collection("treasury").doc("main");
 
+        t.set(
+          treasuryRef,
+          {
+            balance: admin.firestore.FieldValue.increment(txAmountUSD),
+            lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+          },
+          { merge: true }
+        );
+
+        // UPDATE TRANSACTION
         t.update(doc.ref, {
           status: "completed",
           completedAt: admin.firestore.FieldValue.serverTimestamp(),
-         processedWebhook: true,
+          processedWebhook: true,
         });
+
+        // PREPARE LEDGER DATA
+        ledgerData = {
+          userId: tx.userId,
+          type: "deposit",
+          amount: txAmountUSD,
+          currency: "USD",
+          beforeBalance,
+          afterBalance,
+          reference: transaction_id,
+        };
+
+        treasuryData = {
+          type: "deposit",
+          amount: txAmountUSD,
+          reference: transaction_id,
+        };
       });
+
+      // OUTSIDE TRANSACTION → SAFE LOGGING
+
+      await db.collection("webhook_logs").add({
+        transactionId: transaction_id,
+        status: "success",
+        rawPayload: payload,
+        signatureValid: true,
+        receivedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      if (ledgerData) {
+        await db.collection("ledger").add({
+          ...ledgerData,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      }
+
+      if (treasuryData) {
+        await db.collection("treasury_ledger").add({
+          ...treasuryData,
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      }
 
       console.log("✅ USER CREDITED");
     }
@@ -279,6 +361,14 @@ t.set(
         failedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
+      await db.collection("webhook_logs").add({
+        transactionId: transaction_id,
+        status: "failed",
+        rawPayload: payload,
+        signatureValid: true,
+        receivedAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
       console.log("❌ PAYMENT FAILED");
     }
 
@@ -286,8 +376,8 @@ t.set(
 
   } catch (error) {
     console.error("Webhook error:", error.message);
+
     return res.status(500).json({ error: error.message });
   }
 });
-
 module.exports = router;

@@ -25,7 +25,7 @@
     "cors": "^2.8.5",
     "country-telephone-data": "^0.6.3",
     "dotenv": "^17.2.3",
-    "expo": "~54.0.33",
+    "expo": "^55.0.19",
     "expo-auth-session": "~7.0.10",
     "expo-build-properties": "~1.0.10",
     "expo-clipboard": "~8.0.8",

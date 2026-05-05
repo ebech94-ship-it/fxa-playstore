@@ -70,6 +70,7 @@ const authenticate = async (req, res, next) => {
 
     // 🔒 FREEZE CHECK (ADD HERE)
    const userSnap = await db.collection("users").doc(decodedToken.uid).get();
+   
 // ----------------------
 // CORE MIDDLEWARE
 // ----------------------
@@ -86,6 +87,7 @@ if (userSnap.data()?.frozen) {
 if (userSnap.data()?.deleted) {
   return res.status(403).json({ error: "Account deleted" });
 }
+req.userDoc = userSnap.data();
     next(); // 👈 must be LAST
   } catch (err) {
     console.error("Firebase auth error:", err.message);
@@ -106,6 +108,7 @@ console.log("USER CLAIMS:", req.user);
     return res.status(500).json({ error: "Admin verification failed" });
   }
 };
+
 
 // ---------------------------------------------------------------------
 // HEALTH CHECK ROUTE (backend reachability depends on server being up)
@@ -256,6 +259,60 @@ app.post("/admin/process-tournament-payout", authenticate, requireAdmin, async (
   }
 });
 
+// ----------------------
+// ADMIN — ALL TOURNAMENT COFFERS (TABLE VIEW)
+// ----------------------
+app.get("/admin/tournament/coffers", authenticate, requireAdmin, async (req, res) => {
+  try {
+    const tournamentsSnap = await db.collection("tournaments").get();
+
+    const results = [];
+
+    for (const doc of tournamentsSnap.docs) {
+      const tournament = doc.data();
+      const tournamentId = doc.id;
+
+      const cofferSnap = await db
+        .collection("tournamentCoffers")
+        .doc(tournamentId)
+        .get();
+
+      const coffer = cofferSnap.exists ? cofferSnap.data() : {};
+
+      const regCount = coffer.registration?.count || 0;
+      const regTotal = coffer.registration?.totalAmount || 0;
+
+      const rebuyCount = coffer.rebuys?.count || 0;
+      const rebuyTotal = coffer.rebuys?.totalAmount || 0;
+
+      results.push({
+        id: tournamentId,
+        name: tournament.name || "Unnamed",
+        entryFee: tournament.entryFee || 0,
+        rebuyFee: tournament.rebuyFee || 0,
+
+        registrationCount: regCount,
+        registrationTotal: regTotal,
+
+        rebuyCount: rebuyCount,
+        rebuyTotal: rebuyTotal,
+
+        totalGenerated: regTotal + rebuyTotal,
+      });
+    }
+
+    res.json({
+      success: true,
+      tournaments: results,
+    });
+
+  } catch (err) {
+    console.error("COFFERS TABLE ERROR:", err.message);
+    res.status(500).json({ error: "Failed to fetch coffer table" });
+  }
+});
+
+
 app.post("/admin/add-funds", authenticate, requireAdmin, async (req, res) => {
   try {
     const { userId, amount, reason } = req.body;
@@ -311,40 +368,8 @@ app.post("/admin/subtract-funds", authenticate, requireAdmin, async (req, res) =
 });
 
 // ---------------------------------------------------------------------
-// ADMIN — MOVE TO TREASURY (CLEAN)
+// SUPPORT-SENDING
 // ---------------------------------------------------------------------
-app.post(  "/admin/moveTournamentFundsToTreasury",  authenticate,
-  requireAdmin,  async (req, res) => {
-    try {
-      const { tournamentId, amount } = req.body;
-
-      if (!tournamentId || !amount || Number(amount) <= 0) {
-        return res.status(400).json({
-          success: false,
-          error: "Invalid tournamentId or amount",
-        });
-      }
-
-      await treasury.moveTournamentFundsToTreasury(
-        tournamentId,
-        Number(amount)
-      );
-
-      return res.json({
-        success: true,
-        message: `Transferred ${amount} FRS to treasury`,
-      });
-    } catch (err) {
-      console.error("❌ Move to treasury error:", err.message);
-
-      return res.status(500).json({
-        success: false,
-        error: err.message,
-      });
-    }
-  }
-);
-
 app.post("/support/send", authenticate, async (req, res) => {
   try {
     const userId = req.user.uid;
@@ -560,7 +585,7 @@ app.get("/admin/activity-history", authenticate, requireAdmin, async (req, res) 
 // ROUTES
 // ----------------------
 app.use("/api/payin", payinRoutes);
-app.use("/api/payout", payoutRouter);     // withdrawals
+app.use("/api/payout", payoutRoutes);     // withdrawals
 // ---------------------------------------------------------------------
 // CURRENCY CONVERTER
 // ---------------------------------------------------------------------
@@ -572,6 +597,175 @@ app.get("/api/currency", (req, res) => {
     base: BASE_CURRENCY,
     rates,
   });
+  });
+  // ----------------------
+// ROUTES USER
+// ----------------------
+  app.get("/user/profile", authenticate, async (req, res) => {
+  try {
+    const userId = req.user.uid;
+
+    const userSnap = await db.collection("users").doc(userId).get();
+
+    if (!userSnap.exists) {
+      return res.status(404).json({ error: "User not found" });
+    }
+
+    res.json({
+      success: true,
+      user: {
+        id: userSnap.id,
+        ...userSnap.data(),
+      },
+    });
+
+  } catch (err) {
+    console.error("PROFILE ERROR:", err.message);
+    res.status(500).json({ error: "Failed to load profile" });
+  }
+});
+// ----------------------
+// TOURNAMENT LIST (FRONTEND)
+// ----------------------
+app.get("/tournaments", authenticate, async (req, res) => {
+  try {
+    const snapshot = await db
+      .collection("tournaments")
+      .orderBy("createdAt", "desc")
+      .get();
+
+    const tournaments = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
+    res.json({
+      success: true,
+      tournaments,
+    });
+
+  } catch (err) {
+    console.error("TOURNAMENT LIST ERROR:", err.message);
+    res.status(500).json({ error: "Failed to fetch tournaments" });
+  }
+});
+// ----------------------
+// TOURNAMENT DETAILS
+// ----------------------
+app.get("/tournament/:tournamentId", authenticate, async (req, res) => {
+  try {
+    const { tournamentId } = req.params;
+
+    const snap = await db.collection("tournaments").doc(tournamentId).get();
+
+    if (!snap.exists) {
+      return res.status(404).json({ error: "Tournament not found" });
+    }
+
+    res.json({
+      success: true,
+      tournament: {
+        id: snap.id,
+        ...snap.data(),
+      },
+    });
+
+  } catch (err) {
+    console.error("TOURNAMENT DETAIL ERROR:", err.message);
+    res.status(500).json({ error: "Failed to fetch tournament" });
+  }
+});
+
+// ----------------------
+// USER TOURNAMENT STATE
+// ----------------------
+app.get("/tournament/:tournamentId/me", authenticate, async (req, res) => {
+  try {
+    const userId = req.user.uid;
+    const { tournamentId } = req.params;
+
+    const doc = await db
+      .collection("tournaments")
+      .doc(tournamentId)
+      .collection("participants")
+      .doc(userId)
+      .get();
+
+    if (!doc.exists) {
+      return res.json({
+        success: true,
+        joined: false,
+        data: null,
+      });
+    }
+
+    res.json({
+      success: true,
+      joined: true,
+      data: doc.data(),
+    });
+
+  } catch (err) {
+    console.error("USER TOURNAMENT STATE ERROR:", err.message);
+    res.status(500).json({ error: "Failed to fetch user tournament state" });
+  }
+});
+
+// ----------------------
+// USER TRANSACTIONS
+// ----------------------
+app.get("/transactions", authenticate, async (req, res) => {
+  try {
+    const userId = req.user.uid;
+
+    const snapshot = await db
+      .collection("transactions")
+      .where("userId", "==", userId)
+      .orderBy("createdAt", "desc")
+      .limit(50)
+      .get();
+
+    const transactions = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
+    res.json({
+      success: true,
+      transactions,
+    });
+
+  } catch (err) {
+    console.error("TRANSACTIONS ERROR:", err.message);
+    res.status(500).json({ error: "Failed to fetch transactions" });
+  }
+});
+// ----------------------
+// USER ALERTS
+// ----------------------
+app.get("/alerts", authenticate, async (req, res) => {
+  try {
+    const snapshot = await db
+      .collection("alerts")
+      .orderBy("createdAt", "desc")
+      .limit(30)
+      .get();
+
+    const alerts = snapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
+    res.json({
+      success: true,
+      alerts,
+    });
+
+  } catch (err) {
+    console.error("ALERTS ERROR:", err.message);
+    res.status(500).json({ error: "Failed to fetch alerts" });
+  }
+});
 // ----------------------
 // ERROR HANDLER
 // ----------------------
@@ -591,4 +785,3 @@ app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Backend running on port ${PORT}`);
 });
   console.log("Routes loaded: payin, payout, tournament, admin");
-});
