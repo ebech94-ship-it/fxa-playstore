@@ -151,6 +151,12 @@ router.post("/", async (req, res) => {
         mobile_no,
         payment_method,
 
+ // ✅ ADD THESE (IMPORTANT)
+  country_code,
+  bank_code,
+  account_number,
+  remarks,
+
         status: "locked",
         retryCount: 0,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -183,7 +189,7 @@ router.post("/", async (req, res) => {
       });
     });
 
-    // 🔑 GET TOKEN (MOVED AFTER LOCK)
+   /* // 🔑 GET TOKEN (MOVED AFTER LOCK)
     const token = await getPayoutToken();
 
     // 🌐 CALL API (NOW SAFE)
@@ -239,7 +245,15 @@ router.post("/", async (req, res) => {
       success: true,
       message: "Payout initiated successfully",
       transactionId,
-    });
+    });*/
+    // ----------------------
+// ✅ WAIT FOR ADMIN APPROVAL
+// ----------------------
+return res.json({
+  success: true,
+  message: "Withdrawal request submitted. Awaiting admin approval.",
+  transactionId,
+});
 
   } catch (error) {
     if (error.message === "INSUFFICIENT_BALANCE") {
@@ -265,7 +279,7 @@ router.post("/webhook", async (req, res) => {
     const signature = req.headers["x-swychr-signature"];
 
     // ----------------------
-    // 1. VERIFY SIGNATURE
+    // 1. VERIFY SIGNATUREa
     // ----------------------
     if (process.env.SWYCHR_WEBHOOK_SECRET) {
       const expectedSignature = crypto
@@ -520,4 +534,303 @@ router.post("/status", async (req, res) => {
   }
 });
 
+
+// ----------------------
+// ADMIN: APPROVE WITHDRAWAL
+// ----------------------
+router.post("/admin/approve-withdrawal", async (req, res) => {
+  try {
+    const { transactionId } = req.body;
+
+    if (!transactionId) {
+      return res.status(400).json({ error: "transactionId required" });
+    }
+
+    // 🔍 Find payout
+    const payoutRef = db.collection("payouts").doc(transactionId);
+    const payoutSnap = await payoutRef.get();
+
+    if (!payoutSnap.exists) {
+      return res.status(404).json({ error: "Payout not found" });
+    }
+
+    const payout = payoutSnap.data();
+
+    // 🚫 Only allow locked/pending payouts
+    if (payout.status !== "locked") {
+      return res.status(400).json({
+        error: `Cannot approve payout with status: ${payout.status}`,
+      });
+    }
+
+    // 🔑 Get payout token
+    const token = await getPayoutToken();
+
+    // 🌐 Call payout API
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+
+    const response = await fetch(
+      "https://api.accountpe.com/api/payout/create_transaction",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          "Idempotency-Key": transactionId,
+        },
+        body: JSON.stringify({
+          country_code: payout.country_code,
+          beneficiary_name: payout.beneficiary_name,
+          mobile_no: payout.mobile_no,
+          amount: payout.payoutAmount,
+          transaction_id: payout.transactionId,
+          payment_method: payout.payment_method,
+          remarks: payout.remarks || "",
+          bank_code: payout.bank_code || "",
+          account_number: payout.account_number || "",
+        }),
+        signal: controller.signal,
+      }
+    );
+
+    clearTimeout(timeout);
+
+    if (!response.ok) {
+      throw new Error("PAYOUT_FAILED");
+    }
+
+    const payoutData = await response.json();
+
+    if (!payoutData || payoutData.status === "error") {
+      throw new Error("PAYOUT_FAILED");
+    }
+
+    // 🔄 Update payout status
+    await payoutRef.update({
+      status: "processing",
+      payoutResponse: payoutData,
+      approvedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    return res.json({
+      success: true,
+      message: "Withdrawal approved and payout initiated",
+      transactionId,
+    });
+
+  } catch (err) {
+    console.error("APPROVE WITHDRAWAL ERROR:", err.message);
+
+    return res.status(500).json({
+      error: err.message || "Failed to approve withdrawal",
+    });
+  }
+});
+// ----------------------
+// ADMIN: REJECT WITHDRAWAL
+// ----------------------
+router.post("/admin/reject-withdrawal", async (req, res) => {
+  try {
+    const { transactionId, reason } = req.body;
+
+    if (!transactionId) {
+      return res.status(400).json({ error: "transactionId required" });
+    }
+
+    const payoutRef = db.collection("payouts").doc(transactionId);
+    const payoutSnap = await payoutRef.get();
+
+    if (!payoutSnap.exists) {
+      return res.status(404).json({ error: "Payout not found" });
+    }
+
+    const payout = payoutSnap.data();
+
+    // 🚫 Only locked withdrawals can be rejected
+    if (payout.status !== "locked") {
+      return res.status(400).json({
+        error: `Cannot reject payout with status: ${payout.status}`,
+      });
+    }
+
+    const userRef = db.collection("users").doc(payout.userId);
+
+    // 🔄 Run refund safely
+    await db.runTransaction(async (t) => {
+      const userSnap = await t.get(userRef);
+
+      const beforeBalance = userSnap.data()?.realBalance || 0;
+
+      // 💰 Refund user
+      t.update(userRef, {
+        realBalance: admin.firestore.FieldValue.increment(payout.amount),
+      });
+
+      // ❌ Mark payout as rejected
+      t.update(payoutRef, {
+        status: "rejected",
+        rejectedAt: admin.firestore.FieldValue.serverTimestamp(),
+        rejectionReason: reason || "Rejected by admin",
+      });
+
+      // 🧾 Ledger entry (optional but good for tracking)
+      t.set(db.collection("ledger").doc(), {
+        userId: payout.userId,
+        type: "withdrawal_rejected",
+        amount: payout.amount,
+        currency: "USD",
+        beforeBalance,
+        afterBalance: beforeBalance + payout.amount,
+        reference: transactionId,
+        reason: reason || "Admin rejection",
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+
+      // 📊 Transaction log
+      t.set(db.collection("transactions").doc(), {
+        userId: payout.userId,
+        type: "withdrawal_rejected",
+        amount: payout.amount,
+        transactionId,
+        status: "rejected",
+        reason: reason || "Admin rejection",
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
+    });
+
+    return res.json({
+      success: true,
+      message: "Withdrawal rejected and refunded",
+      transactionId,
+    });
+
+  } catch (err) {
+    console.error("REJECT WITHDRAWAL ERROR:", err.message);
+
+    return res.status(500).json({
+      error: err.message || "Failed to reject withdrawal",
+    });
+  }
+});
+// ----------------------
+// ADMIN RETRY PAYOUT
+// ----------------------
+router.post("/admin/retry-payout", async (req, res) => {
+  try {
+    const { transactionId } = req.body;
+
+    if (!transactionId) {
+      return res.status(400).json({ error: "transactionId required" });
+    }
+
+    const payoutRef = db.collection("payouts").doc(transactionId);
+    const snap = await payoutRef.get();
+
+    if (!snap.exists) {
+      return res.status(404).json({ error: "Payout not found" });
+    }
+
+    const payout = snap.data();
+
+    if (!["failed", "locked"].includes(payout.status)) {
+      return res.status(400).json({ error: "Cannot retry this payout" });
+    }
+
+    const token = await getPayoutToken();
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+
+    const response = await fetch(
+      "https://api.accountpe.com/api/payout/create_transaction",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+          "Idempotency-Key": transactionId,
+        },
+        body: JSON.stringify({
+          country_code: payout.country_code,
+          beneficiary_name: payout.beneficiary_name,
+          mobile_no: payout.mobile_no,
+          amount: payout.payoutAmount,
+          transaction_id: transactionId,
+          payment_method: payout.payment_method,
+          remarks: payout.remarks || "",
+          bank_code: payout.bank_code,
+          account_number: payout.account_number,
+        }),
+        signal: controller.signal,
+      }
+    );
+
+    clearTimeout(timeout);
+
+    const data = await response.json();
+
+    if (!response.ok || data?.status === "error") {
+      await payoutRef.update({ status: "failed" });
+      return res.status(500).json({ error: "Retry failed" });
+    }
+
+    await payoutRef.update({
+      status: "processing",
+      retryCount: admin.firestore.FieldValue.increment(1),
+      payoutResponse: data,
+    });
+
+    return res.json({
+      success: true,
+      message: "Retry initiated",
+      transactionId,
+    });
+
+  } catch (err) {
+    console.error("Retry error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
+// ----------------------
+// ADMIN FORCE STATUS
+// ----------------------
+router.post("/admin/force-payout-status", async (req, res) => {
+  try {
+    const { transactionId, status } = req.body;
+
+    const allowed = ["processing", "success", "failed", "cancelled", "refunded"];
+
+    if (!transactionId || !status) {
+      return res.status(400).json({ error: "Missing fields" });
+    }
+
+    if (!allowed.includes(status)) {
+      return res.status(400).json({ error: "Invalid status" });
+    }
+
+    const payoutRef = db.collection("payouts").doc(transactionId);
+
+    const snap = await payoutRef.get();
+    if (!snap.exists) {
+      return res.status(404).json({ error: "Payout not found" });
+    }
+
+    await payoutRef.update({
+      status,
+      forced: true,
+      forcedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    return res.json({
+      success: true,
+      message: `Status forced to ${status}`,
+      transactionId,
+    });
+
+  } catch (err) {
+    console.error("Force status error:", err);
+    return res.status(500).json({ error: err.message });
+  }
+});
 module.exports = router;
