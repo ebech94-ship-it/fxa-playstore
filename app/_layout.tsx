@@ -8,26 +8,22 @@ import {
 import * as Linking from "expo-linking";
 import { Stack, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
-import { useEffect, useRef, } from "react";
-
-
-
+import { useEffect, useRef } from "react";
 
 import "react-native-reanimated";
 
 import { AppProvider, useApp } from "./AppContext";
 
 /* ===============================
-   AUTH GATE (OUTSIDE)
+   AUTH GATE
    =============================== */
 function AuthGate() {
-  const { authUser, loading, appReady,hydrated } = useApp();
+  const { authUser, loading, appReady,  } = useApp();
   const router = useRouter();
   const hasRedirected = useRef(false);
 
-
   useEffect(() => {
-  if (!hydrated || loading || !appReady) return;
+    if ( loading || !appReady) return;
     if (hasRedirected.current) return;
 
     hasRedirected.current = true;
@@ -37,21 +33,19 @@ function AuthGate() {
     } else {
       router.replace("/welcome");
     }
-  }, [authUser, loading, appReady, router, if (!hydrated || lo]);
+  }, [authUser, loading, appReady, router, ]);
 
   return null;
 }
 
-
-
+/* ===============================
+   ROOT LAYOUT
+   =============================== */
 export default function RootLayout() {
   const colorScheme = useColorScheme();
   const router = useRouter();
   const handledRef = useRef(false);
   const routerRef = useRef(router);
-   
-  
-
 
   /* ===============================
      DEEP LINK HANDLING
@@ -84,15 +78,19 @@ export default function RootLayout() {
   }, []);
 
   return (
- <AppProvider>
-  <ThemeProvider value={colorScheme === "dark" ? DarkTheme : DefaultTheme}>
-    <AuthGate />
-    <Stack screenOptions={{ headerShown: false }}>
- <Stack.Screen name="index" />
+    <AppProvider>
+      <ThemeProvider
+        value={colorScheme === "dark" ? DarkTheme : DefaultTheme}
+      >
+        <AuthGate />
+
+        <Stack screenOptions={{ headerShown: false }}>
+          <Stack.Screen name="index" />
           <Stack.Screen name="splash" />
           <Stack.Screen name="welcome" />
           <Stack.Screen name="tradinglayout" />
         </Stack>
+
         <StatusBar style="auto" />
       </ThemeProvider>
     </AppProvider>

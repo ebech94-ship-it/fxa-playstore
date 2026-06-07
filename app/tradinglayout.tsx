@@ -260,16 +260,27 @@ useEffect(() => {
       uid
     );
 
-    const unsub = onSnapshot(ref, (snap) => {
-      if (!snap.exists()) return;
+   const unsub = onSnapshot(
+  ref,
+  (snap) => {
+    if (!snap.exists()) return;
 
-      const data = snap.data();
+    const data = snap.data();
 
-      setTournamentBalances((prev) => ({
-        ...prev,
-        [t.tournamentId]: data.balance ?? 0,
-      }));
-    });
+    setTournamentBalances((prev) => ({
+      ...prev,
+      [t.tournamentId]: data.balance ?? 0,
+    }));
+  },
+  (error) => {
+    console.log(
+      "❌ PARTICIPANT LISTENER ERROR:",
+      t.tournamentId,
+      error.code,
+      error.message
+    );
+  }
+);
 
     unsubs.push(unsub);
   });
@@ -608,7 +619,9 @@ useEffect(() => {
 
   const ref = doc(db, "tournaments", tId); // ✅ now always safe
 
-  const unsub = onSnapshot(ref, (snap) => {
+ const unsub = onSnapshot(
+  ref,
+  (snap) => {
     if (!snap.exists()) return;
 
     const data = snap.data();
@@ -621,7 +634,16 @@ useEffect(() => {
         symbol: data.symbol ?? "T",
       },
     }));
-  });
+  },
+  (error) => {
+    console.log(
+      "❌ TOURNAMENT META ERROR:",
+      tId,
+      error.code,
+      error.message
+    );
+  }
+);
 
   return () => unsub();
 }, [activeTournament, tournamentMeta]);

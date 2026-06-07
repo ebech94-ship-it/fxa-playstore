@@ -34,12 +34,12 @@ export type LeaderboardBarProps = {
 };
 
 
-type PlayerRowProps = {
+type ParticipantRowProps = {
   username: string;
   countryCode: string;
 };
 
-const PlayerRow = ({ username, countryCode }: PlayerRowProps) => (
+const ParticipantRow = ({ username, countryCode }: ParticipantRowProps) => (
   <View style={{ flexDirection: "row", alignItems: "center" }}>
     <CountryFlag isoCode={countryCode} size={14} />
     <Text style={{ marginLeft: 6, color: "#fff", fontWeight: "600",fontSize: 12 }}>{username}</Text>
@@ -47,7 +47,7 @@ const PlayerRow = ({ username, countryCode }: PlayerRowProps) => (
 );
 
 // Fallback preview players
-const PREVIEW_PLAYERS: Participant[] = [
+const PREVIEW_PARTICIPANTS: Participant[] = [
   { id: "p1", username: "WolfTrader", balance: 950, avatar: "https://i.pravatar.cc/150?img=32", countryCode: "US" },
   { id: "p2", username: "PipHunter", balance: 870, avatar: "https://i.pravatar.cc/150?img=12", countryCode: "GB" },
   { id: "p3", username: "GoldKing", balance: 790, avatar: "https://i.pravatar.cc/150?img=50", countryCode: "FR" },
@@ -257,7 +257,7 @@ const participants: Participant[] = activeAccount.type === "demo"
   ? liveParticipants          // Fetch from demoAccounts collection
   : isTournamentLive
   ? liveParticipants          // Tournament live leaderboard
-  : PREVIEW_PLAYERS;     // Fallback
+  : PREVIEW_PARTICIPANTS;     // Fallback
 
 // ✅ Override current user's balance for instant demo updates
 const displayParticipants = participants.map((p) => {
@@ -293,10 +293,10 @@ useEffect(() => {
 
 const chunkSize = isLandscape ? 1 : 2; // 1 row in landscape, 2 rows in portrait
 
-const chunkedPlayers: Participant[][] = [];
+const chunkedParticipants: Participant[][] = [];
 
 for (let i = 0; i < displayParticipants.length; i += chunkSize) {
-  chunkedPlayers.push(displayParticipants.slice(i, i + chunkSize));
+  chunkedParticipants.push(displayParticipants.slice(i, i + chunkSize));
 
 }
 
@@ -319,7 +319,7 @@ return (
           </Text>
         )}
 
-    {chunkedPlayers.map((pair, columnIndex) => (
+    {chunkedParticipants.map((pair, columnIndex) => (
   <View key={columnIndex} style={{ marginRight: 10 }}>
     {pair.map((p, rowIndex) => {
      const index = columnIndex * chunkSize + rowIndex;
@@ -354,7 +354,7 @@ return (
           />
 
           <View style={styles.info}>
-            <PlayerRow
+            <ParticipantRow
               username={
                 isCurrent
                   ? profile?.username || p.username || "You"
@@ -455,7 +455,7 @@ return (
         style={styles.avatar}
       />
       <View style={styles.info}>
-        <PlayerRow
+        <ParticipantRow
           username={item.username || "Player"}
           countryCode={item.countryCode || "CM"}
         />

@@ -13,7 +13,7 @@ console.log("🔥 ACTIVE SERVER.JS LOADED 🔥");
 const express = require("express");
 const cors = require("cors");
 // ---------------------------------------------------------------------
-// FIREBASE + TREASURY
+ // FIREBASE + TREASURY
 // ---------------------------------------------------------------------
 const { db } = require("./firebaseAdmin");
 const treasury = require("./treasury");
@@ -53,8 +53,6 @@ app.use(express.json({
   }
 }));
 
-
-app.options("*", cors());
 // Middleware to verify Firebase ID token
 const authenticate = async (req, res, next) => {
   const authHeader = req.headers.authorization;

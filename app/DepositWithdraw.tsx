@@ -19,7 +19,7 @@ import {
   Platform,
   ScrollView,
   StyleSheet,
-  Switch,
+ 
   Text,
   TextInput,
   TouchableOpacity,
@@ -548,25 +548,46 @@ You can navigate and explore the app safely without making any real transactions
   /* -------------------- UI -------------------- */
   return (
     <ScrollView style={styles.container}>
-      <LinearGradient colors={["#6a5acd", "#00ffff"]} style={styles.headerContainer}>
-       <Text style={styles.headerText}>
-  {isDeposit ? t.deposit : t.withdraw}
-</Text>
+    
+    <LinearGradient colors={["#000000", "#0f172a"]} style={styles.headerContainer}>
+  <Text style={styles.headerText}>
+    FX ARENA
+  </Text>
 
-      </LinearGradient>
+  <Text style={styles.subHeaderText}>
+    {isDeposit ? "Deposit Funds" : "Withdraw Earnings"}
+  </Text>
 
-      <View style={styles.switchContainer}>
-        <Text style={{ color: "#fff" }}>{t.deposit}</Text>
-        <Switch value={isDeposit} onValueChange={() => setIsDeposit(!isDeposit)} />
-        <Text style={{ color: "#fff" }}>{t.withdraw}</Text>
-      </View>
+  <Text style={styles.brandText}>
+    Powered by GodSpeed TECH ⚡
+  </Text>
+</LinearGradient>
+
+      <View style={styles.toggleRow}>
+  <TouchableOpacity
+    style={[styles.toggleBtn, isDeposit && styles.toggleActive]}
+    onPress={() => setIsDeposit(true)}
+  >
+    <Text style={styles.toggleText}>Deposit</Text>
+  </TouchableOpacity>
+
+  <TouchableOpacity
+    style={[styles.toggleBtn, !isDeposit && styles.toggleActive]}
+    onPress={() => setIsDeposit(false)}
+  >
+    <Text style={styles.toggleText}>Withdraw</Text>
+  </TouchableOpacity>
+</View>
 
       <Text style={styles.methodHeader}>{t.selectMethod}</Text>
       <View style={styles.methodsContainer}>
         {paymentMethods.map((m, i) => (
           <TouchableOpacity
             key={i}
-            style={[styles.methodButton, { backgroundColor: m.color, opacity: m.enabled ? 1 : 0.4 }]}
+            style={[
+  styles.methodCard,
+  { borderColor: m.color, opacity: m.enabled ? 1 : 0.4 }
+]}
             onPress={() => {
               if (!m.enabled) {
                 Alert.alert(  t.comingSoon,  `${m.name} ${t.notAvailable}`);
@@ -576,7 +597,11 @@ You can navigate and explore the app safely without making any real transactions
             }}
           >
             <Image source={m.icon} style={styles.methodIcon} />
-            <Text style={styles.methodText}>{m.name}</Text>
+            <Text style={styles.methodTitle}>{m.name}</Text>
+
+<Text style={styles.methodSub}>
+  {m.enabled ? "Available" : "Coming Soon"}
+</Text>
           </TouchableOpacity>
         ))}
       </View>
@@ -594,7 +619,9 @@ You can navigate and explore the app safely without making any real transactions
       showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
     >
-            <Text style={styles.modalTitle}>{activeMethod} {t.form}</Text>
+           <Text style={styles.modalTitle}>
+  {activeMethod} {isDeposit ? "Deposit" : "Withdrawal"}
+</Text>
             <View style={{ flexDirection: "row", justifyContent: "flex-end", marginBottom: 10 }}>
   <TouchableOpacity onPress={() => setLang("en")}>
     <Text style={{ color: lang === "en" ? "#FACC15" : "#888", marginRight: 10 }}>EN</Text>
@@ -719,7 +746,9 @@ You can navigate and explore the app safely without making any real transactions
       <Modal visible={confirmVisible} transparent animationType="fade">
   <View style={styles.modalOverlay}>
     <View style={styles.modalContainer}>
-      <Text style={styles.modalTitle}>Confirm Transaction</Text>
+     <Text style={styles.modalTitle}>
+  Confirm {isDeposit ? "Deposit" : "Withdrawal"}
+</Text>
 
       <Text style={{ color: "#fff", marginBottom: 10 }}>
         Type: {isDeposit ? "Deposit" : "Withdraw"}
@@ -787,7 +816,7 @@ You can navigate and explore the app safely without making any real transactions
 /* -------------------- Styles -------------------- */
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#1e1e2f", padding: 20 },
-  headerContainer: { padding: 15, borderRadius: 12, marginBottom: 20 },
+
   headerText: { fontSize: 26, fontWeight: "bold", color: "#fff", textAlign: "center" },
   switchContainer: { flexDirection: "row", justifyContent: "space-between", marginBottom: 20 },
   methodHeader: { color: "#fff", fontSize: 18, marginBottom: 10 },
@@ -849,6 +878,88 @@ numberText: {
 userIdText: {
   color: "#ffaa00",
   fontWeight: "bold",
+},
+headerContainer: {
+  padding: 20,
+  borderRadius: 16,
+  marginBottom: 20,
+},
+
+subHeaderText: {
+  color: "#9ca3af",
+  textAlign: "center",
+  marginTop: 5,
+},
+
+brandText: {
+  color: "#facc15",
+  textAlign: "center",
+  marginTop: 5,
+  fontSize: 12,
+},
+
+toggleRow: {
+  flexDirection: "row",
+  justifyContent: "center",
+  marginBottom: 20,
+  gap: 10,
+},
+
+toggleBtn: {
+  padding: 10,
+  borderRadius: 10,
+  backgroundColor: "#111827",
+  width: "40%",
+  alignItems: "center",
+},
+
+toggleActive: {
+  backgroundColor: "#facc15",
+},
+
+toggleText: {
+  color: "#fff",
+  fontWeight: "700",
+},
+
+methodCard: {
+  flexDirection: "column",
+  padding: 15,
+  borderRadius: 15,
+  borderWidth: 1,
+  marginBottom: 10,
+  width: "48%",
+  alignItems: "center",
+  backgroundColor: "#0b0f19",
+},
+
+methodTitle: {
+  color: "#fff",
+  fontWeight: "bold",
+  marginTop: 5,
+},
+
+methodSub: {
+  color: "#9ca3af",
+  fontSize: 11,
+},
+
+amountBox: {
+  backgroundColor: "#111827",
+  padding: 12,
+  borderRadius: 10,
+  marginBottom: 15,
+},
+
+amountLabel: {
+  color: "#facc15",
+  fontWeight: "bold",
+  marginBottom: 5,
+},
+
+amountValue: {
+  color: "#fff",
+  fontSize: 12,
 },
 
 
