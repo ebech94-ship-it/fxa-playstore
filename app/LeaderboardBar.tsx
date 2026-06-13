@@ -347,8 +347,8 @@ return (
           <Image
             source={{
               uri: isCurrent
-                ? profile?.avatarUrl || p.avatar || "https://via.placeholder.com/32"
-                : p.avatar || "https://via.placeholder.com/32",
+                ? profile?.avatarUrl || p.avatar || "https://placehold.co/32x32"
+                : p.avatar || "https://placehold.co/32x32",
             }}
             style={[styles.avatar, isCurrent && styles.currentUserAvatar]}
           />

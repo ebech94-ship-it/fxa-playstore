@@ -189,9 +189,27 @@ app.post("/tournament/register", authenticate, async (req, res) => {
     }
 
     await db.runTransaction(async (t) => {
-      // 💰 ALL REGISTRATION LOGIC HANDLED IN TREASURY
-      await treasury.registerTournament(t, userId, tournamentId);
-    });
+  const tourRef = db.collection("tournaments").doc(tournamentId);
+  const tourSnap = await t.get(tourRef);
+
+  if (!tourSnap.exists) {
+    throw new Error("TOURNAMENT_NOT_FOUND");
+  }
+
+  const tour = tourSnap.data();
+
+  const now = Date.now();
+
+  if (now > tour.endTime) {
+    throw new Error("TOURNAMENT_ALREADY_ENDED");
+  }
+
+  if (!tour.entryFee && tour.entryFee !== 0) {
+    throw new Error("INVALID_ENTRY_FEE");
+  }
+
+  await treasury.registerTournament(t, userId, tournamentId);
+});
 
     res.json({
       success: true,
@@ -219,9 +237,27 @@ app.post("/tournament/rebuy", authenticate, async (req, res) => {
     }
 
     await db.runTransaction(async (t) => {
-      // ✅ ALL logic handled inside treasury
-      await treasury.processRebuy(t, userId, tournamentId);
-    });
+  const tourRef = db.collection("tournaments").doc(tournamentId);
+  const tourSnap = await t.get(tourRef);
+
+  if (!tourSnap.exists) {
+    throw new Error("TOURNAMENT_NOT_FOUND");
+  }
+
+  const tour = tourSnap.data();
+
+  const now = Date.now();
+
+  if (now > tour.endTime) {
+    throw new Error("TOURNAMENT_ENDED");
+  }
+
+  if (!tour.rebuyFee && tour.rebuyFee !== 0) {
+    throw new Error("INVALID_REBUY_FEE");
+  }
+
+  await treasury.processRebuy(t, userId, tournamentId);
+});
 
     res.json({ success: true, message: "Rebuy successful" });
 

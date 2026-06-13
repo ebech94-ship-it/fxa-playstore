@@ -155,7 +155,7 @@ useEffect(() => {
 
   const q = query(
     collection(db, "supportThreads"),
-    where("userId", "==", user.uid)
+    where("uid", "==", user.uid)
   );
 
   const unsub = onSnapshot(q, (snap) => {

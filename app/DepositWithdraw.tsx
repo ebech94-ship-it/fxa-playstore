@@ -19,7 +19,7 @@ import {
   Platform,
   ScrollView,
   StyleSheet,
- 
+
   Text,
   TextInput,
   TouchableOpacity,
@@ -44,11 +44,11 @@ const LIMITS = {
   mobile: {
     currency: "XAF",
     deposit: {
-      min: 1000,
+      min: 1500,
       max: 500000,
     },
     withdraw: { 
-      min: 1500,
+      min: 600,
     },
   },
   card: {
@@ -160,12 +160,12 @@ const convert = (amount: number, from: Currency, to: Currency) => {
   return usd * rates[to];
 };
 
-  const handleChange = (key: string, value: string) => {
- if (key === "amount") {
-   
-    setFormData((prev) => ({ ...prev, [key]: value }));
-  };
-}
+ const handleChange = (key: string, value: string) => {
+  setFormData((prev) => ({
+    ...prev,
+    [key]: value,
+  }));
+};
   useEffect(() => {
     const unsub = auth.onAuthStateChanged(setCurrentUser);
     return () => unsub();
@@ -287,8 +287,7 @@ const handleDeposit = async () => {
     }
 
    if (data.paymentUrl) {
-  setModalVisible(false);
-
+ 
   Alert.alert(
     "Continue Payment",
     "You will be redirected to complete your payment securely.",
@@ -352,17 +351,16 @@ const handleWithdrawal = async () => {
 }
 
     // 🔥 FIXED PAYLOAD (MATCHES BACKEND / ACCOUNTPE SPEC)
-    const payload = {
-      country_code: "CM", // Cameroon (change if needed)
-      beneficiary_name: formData.fullName,
-      mobile_no: formData.phone,
-      amount: numericAmount,
-      transaction_id: `txn_${Date.now()}`,
-      payment_method: "mobile_money", // important for API routing
-      bank_code: "",
-      account_number: "",
-      remarks: "Tournament withdrawal",
-    };
+  const payload = {
+  country_code: "CM",
+  beneficiary_name: formData.fullName,
+  mobile_no: formData.phone,
+  amount: numericAmount,
+  payment_method: "mobile_money",
+  bank_code: "",
+  account_number: "",
+  remarks: "Tournament withdrawal",
+};
 
     console.log("🔴 WITHDRAWAL REQUEST:", {
       API_BASE,
@@ -385,9 +383,12 @@ const handleWithdrawal = async () => {
     console.log("Backend response:", data);
 
     if (!res.ok) {
-      Alert.alert("Error", data.message || "Failed to create withdrawal");
-      return;
-    }
+  Alert.alert(
+    "Error",
+    data.error || data.message || "Failed to create withdrawal"
+  );
+  return;
+}
 setModalVisible(false);
 
 Alert.alert(
@@ -425,8 +426,11 @@ const submitForm = async () => {
       return;
     }
   } else {
-    const normalizedAmount = isMobileMoney
-  ? convert(amount, "USD", "XAF")
+   const grossXAF = convert(amount, "USD", "XAF");
+const netXAF = grossXAF * 0.99;
+
+const normalizedAmount = isMobileMoney
+  ? netXAF
   : amount;
 
 if (normalizedAmount < methodLimits.withdraw.min) {
@@ -440,7 +444,9 @@ if (normalizedAmount < methodLimits.withdraw.min) {
 
   // 📱 Phone validation
   if (isDeposit && isMobileMoney) {
-    if (!/^(237)?6\d{8}$/.test(formData.phone)) {
+   const cleanPhone = formData.phone.replace(/\s/g, "");
+
+if (!/^(237)?6\d{8}$/.test(cleanPhone)) {
       Alert.alert(
         "Invalid Phone",
         "Phone must be in format 2376XXXXXXXX"
@@ -452,16 +458,31 @@ if (normalizedAmount < methodLimits.withdraw.min) {
   // ✅ ONLY THIS — NO API CALL HERE
   setConfirmVisible(true);
 };
+
 const confirmAndSend = async () => {
+ if (loading) return;
   try {
     setLoading(true);
-
+setConfirmVisible(false);
+    setModalVisible(false);
     if (isDeposit) {
       await handleDeposit();
     } else {
       await handleWithdrawal();
     }
-
+setFormData({
+  fullName: profile?.displayName || "",
+  phone: "",
+  amount: "",
+  currency: "XAF",
+  code: "",
+  cardNumber: "",
+  expiry: "",
+  cvv: "",
+  walletAddress: "",
+  note: "",
+  operator: "",
+});
     setConfirmVisible(false);
     setModalVisible(false);
 
@@ -471,6 +492,7 @@ const confirmAndSend = async () => {
     setLoading(false);
   }
 };
+
 const minWithdrawDisplay = isMobileMoney
   ? convert(methodLimits.withdraw.min, "XAF", "USD")
   : methodLimits.withdraw.min;
@@ -637,21 +659,79 @@ You can navigate and explore the app safely without making any real transactions
   style={styles.modalInput}
   placeholderTextColor="#888"
 />
-<TextInput
-  placeholder={t.amount}
-  value={formData.amount}
-  onChangeText={(v) => handleChange("amount", v)}
-  keyboardType="numeric"
-  style={styles.modalInput}
-  placeholderTextColor="#888"
-/>
+<View style={styles.amountInputContainer}>
+  <TextInput
+    placeholder={t.amount}
+    value={formData.amount}
+    onChangeText={(v) => handleChange("amount", v)}
+    keyboardType="numeric"
+    style={styles.amountInput}
+    placeholderTextColor="#888"
+  />
 
+  <Text style={styles.currencyBadge}>
+    {isDeposit ? "XAF" : "USD"}
+  </Text>
+</View>
+{!isDeposit && Number(formData.amount) > 0 && (
+  <View style={styles.amountBox}>
+    <Text style={styles.amountLabel}>
+      Withdrawal Preview
+    </Text>
+
+    <Text style={styles.amountValue}>
+      Gross:
+      {" "}
+      {grossXAF.toLocaleString()} XAF
+    </Text>
+
+    <Text style={styles.amountValue}>
+      Fee (1%):
+      {" "}
+      -{feeXAF.toLocaleString()} XAF
+    </Text>
+
+    <Text style={styles.amountValue}>
+      You will receive:
+      {" "}
+      {netXAF.toLocaleString()} XAF
+    </Text>
+  </View>
+)}
+
+{/* DEPOSIT PREVIEW */}
+{isDeposit && Number(formData.amount) > 0 && (
+  <View style={styles.amountBox}>
+    <Text style={styles.amountLabel}>
+      Deposit Preview
+    </Text>
+
+   <Text style={styles.amountValue}>
+  You are paying:
+</Text>
+
+<Text style={styles.amountValue}>
+  {Number(formData.amount).toLocaleString()} XAF
+</Text>
+
+<Text
+  style={{
+    color: "#00ff99",
+    fontSize: 18,
+    fontWeight: "bold",
+    marginTop: 8,
+  }}
+>
+  You will receive ≈{" "}
+  {getConvertedAmount(Number(formData.amount)).toFixed(2)} USD
+</Text>
+  </View>
+)}
 {/* Inline validation error */}
 {formData.amount !== "" &&
- Number(formData.amount) <
-  (isDeposit
-    ? methodLimits.deposit.min
-    : methodLimits.withdraw.min) && (
+(isDeposit
+  ? Number(formData.amount) < methodLimits.deposit.min
+  : netXAF < methodLimits.withdraw.min) && (
    <Text style={styles.amountError}>
   {t.belowMin}
 </Text>
@@ -755,7 +835,9 @@ You can navigate and explore the app safely without making any real transactions
       </Text>
 
 <Text style={{ color: "#fff", marginBottom: 10 }}>
-  Amount: {Number(formData.amount).toFixed(2)} {isDeposit ? "XAF/USD" : "USD"}
+Amount: {Number(formData.amount).toFixed(2)}
+{" "}
+{isDeposit ? "XAF" : "USD"}
 </Text>
 
 {!isDeposit && (
@@ -776,13 +858,27 @@ You can navigate and explore the app safely without making any real transactions
 
 {isDeposit && (
   <Text style={{ color: "#00ff99", marginBottom: 10 }}>
-    You receive ≈ {getConvertedAmount.toLocaleString()} USD
-  </Text>
+  You receive ≈{" "}
+  {getConvertedAmount(Number(formData.amount || 0)).toFixed(2)} USD
+</Text>
 )}
 
       <Text style={{ color: "#fff", marginBottom: 10 }}>
         Method: {activeMethod}
       </Text>
+
+      <Text
+  style={{
+    color: "#9CA3AF",
+    fontSize: 12,
+    marginBottom: 12,
+    lineHeight: 18,
+  }}
+>
+  Your withdrawal will be submitted for processing.
+  Mobile Money transfers are usually completed within a few minutes.
+  Please do not submit multiple withdrawal requests while one is already being processed.
+</Text>
 
       {isMobileMoney && (
         <Text style={{ color: "#fff", marginBottom: 10 }}>
@@ -961,6 +1057,26 @@ amountValue: {
   color: "#fff",
   fontSize: 12,
 },
+amountInputContainer: {
+  flexDirection: "row",
+  alignItems: "center",
+  backgroundColor: "#1C1C2E",
+  borderRadius: 10,
+  paddingHorizontal: 12,
+  marginBottom: 15,
+},
 
+amountInput: {
+  flex: 1,
+  color: "#fff",
+  paddingVertical: 12,
+},
+
+currencyBadge: {
+  color: "#FACC15",
+  fontWeight: "900",
+  fontSize: 16,
+  marginLeft: 10,
+},
 
 });

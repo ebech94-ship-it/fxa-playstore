@@ -93,15 +93,16 @@ router.post("/create-link", async (req, res) => {
     } catch (_err) {
       return res.status(401).json({ error: "Invalid token" });
     }
+const amountNum = Number(amount);
 
-    if (amount <= 0) {
-      return res.status(400).json({ error: "Invalid amount" });
-    }
+if (!amountNum || amountNum <= 0) {
+  return res.status(400).json({ error: "Invalid amount" });
+}
+const cleanPhone = String(momoNumber).replace(/\s/g, "");
 
-    if (!/^\d+$/.test(momoNumber)) {
-      return res.status(400).json({ error: "Invalid MoMo number" });
-    }
-
+if (!/^(237)?6\d{8}$/.test(cleanPhone)) {
+  return res.status(400).json({ error: "Invalid MoMo number" });
+}
     const token = await getSwychrToken();
 
     const transactionId =
@@ -120,14 +121,13 @@ router.post("/create-link", async (req, res) => {
           country_code: "CM",
           name,
           email,
-          amount,
+          amount:amountNum,
           currency: "XAF",
           transaction_id: transactionId,
           description: "Forex Tournament Deposit",
           pass_digital_charge: true,
-          mobile: momoNumber,
-          callback_url:
-            "https://forexapp2-backend.onrender.com/api/payin/webhook",
+          mobile: cleanPhone,
+         callback_url: process.env.PAYIN_WEBHOOK_URL,
         }),
       }
     );
@@ -138,17 +138,22 @@ router.post("/create-link", async (req, res) => {
     }
 
     const paymentData = await paymentResponse.json();
+    if (!paymentData?.data?.payment_link) {
+  throw new Error("Payment link missing from provider response");
+}
 
-const amountUSD = Number(amount) / XAF_TO_USD;
+const amountUSD = amountNum / XAF_TO_USD;
 
 await db.collection("transactions").add({
   userId: uid,
   transactionId,
+ name,
+  email,
   amount: amountUSD,
 currency: BASE_CURRENCY,
 originalCurrency: "XAF",
-originalAmount: Number(amount),
-  momoNumber,
+originalAmount: amountNum,
+  momoNumber: cleanPhone,
   status: "pending",
   type: "deposit",
   createdAt: admin.firestore.FieldValue.serverTimestamp(),

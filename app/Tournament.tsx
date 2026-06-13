@@ -1,10 +1,10 @@
 // TournamentScreen.tsx
 import { Ionicons } from "@expo/vector-icons";
-import { LinearGradient } from "expo-linear-gradient";
-import { useLocalSearchParams, useRouter } from "expo-router";
+
+import { useLocalSearchParams } from "expo-router";
 import type { User } from "firebase/auth";
 import CountryFlag from "react-native-country-flag";
-import { verifyAdminAccess } from "../lib/adminAccess";
+
 
 import { getAuth } from "firebase/auth";
 import { useApp } from "./AppContext"; // <-- add this at the top
@@ -16,7 +16,7 @@ import {
   Alert, FlatList,
   KeyboardAvoidingView,
   LayoutAnimation, Modal, Platform, Pressable, ScrollView, StyleSheet,
-  Text, TextInput, TouchableOpacity, UIManager, View
+  Text, TouchableOpacity, UIManager, View
 } from "react-native";
 import { db } from "../firebaseConfig";
 
@@ -143,11 +143,11 @@ const [tournamentRebuys, setTournamentRebuys] = useState<Record<string, number>>
 
 
   const [viewTab, setViewTab] = useState("info"); // "info" | "leaderboard"
-  const [adminModal, setAdminModal] = useState(false);
+  
 
   const [joinedMap, setJoinedMap] = useState<Record<string, boolean>>({});
 
-  const [adminCode, setAdminCode] = useState("");
+
  type LoadingState = {
   register?: boolean;
   rebuy?: boolean;
@@ -157,9 +157,9 @@ const [loadingActions, setLoadingActions] = useState<
   Record<string, LoadingState>
 >({});
 // If you already have a context like useApp() that provides tournamentAccounts:
-const { activeAccount,   isAdmin, adminLoaded, tournamentAccounts, profile } = useApp(); // or replace with your actual context
+const { activeAccount, tournamentAccounts, profile } = useApp(); // or replace with your actual context
 
-  const router = useRouter();
+
 
   const setLoadingFor = (
   tournamentId: string,
@@ -260,24 +260,19 @@ useEffect(() => {
   const unsub = onSnapshot(ref, (snap) => {
     let rebuyTotal = 0;
 
-    const leaderboardList = snap.docs.map((doc) => {
-      const data = doc.data() as any;
+   const leaderboardList = snap.docs.map((doc) => {
+  const data = doc.data() as any;
 
-      rebuyTotal += data.rebuyCount ?? 0;
+  const balance = data.balance ?? 0;
+  const starting = selectedTournament?.startingBalance ?? 0;
 
-      const initialBalance =
-        data.initialBalance ??
-        selectedTournament?.startingBalance ??
-        0;
+  return {
+    id: doc.id,
+    ...data,
 
-      const balance = data.balance ?? 0;
-
-      return {
-        id: doc.id,
-        ...data,
-        performance: balance - initialBalance,
-      };
-    });
+       performance: balance - (data.initialBalance ?? starting),
+  };
+});
 
     leaderboardList.sort((a, b) => b.performance - a.performance);
 
@@ -310,8 +305,16 @@ useEffect(() => {
     orderBy("accounts.tournament.balance", "desc"),
     limit(30)
   );
+console.log("🔥 Leaderboard listener starting");
+console.log(
+  "🔥 Leaderboard query:",
+  "users -> accounts.tournament.balance"
+);
+  const unsub = onSnapshot(
+  q,
+  (snapshot) => {
+    console.log("✅ Leaderboard snapshot received");
 
-  const unsub = onSnapshot(q, (snapshot) => {
     const list = snapshot.docs.map((d) => ({
       id: d.id,
       ...(d.data() as any),
@@ -319,8 +322,14 @@ useEffect(() => {
 
     setLeaderboard(list);
 
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-  });
+    LayoutAnimation.configureNext(
+      LayoutAnimation.Presets.easeInEaseOut
+    );
+  },
+  (error) => {
+    console.error("❌ Leaderboard listener error:", error);
+  }
+);
 
   return () => unsub();
 }, [selectedTournament?.id]);
@@ -500,7 +509,9 @@ const formatFullDate = (ms: number) => {
 
   return `${ordinal} ${month} ${year}, ${hours}:${minutes}`;
 
-}; // Tournament card
+}; 
+  
+  // Tournament card
  const TournamentCard = ({ item }: { item: Tournament }) => {
 if (!item.startTime || !item.endTime) return null;
 
@@ -519,23 +530,21 @@ const progress =
   const rebuyFee = item.rebuyFee ?? item.entryFee ?? 0;
 
    // Step 4: Rebuy logic (fixed)
-const tAccount = tournamentAccounts.find(t => t.tournamentId === item.id);
+const tAccount = tournamentAccounts.find(
+  t => t.tournamentId === item.id
+);
 
 const currentBalance = tAccount?.balance ?? 0;
-const initialBalance =
-  tAccount?.initialBalance ?? item.startingBalance;
 
-// only allow rebuy if:
-// 1. user joined
-// 2. tournament ongoing
-// 3. current balance <= 50% of initial
-// ✅ no external map required, cleaner logic
+const initialBalance =
+  tAccount?.initialBalance ??
+  item.startingBalance ??
+  0;
 
 const allowRebuy =
   !!tAccount &&
   !!joinedMap[item.id] &&
   status === "ongoing" &&
-  initialBalance != null &&
   currentBalance < initialBalance / 2;
   // Step 5: Active tournament highlight
   const isActiveTournament =
@@ -803,54 +812,7 @@ const allowRebuy =
     </Text>
   }
 />
-      {/* admin button */}
-{adminLoaded && isAdmin && (
-  <View style={styles.adminSection}>
-    <TouchableOpacity onPress={() => setAdminModal(true)}>
-      <LinearGradient
-        colors={["#7c3aed", "#0ea5e9"]}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={styles.adminButton}
-      >
-        <Text style={styles.adminButtonText}>
-          👑 Administrator Access
-        </Text>
-      </LinearGradient>
-    </TouchableOpacity>
-  </View>
-)}
-       {/* admin modal */}
-      <Modal visible={adminModal} transparent animationType="fade">
-        <View style={styles.modalOverlay}>
-          <View style={styles.adminModalBox}>
-            <Text style={styles.modalTitle}>Enter Admin Code</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter admin code"
-              placeholderTextColor="#aaa"
-              secureTextEntry
-              value={adminCode}
-              onChangeText={setAdminCode}
-               autoFocus
-            />
-            <View style={styles.modalBtnRow}>
-              <TouchableOpacity style={styles.cancelBtn} onPress={() => setAdminModal(false)}>
-                <Text style={styles.btnTextAlt}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-  style={styles.confirmBtn} onPress={() => verifyAdminAccess(   adminCode, router, () => setAdminModal(false), // success
-      () => {} // failure (optional)
-                     )
-                    }
-                      >
-
-                <Text style={styles.btnText}>Confirm</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+   
 
       {/* tournament modal */}
     <Modal
