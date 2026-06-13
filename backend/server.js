@@ -2,11 +2,15 @@ console.log("🔥🔥🔥 ACTIVE SERVER.JS LOADED 🔥🔥🔥");
 
 require("dotenv").config();
 
+
 // 🔒 CHECK WEBHOOK SECRET
 if (!process.env.SWYCHR_WEBHOOK_SECRET) {
   console.warn("⚠️ SWYCHR_WEBHOOK_SECRET is NOT set");
 } else {
-  console.log("SECRET LOADED:", process.env.SWYCHR_WEBHOOK_SECRET);
+  console.log(
+    "SWYCHR_WEBHOOK_SECRET loaded:",
+    !!process.env.SWYCHR_WEBHOOK_SECRET
+  );
 }
 console.log("🔥 ACTIVE SERVER.JS LOADED 🔥");
 
