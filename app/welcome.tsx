@@ -32,7 +32,9 @@ import { useEffect, useRef, useState } from "react";
 
 
 import {
-  ActivityIndicator, Animated, ImageBackground, Keyboard, KeyboardAvoidingView, Modal, Platform,
+  ActivityIndicator,
+  Alert,
+  Animated, ImageBackground, Keyboard, KeyboardAvoidingView, Modal, Platform,
   ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View,
 } from "react-native";
 
@@ -71,6 +73,10 @@ const countryCode =
   if (!docSnap.exists()) {
     // 🔗 Read referral
     const inviteRef = await AsyncStorage.getItem("inviteRef");
+    Alert.alert(
+  "Referral Check",
+  `inviteRef = ${inviteRef}`
+);
 
     // ✅ Determine valid referrer BEFORE writing
     let referredBy: string | null = null;

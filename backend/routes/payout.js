@@ -121,7 +121,7 @@ router.post("/", async (req, res) => {
 
     await db.runTransaction(async (t) => {
       const userSnap = await t.get(userRef);
-      const balance = userSnap.data()?.realBalance || 0;
+      const balance = userSnap.data()?.accounts?.real?.balance || 0;
 
       if (balance < withdrawalUSD) {
         throw new Error("INSUFFICIENT_BALANCE");
@@ -129,8 +129,8 @@ router.post("/", async (req, res) => {
 
       // 🔒 Deduct user balance
       t.update(userRef, {
-        realBalance: admin.firestore.FieldValue.increment(-withdrawalUSD),
-      });
+  "accounts.real.balance": admin.firestore.FieldValue.increment(-withdrawalUSD),
+});
 
       // 🧾 Create payout (LOCKED STATE)
       payoutRef = db.collection("payouts").doc(transactionId);
@@ -225,7 +225,7 @@ router.post("/", async (req, res) => {
  if (!response.ok) {
   await db.runTransaction(async (t) => {
     t.update(userRef, {
-      realBalance: admin.firestore.FieldValue.increment(withdrawalUSD),
+      "accounts.real.balance": admin.firestore.FieldValue.increment(withdrawalUSD),
     });
 
     t.update(payoutRef, {
@@ -377,7 +377,7 @@ router.post("/webhook", async (req, res) => {
       const userRef = db.collection("users").doc(payout.userId);
       const userSnap = await t.get(userRef);
 
-      const beforeBalance = userSnap.data()?.realBalance || 0;
+      const beforeBalance = userSnap.data()?.accounts.real.balance || 0;
 
       const processedKey = `${transactionId}_${newStatus}`;
       const refundKey = `${transactionId}_${newStatus}`;
@@ -413,10 +413,10 @@ router.post("/webhook", async (req, res) => {
         const refunds = userSnap.data()?.refunds || [];
 
         if (!refunds.includes(refundKey)) {
-          t.update(userRef, {
-            realBalance: admin.firestore.FieldValue.increment(payout.amount),
-            refunds: admin.firestore.FieldValue.arrayUnion(refundKey),
-          });
+         t.update(userRef, {
+  "accounts.real.balance": admin.firestore.FieldValue.increment(payout.amount),
+  refunds: admin.firestore.FieldValue.arrayUnion(refundKey),
+});
 
           t.set(
             treasuryRef,

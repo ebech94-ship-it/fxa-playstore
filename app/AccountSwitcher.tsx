@@ -90,8 +90,8 @@ const switcherTournaments = tournamentAccounts
   /* ================= HELPERS ================= */
 
   const getColor = (account: AccountType) => {
-    if (account.type === "real") return "#facc15";
-    if (account.type === "tournament") return "#47f11dff";
+    if (account.type === "real") return "#FFD700";
+    if (account.type === "tournament") return "#00ff88";
     return "#60a5fa";
   };
 
@@ -162,7 +162,7 @@ const displayBalance = (() => {
     <View style={styles.container}>
       {/* ACTIVE ACCOUNT */}
       <TouchableOpacity onPress={toggleExpand} style={styles.iconRow}>
-        <MaterialCommunityIcons name="bank" size={26} color="#fff" />
+        <MaterialCommunityIcons name="bank" size={32} color="#fff" />
         <Text
   style={[ styles.activeBalance,
     {color:
@@ -346,11 +346,19 @@ const displayBalance = (() => {
 /* ================= STYLES ================= */
 
 const styles = StyleSheet.create({
-  container: { position: "absolute", top: 10, right: 10, zIndex: 20, alignItems: "flex-end",
-  },
-  iconRow: { flexDirection: "row", alignItems: "center", backgroundColor: "#374151",
-    paddingHorizontal: 10, paddingVertical: 6, borderRadius: 20,},
-  activeBalance: { marginLeft: 8, fontSize: 14, fontWeight: "600", },
+  container: {
+  position: "absolute",
+  top: 10,
+  right: 10,
+  width: 240,   // 👈 FIXED WIDTH (match panel feel)
+  alignItems: "flex-end",
+  zIndex: 20,
+},
+  iconRow: { flexDirection: "row", alignItems: "center",  backgroundColor: "#1f2937",
+    paddingHorizontal: 16, paddingVertical: 10, borderRadius: 25,},
+  activeBalance: { marginLeft: 10, fontSize: 16, fontWeight: "800", letterSpacing: 0.5, textShadowColor: "rgba(255, 215, 0, 0.9)",
+textShadowOffset: { width: 0, height: 0 },
+textShadowRadius: 8, },
   dropdown: { marginTop: 8, width: 240, maxHeight: 350, backgroundColor: "#111827",
     borderRadius: 12,  padding: 10, },
   card: { borderWidth: 1, borderColor: "#374151", borderRadius: 10, padding: 10,

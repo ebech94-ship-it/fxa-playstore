@@ -285,13 +285,13 @@ router.post("/webhook", async (req, res) => {
         const userRef = db.collection("users").doc(tx.userId);
 
         const userSnap = await t.get(userRef);
-        const beforeBalance = userSnap.data()?.realBalance || 0;
+        const beforeBalance = userSnap.data()?.accounts?.real?.balance || 0;
         const afterBalance = beforeBalance + txAmountUSD;
 
         // UPDATE USER
-        t.update(userRef, {
-          realBalance: admin.firestore.FieldValue.increment(txAmountUSD),
-        });
+       t.update(userRef, {
+  "accounts.real.balance": admin.firestore.FieldValue.increment(txAmountUSD),
+});
 
         // UPDATE TREASURY
         const treasuryRef = db.collection("treasury").doc("main");

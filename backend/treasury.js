@@ -24,14 +24,14 @@ async processWithdrawal(userId, amount, momoNumber) {
 
     if (!userSnap.exists) throw new Error("User not found");
 
-    const wallet = userSnap.data().realBalance || 0;
+    const wallet = userSnap.data().accounts.real.balance || 0;
 
     if (wallet < numericAmount) {
       throw new Error("User does not have enough balance");
     }
 
     t.update(userRef, {
-      realBalance: admin.firestore.FieldValue.increment(-numericAmount),
+      "accounts.real.balance": admin.firestore.FieldValue.increment(-numericAmount),
     });
 
     const treasuryRef = db.collection("treasury").doc("main");
@@ -112,7 +112,7 @@ async registerTournament(t, userId, tournamentId) {
     throw new Error("User already in a tournament");
   }
 
-  if (entryFee > 0 && (user.realBalance || 0) < entryFee) {
+  if (entryFee > 0 && (user.accounts.real.balance || 0) < entryFee) {
     throw new Error("Insufficient wallet balance");
   }
 
@@ -123,7 +123,7 @@ async registerTournament(t, userId, tournamentId) {
   if (entryFee > 0) {
 
     t.update(userRef, {
-      realBalance: admin.firestore.FieldValue.increment(-entryFee),
+      "accounts.real.balance": admin.firestore.FieldValue.increment(-entryFee),
     });
 
     t.set(
@@ -219,7 +219,7 @@ async processRebuy(t, userId, tournamentId) {
   if (!tournamentSnap.exists) throw new Error("Tournament not found");
   if (!participantSnap.exists) throw new Error("Participant not in tournament");
 
-  const wallet = userSnap.data().realBalance || 0;
+  const wallet = userSnap.data().accounts.real.balance || 0;
   const tournament = tournamentSnap.data();
 
   // 🔒 FIX: normalize fee
@@ -246,7 +246,7 @@ async processRebuy(t, userId, tournamentId) {
   }
 
   t.update(userRef, {
-    realBalance: admin.firestore.FieldValue.increment(-rebuyFee),
+    "accounts.real.balance": admin.firestore.FieldValue.increment(-rebuyFee),
   });
 
   t.set(
@@ -316,7 +316,7 @@ async adminAdjustBalance(t, userId, amount, mode, reason = "", adminId = null) {
   const userSnap = await t.get(userRef);
   if (!userSnap.exists) throw new Error("User not found");
 
-  const userBalance = userSnap.data().realBalance || 0;
+  const userBalance = userSnap.data().accounts.real.balance || 0;
 
   if (mode === "subtract" && userBalance < amount) {
     throw new Error("Insufficient user balance");
@@ -326,7 +326,7 @@ async adminAdjustBalance(t, userId, amount, mode, reason = "", adminId = null) {
   const treasuryDelta = mode === "add" ? -amount : amount;
 
   t.update(userRef, {
-    realBalance: admin.firestore.FieldValue.increment(userDelta),
+    "accounts.real.balance": admin.firestore.FieldValue.increment(userDelta),
     lastBalanceUpdate: admin.firestore.FieldValue.serverTimestamp(),
   });
 
@@ -419,7 +419,7 @@ async processTournamentPayout(tournamentId) {
       if (partSnap.data().paidOut) continue;
 
       t.update(userRef, {
-        realBalance: admin.firestore.FieldValue.increment(w.amount),
+        "accounts.real.balance": admin.firestore.FieldValue.increment(w.amount),
       });
 
       t.update(partRef, { paidOut: true });

@@ -1,7 +1,8 @@
 import { LinearGradient } from "expo-linear-gradient";
 import { useRouter } from "expo-router";
 //import { getAuth } from "firebase/auth";
-import * as Linking from "expo-linking";
+
+import { WebView } from "react-native-webview";
 
 import { useApp } from "./AppContext";
 /*import {
@@ -15,11 +16,11 @@ import {
   Alert,
   Image,
   KeyboardAvoidingView,
+  Linking,
   Modal,
   Platform,
   ScrollView,
   StyleSheet,
-
   Text,
   TextInput,
   TouchableOpacity,
@@ -127,6 +128,14 @@ const [rates, setRates] = useState<Record<Currency, number>>({
   USD: 1,
   XAF: 600,
 });
+const [paymentUrl, setPaymentUrl] = useState("");
+const [paymentVisible, setPaymentVisible] = useState(false);
+const [paymentLoading, setPaymentLoading] = useState(false);
+
+const [withdrawalSuccessVisible, setWithdrawalSuccessVisible] = useState(false);
+const [withdrawalReference, setWithdrawalReference] = useState("");
+const [withdrawProcessing, setWithdrawProcessing] = useState(false);
+
   const [isDeposit, setIsDeposit] = useState(true);
   const [activeMethod, setActiveMethod] = useState("");
   const [modalVisible, setModalVisible] = useState(false);
@@ -227,6 +236,29 @@ useEffect(() => {
 
     setModalVisible(true);
   };
+  const openPayment = async (url: string) => {
+  if (!url) {
+    Alert.alert("Error", "No payment link received");
+    return;
+  }
+
+  try {
+    const canUseWebView =
+      url.startsWith("http://") || url.startsWith("https://");
+
+    if (canUseWebView) {
+      setPaymentUrl(url);
+      setPaymentVisible(true);
+      return;
+    }
+
+    // fallback for non-http links
+    await Linking.openURL(url);
+  } catch (err) {
+    console.log("Payment open failed, forcing fallback", err);
+    Linking.openURL(url);
+  }
+};
 /* -------------------- Mobile Money Deposit -------------------- */
 const handleDeposit = async () => {
   try {
@@ -260,7 +292,7 @@ const handleDeposit = async () => {
       momoNumber: formData.phone,
       amount: numericAmount,
     });
-
+setPaymentLoading(true);
     // ✅ CORRECT ENDPOINT & PAYLOAD
     const res = await fetch(`${API_BASE}/api/payin/create-link`, {
       method: "POST",
@@ -281,28 +313,29 @@ const handleDeposit = async () => {
     const data = await res.json();
     console.log("Backend response:", data);
 
-    if (!res.ok) {
-      Alert.alert("Error", data.error || "Failed to create payment link");
-      return;
-    }
+   if (!res.ok) {
+  setPaymentLoading(false);
 
-   if (data.paymentUrl) {
- 
   Alert.alert(
-    "Continue Payment",
-    "You will be redirected to complete your payment securely.",
-    [
-      {
-        text: "Proceed",
-        onPress: () => Linking.openURL(data.paymentUrl),
-      },
-    ]
+    "Error",
+    data.error || "Failed to create payment link"
   );
+
+  return;
+}
+if (data.paymentUrl) {
+  setPaymentLoading(false);
+  setConfirmVisible(false);
+  setModalVisible(false);
+
+  openPayment(data.paymentUrl); // 🔥 THIS IS REQUIRED
 } else {
-  Alert.alert("Error", "No payment link received.");
+  setPaymentLoading(false);
+  Alert.alert( "Error",   "No payment link received."  );
 }
   } catch (err) {
     console.error("Deposit error:", err);
+      setPaymentLoading(false);
     Alert.alert("Error", "Could not submit deposit request.");
   }
 };
@@ -338,6 +371,7 @@ const handleWithdrawal = async () => {
   }
 
   try {
+  setWithdrawProcessing(true);
     if (!auth.currentUser) {
       Alert.alert("Auth Error", "User not logged in.");
       return;
@@ -391,14 +425,24 @@ const handleWithdrawal = async () => {
 }
 setModalVisible(false);
 
-Alert.alert(
-  "Request Sent",
-  "Your withdrawal request was submitted successfully."
+setWithdrawalReference(
+  data.withdrawalId ||
+  data.payoutId ||
+  `WD-${Date.now()}`
 );
-  } catch (err) {
-    console.error("Withdrawal error:", err);
-    Alert.alert("Error", "Could not submit withdrawal request.");
-  }
+
+setWithdrawProcessing(false);
+setWithdrawalSuccessVisible(true);
+ } catch (err) {
+  setWithdrawProcessing(false);
+
+  console.error("Withdrawal error:", err);
+
+  Alert.alert(
+    "Connection Problem",
+    "Please check your internet connection and try again."
+  );
+}
 };
 
   /* -------------------- Submit -------------------- */
@@ -464,7 +508,7 @@ const confirmAndSend = async () => {
   try {
     setLoading(true);
 setConfirmVisible(false);
-    setModalVisible(false);
+   
     if (isDeposit) {
       await handleDeposit();
     } else {
@@ -769,8 +813,7 @@ You can navigate and explore the app safely without making any real transactions
   style={styles.modalInput}
   placeholderTextColor="#888"
 />
-  
-)}
+  )}
 
             {(activeMethod === "Visa" || activeMethod === "MasterCard") && (
               <>
@@ -808,15 +851,22 @@ You can navigate and explore the app safely without making any real transactions
   (isMobileMoney && !formData.phone)
 }
               >
-                {loading ? (
-  <View style={{ flexDirection: "row", alignItems: "center" }}>
-    <ActivityIndicator color="#fff" size="small" />
-    <Text style={[styles.modalButtonText, { marginLeft: 8 }]}>
-      Submitting...
+              {loading ? (
+  <>
+    <ActivityIndicator color="#fff" />
+    <Text
+      style={[
+        styles.modalButtonText,
+        { marginLeft: 8 }
+      ]}
+    >
+      Sending withdrawal request...
     </Text>
-  </View>
+  </>
 ) : (
-  <Text style={styles.modalButtonText}>{t.submit}</Text>
+  <Text style={styles.modalButtonText}>
+    Confirm
+  </Text>
 )}
               </TouchableOpacity>
             </View>
@@ -866,19 +916,31 @@ Amount: {Number(formData.amount).toFixed(2)}
       <Text style={{ color: "#fff", marginBottom: 10 }}>
         Method: {activeMethod}
       </Text>
-
-      <Text
-  style={{
-    color: "#9CA3AF",
-    fontSize: 12,
-    marginBottom: 12,
-    lineHeight: 18,
-  }}
->
-  Your withdrawal will be submitted for processing.
-  Mobile Money transfers are usually completed within a few minutes.
-  Please do not submit multiple withdrawal requests while one is already being processed.
-</Text>
+{isDeposit ? (
+  <Text
+    style={{
+      color: "#9CA3AF",
+      fontSize: 12,
+      marginBottom: 12,
+      lineHeight: 18,
+    }}
+  >
+    After confirmation a secure payment page will open.
+    Complete the Mobile Money payment to fund your account.
+  </Text>
+) : (
+  <Text
+    style={{
+      color: "#9CA3AF",
+      fontSize: 12,
+      marginBottom: 12,
+      lineHeight: 18,
+    }}
+  >
+    Your withdrawal will be submitted for processing.
+    Mobile Money transfers are usually completed within a few minutes.
+  </Text>
+)}
 
       {isMobileMoney && (
         <Text style={{ color: "#fff", marginBottom: 10 }}>
@@ -902,6 +964,228 @@ Amount: {Number(formData.amount).toFixed(2)}
           <Text style={styles.modalButtonText}>{t.confirm}</Text>
         </TouchableOpacity>
       </View>
+    </View>
+  </View>
+</Modal>
+<Modal
+  visible={paymentVisible}
+  animationType="slide"
+>
+  <View style={{ flex: 1, backgroundColor: "#000" }}>
+
+    <View
+      style={{
+        padding: 15,
+        flexDirection: "row",
+        justifyContent: "space-between",
+        alignItems: "center",
+        backgroundColor: "#111827",
+      }}
+    >
+      <Text
+        style={{
+          color: "#fff",
+          fontWeight: "bold",
+          fontSize: 16,
+        }}
+      >
+        Complete the Mobile Money payment below.
+      </Text>
+
+      <TouchableOpacity
+        onPress={() => setPaymentVisible(false)}
+      >
+        <Text
+          style={{
+            color: "#F87171",
+            fontSize: 16,
+          }}
+        >
+          Close
+        </Text>
+      </TouchableOpacity>
+    </View>
+
+    <WebView
+  source={{ uri: paymentUrl }}
+  startInLoadingState
+  javaScriptEnabled
+  domStorageEnabled
+  originWhitelist={["*"]}
+  onError={(e) => {
+    console.log("WebView error:", e.nativeEvent);
+
+    // 🔥 fallback if WebView crashes
+    setPaymentVisible(false);
+    Linking.openURL(paymentUrl);
+  }}
+  onShouldStartLoadWithRequest={(request) => {
+    console.log("NAV:", request.url);
+    return true;
+  }}
+  onHttpError={() => {
+  console.log("WebView HTTP Error");
+
+  setPaymentVisible(false);
+
+  Alert.alert(
+    "Opening Browser",
+    "Secure payment page could not load inside the app."
+  );
+
+ 
+  Linking.openURL(paymentUrl).catch(() => {
+    Alert.alert(
+      "Payment Error",
+      "Unable to open the payment page. Please try again."
+    );
+  });
+}}
+/>
+  </View>
+</Modal>
+{paymentLoading && (
+  <Modal transparent visible>
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: "rgba(0,0,0,0.8)",
+        justifyContent: "center",
+        alignItems: "center",
+      }}
+    >
+      <ActivityIndicator
+        size="large"
+        color="#FACC15"
+      />
+
+      <Text
+        style={{
+          color: "#fff",
+          marginTop: 15,
+        }}
+      >
+        Creating payment session...
+      </Text>
+    </View>
+  </Modal>
+)}
+<Modal
+  visible={withdrawProcessing}
+  transparent
+  animationType="fade"
+>
+  <View
+    style={{
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.85)",
+      justifyContent: "center",
+      alignItems: "center",
+      padding: 20,
+    }}
+  >
+    <ActivityIndicator
+      size="large"
+      color="#FACC15"
+    />
+
+    <Text
+      style={{
+        color: "#fff",
+        fontSize: 22,
+        fontWeight: "bold",
+        marginTop: 20,
+      }}
+    >
+      Processing Withdrawal...
+    </Text>
+
+    <Text
+      style={{
+        color: "#9CA3AF",
+        textAlign: "center",
+        marginTop: 10,
+      }}
+    >
+      Please wait.
+      {"\n"}
+      Do not close the application.
+      {"\n"}
+      We are contacting the payment provider.
+    </Text>
+  </View>
+</Modal>
+<Modal
+  visible={withdrawalSuccessVisible}
+  transparent
+  animationType="fade"
+>
+  <View style={styles.modalOverlay}>
+    <View style={styles.modalContainer}>
+
+      <Text
+        style={{
+          color: "#00ff99",
+          fontSize: 22,
+          fontWeight: "bold",
+          textAlign: "center",
+          marginBottom: 15,
+        }}
+      >
+        Withdrawal Submitted ✅
+      </Text>
+
+      <Text
+        style={{
+          color: "#fff",
+          textAlign: "center",
+          marginBottom: 10,
+        }}
+      >
+        Your withdrawal request has been received.
+      </Text>
+
+      <Text
+        style={{
+          color: "#9CA3AF",
+          textAlign: "center",
+          marginBottom: 10,
+        }}
+      >
+        Status: Pending Review
+      </Text>
+
+      <Text
+        style={{
+          color: "#FACC15",
+          textAlign: "center",
+          marginBottom: 15,
+        }}
+      >
+        Ref: {withdrawalReference}
+      </Text>
+
+      <Text
+        style={{
+          color: "#9CA3AF",
+          textAlign: "center",
+          marginBottom: 20,
+        }}
+      >
+        Mobile Money withdrawals are usually processed
+        within a few minutes, but may take longer during
+        high activity periods.
+      </Text>
+
+      <TouchableOpacity
+        style={styles.confirmButton}
+        onPress={() => setWithdrawalSuccessVisible(false)}
+      >
+        <Text style={styles.confirmButtonText}>
+          Done
+        </Text>
+      </TouchableOpacity>
+
     </View>
   </View>
 </Modal>

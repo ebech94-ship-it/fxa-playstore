@@ -1,17 +1,28 @@
 import * as Clipboard from "expo-clipboard";
 import { getAuth } from "firebase/auth";
-import {
-  Alert,
-
-  Share,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
+import { Alert, Share, StyleSheet, Text,  TouchableOpacity,  View,
 } from "react-native";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "../firebaseConfig";
+import { useEffect, useState } from "react";
 
 export default function InviteEarnScreen() {
   const user = getAuth().currentUser;
+  const [publicId, setPublicId] = useState("");
+  
+useEffect(() => {
+  if (!user?.uid) return;
+
+  const loadPublicId = async () => {
+    const snap = await getDoc(doc(db, "users", user.uid));
+
+    if (snap.exists()) {
+      setPublicId(snap.data().publicId || user.uid);
+    }
+  };
+
+  loadPublicId();
+}, [user?.uid]);
 
   if (!user) {
     return (
@@ -21,9 +32,8 @@ export default function InviteEarnScreen() {
     );
   }
 
-  const uid = user.uid;
-const landingLink = `https://forexarena.vercel.app/?ref=${uid}`; // define once
 
+const landingLink = `https://forexarena.vercel.app/?ref=${publicId}`;
  
 
   const copyLink = async () => {
@@ -36,7 +46,12 @@ const landingLink = `https://forexarena.vercel.app/?ref=${uid}`; // define once
 
     try {
       await Share.share({
-        message: `🚀 Join me on Forex Tournaments!\n\nUse my invite link:\n${landingLink}`,
+      message: `🏆 Join me on Forex Arena!
+
+Compete in trading tournaments, climb the leaderboard and win rewards.
+
+Use my invite link:
+${landingLink}`,
       });
     } catch (err) {
       console.error("Share failed", err);
@@ -60,7 +75,7 @@ const landingLink = `https://forexarena.vercel.app/?ref=${uid}`; // define once
 <Text> The greater the community the better the outcome </Text>
         <View style={styles.codeBox}>
           <Text style={styles.codeLabel}>Your Invite Code</Text>
-          <Text style={styles.code}>{uid}</Text>
+         <Text style={styles.code}>{publicId || "Loading..."}</Text>
         </View>
 
         

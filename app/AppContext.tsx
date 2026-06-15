@@ -90,7 +90,7 @@ type FirestoreUserDoc = {
   verified?: boolean;
 
   accounts?: Accounts;
-    realBalance?: number;
+   
     
   // 🔐 admin / roles
   isAdmin?: boolean;
@@ -254,7 +254,7 @@ const [rebuyUnlockedMap, setRebuyUnlockedMap] =
 
 const activeBalance = useMemo(() => {
   if (activeAccount.type === "demo") return accounts?.demo?.balance ?? 1000;
-  if (activeAccount.type === "real") return userDoc?.realBalance ?? 0;
+  if (activeAccount.type === "real") return userDoc?.accounts?.real?.balance ?? 0;
   return liveTournamentBalances[activeAccount.tournamentId] ?? activeTournament?.balance ?? 0;
 }, [activeAccount, accounts, userDoc, liveTournamentBalances, activeTournament]);
 
@@ -262,7 +262,7 @@ const [demoBalance, setDemoBalance] = useState<number>(1000);
 
 const balancesState = {
  demo: demoBalance,  // <-- use local demoBalance
-   real: userDoc?.realBalance ?? 0,
+   real: userDoc?.accounts?.real?.balance ?? 0,
   tournament: activeTournament
   ? liveTournamentBalances[activeTournament.tournamentId] ??
     activeTournament.balance

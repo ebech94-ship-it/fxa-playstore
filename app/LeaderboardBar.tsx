@@ -1,12 +1,19 @@
 // LeaderboardBar.tsx — Fixed & clean version
-import { useEffect, useState } from "react";
+
+import { useEffect, useRef, useState, } from "react";
+import ViewShot from "react-native-view-shot";
+
 
 import { db } from "@/lib/firebase";
 import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
 
 import {
   BackHandler,
-  FlatList, Image, Modal, Pressable, StyleSheet, Text, View,
+  FlatList, Image, Modal, Pressable,
+  Share,
+  StyleSheet, Text,
+  TouchableOpacity,
+  View,
   useWindowDimensions
 } from "react-native";
 import CountryFlag from "react-native-country-flag";
@@ -177,7 +184,37 @@ const PAGE_SIZE = 50;
 const [page, setPage] = useState(1);
 
 const [pagedParticipants, setPagedParticipants] = useState<Participant[]>([]);
+const [showSharePreview, setShowSharePreview] = useState(false);
+const rank =
+  (liveParticipants.findIndex((p) => p.id === currentUser?.uid) + 1) || 1;
 
+const shareLeaderboard = async () => {
+  try {
+    if (!cardRef.current) return;
+
+    // 1. capture image
+
+const uri = await cardRef.current.capture();
+
+const inviteLink = `https://forexarena.vercel.app/?ref=${profile?.publicId}`;
+await Share.share({
+  url: uri,
+  message: `🔥 Try FX Arena Trading Tournaments Platforms' Challenges; Earn Big Daily!
+
+Join here:
+${inviteLink}`,
+});
+
+  } catch (e) {
+    console.log(e);
+  }
+};
+
+const cardRef = useRef<any>(null);
+const copyInviteLink = async () => {
+  const link = `https://forexarena.vercel.app/?ref=${profile?.publicId}`;
+  await Share.share({ message: link });
+};
 
 
 
@@ -299,6 +336,8 @@ for (let i = 0; i < displayParticipants.length; i += chunkSize) {
   chunkedParticipants.push(displayParticipants.slice(i, i + chunkSize));
 
 }
+const topTraders = displayParticipants.slice(0, 5);
+
 
 return (
  <View
@@ -440,7 +479,34 @@ return (
 >
   <Text style={{ color: "#f87171", fontSize: 16, fontWeight: "700" }}>✖</Text>
 </Pressable>
-
+<TouchableOpacity
+  onPress={() => setShowSharePreview(true)}
+  style={{
+    backgroundColor: "#5A4BE7",
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 10,
+    alignSelf: "center",
+  }}
+>
+  <Text style={{ color: "white", fontWeight: "bold" }}>
+    Share Challenge
+  </Text>
+</TouchableOpacity>
+<TouchableOpacity
+  onPress={copyInviteLink}
+  style={{
+    backgroundColor: "#1f2937",
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 10,
+    alignSelf: "center",
+  }}
+>
+  <Text style={{ color: "white", fontWeight: "bold" }}>
+    Copy Invite Link
+  </Text>
+</TouchableOpacity>
          <FlatList
   data={pagedParticipants}                     // only the players for current page
   keyExtractor={(p) => p.id}
@@ -470,6 +536,127 @@ return (
         </View>
       </Modal>
     )}
+    {showSharePreview && (
+  <Modal visible transparent animationType="fade">
+    <View style={{
+      flex: 1,
+      backgroundColor: "rgba(0,0,0,0.7)",
+      justifyContent: "center",
+      alignItems: "center"
+    }}>
+
+      {/* SHARE CARD */}
+      <ViewShot
+  ref={cardRef}
+  options={{ format: "png", quality: 1 }}
+  style={{
+    backgroundColor: "#0f1727",
+    padding: 20,
+    borderRadius: 16,
+    width: 300,
+    alignItems: "center"
+  }}
+>
+        <Text style={{ color: "#fff", fontSize: 18, fontWeight: "bold" }}>
+          🏆 {activeTourney?.name || "FX Arena Challenge"}
+        </Text>
+
+       <Text style={{ color: "#fff", marginTop: 10 }}>
+  Rank #{rank}
+</Text>
+
+<Text style={{ color: "#facc15", marginTop: 5 }}>
+  ${displayParticipants.find(
+    p => p.id === currentUser?.uid
+  )?.balance ?? 0}
+</Text>
+
+<Text
+  style={{
+    color: "#fff",
+    marginTop: 15,
+    fontWeight: "bold",
+  }}
+>
+  🏅 Top Traders
+</Text>
+
+{topTraders.slice(0,3).map((p, i) => (
+  <Text
+    key={p.id}
+    style={{
+      color: "#d1d5db",
+      marginTop: 4,
+      fontSize: 12,
+      fontWeight: "bold",
+    }}
+  >
+    {i === 0 ? "🥇" : i === 1 ? "🥈" : "🥉"} {p.username}
+  </Text>
+))}
+<Text
+  style={{
+    color: "#60a5fa",
+    marginTop: 10,
+  }}
+>
+  👥 {displayParticipants.length} Traders Competing
+</Text>
+
+<Text
+  style={{
+    color: "#22c55e",
+    marginTop: 15,
+    textAlign: "center",
+    fontWeight: "bold",
+  }}
+>
+  Try Foreign Exchange Simulation Trading Challenge?
+</Text>
+
+<Text
+  style={{
+    color: "#60a5fa",
+    marginTop: 8,
+    fontSize: 11,
+    textAlign: "center",
+  }}
+>
+  forexarena.vercel.app/?ref={profile?.publicId}
+</Text>
+
+<Text style={{ color: "#fff", marginTop: 10 }}>
+  🔥 Join live trading battles, Earn daily.
+</Text>
+      </ViewShot>
+
+      {/* BUTTONS */}
+      <TouchableOpacity
+        onPress={shareLeaderboard}
+        style={{
+          marginTop: 15,
+          backgroundColor: "#5A4BE7",
+          padding: 10,
+          borderRadius: 8
+        }}
+      >
+        <Text style={{ color: "#fff", fontWeight: "bold" }}>
+          Share Now
+        </Text>
+      </TouchableOpacity>
+
+      <TouchableOpacity
+        onPress={() => setShowSharePreview(false)}
+        style={{ marginTop: 10 }}
+      >
+        <Text style={{ color: "#f87171" }}>
+          Cancel
+        </Text>
+      </TouchableOpacity>
+
+    </View>
+  </Modal>
+)}
   </View>
 );
 };
