@@ -361,10 +361,17 @@ router.post("/webhook", async (req, res) => {
     // FAILED PAYMENT
     // ----------------------
     if (Number(status) === 2) {
-      await doc.ref.update({
-        status: "failed",
-        failedAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
+
+  const txSnap = await doc.ref.get();
+
+  if (txSnap.data()?.status === "completed") {
+    return res.status(200).json({ received: true });
+  }
+
+  await doc.ref.update({
+    status: "failed",
+    failedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
 
       await db.collection("webhook_logs").add({
         transactionId: transaction_id,

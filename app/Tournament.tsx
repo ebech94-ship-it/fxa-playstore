@@ -10,8 +10,8 @@ import { getAuth } from "firebase/auth";
 import { useApp } from "./AppContext"; // <-- add this at the top
 
 
-import { collection, limit, onSnapshot, orderBy, query } from "firebase/firestore";
-import { useEffect, useState } from "react";
+import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
+import { useEffect, useState, useMemo } from "react";
 import {
   Alert, FlatList,
   KeyboardAvoidingView,
@@ -145,8 +145,7 @@ const [tournamentRebuys, setTournamentRebuys] = useState<Record<string, number>>
   const [viewTab, setViewTab] = useState("info"); // "info" | "leaderboard"
   
 
-  const [joinedMap, setJoinedMap] = useState<Record<string, boolean>>({});
-
+ 
 
  type LoadingState = {
   register?: boolean;
@@ -222,46 +221,34 @@ useEffect(() => {
 
 
 // ---------- USER JOINED TOURNAMENTS ----------
-useEffect(() => {
-  if (!currentUser?.uid) return;
+const joinedMap = useMemo(() => {
+  const map: Record<string, boolean> = {};
 
-  const ref = collection(
-    db,
-    "users",
-    currentUser.uid,
-    "joinedTournaments"
-  );
-
-  const unsub = onSnapshot(ref, (snapshot) => {
-    const map: Record<string, boolean> = {};
-
-    snapshot.forEach((doc) => {
-      map[doc.id] = true;
-    });
-
-    setJoinedMap(map);
+  tournamentAccounts.forEach((t) => {
+    map[t.tournamentId] = true;
   });
 
-  return () => unsub();
-}, [currentUser?.uid]);
-
+  return map;
+}, [tournamentAccounts]);
 
 // ---------- SELECTED TOURNAMENT LIVE ENGINE (STATS + LEADERBOARD MERGED) ----------
 useEffect(() => {
-  if (!tournamentId) return;
+  if (!selectedTournament?.id) return;
 
   const ref = collection(
     db,
     "tournaments",
-    tournamentId,
+    selectedTournament.id,
     "participants"
   );
 
   const unsub = onSnapshot(ref, (snap) => {
     let rebuyTotal = 0;
 
-   const leaderboardList = snap.docs.map((doc) => {
+  const leaderboardList = snap.docs.map((doc) => {
   const data = doc.data() as any;
+
+  rebuyTotal += data.rebuys?.length ?? 0;
 
   const balance = data.balance ?? 0;
   const starting = selectedTournament?.startingBalance ?? 0;
@@ -269,8 +256,7 @@ useEffect(() => {
   return {
     id: doc.id,
     ...data,
-
-       performance: balance - (data.initialBalance ?? starting),
+    performance: balance - (data.initialBalance ?? starting),
   };
 });
 
@@ -280,58 +266,27 @@ useEffect(() => {
 
     // ⚡ avoid useless rerenders
     setTournamentCounts((prev) => {
-      if (prev[tournamentId] === snap.size) return prev;
-      return { ...prev, [tournamentId]: snap.size };
+      if (prev[selectedTournament.id] === snap.size) return prev;
+      return { ...prev, [selectedTournament.id]: snap.size };
     });
 
     setTournamentRebuys((prev) => {
-      if (prev[tournamentId] === rebuyTotal) return prev;
-      return { ...prev, [tournamentId]: rebuyTotal };
+      if (prev[selectedTournament.id] === rebuyTotal) return prev;
+      return { ...prev, [selectedTournament.id]: rebuyTotal };
     });
 
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
   });
 
   return () => unsub();
-}, [tournamentId, selectedTournament?.startingBalance]);
+}, [selectedTournament?.id, selectedTournament?.startingBalance]);
 
 
 // ---------- GLOBAL LEADERBOARD ----------
 useEffect(() => {
-  if (selectedTournament?.id) return;
-
-  const q = query(
-    collection(db, "users"),
-    orderBy("accounts.tournament.balance", "desc"),
-    limit(30)
-  );
-console.log("🔥 Leaderboard listener starting");
-console.log(
-  "🔥 Leaderboard query:",
-  "users -> accounts.tournament.balance"
-);
-  const unsub = onSnapshot(
-  q,
-  (snapshot) => {
-    console.log("✅ Leaderboard snapshot received");
-
-    const list = snapshot.docs.map((d) => ({
-      id: d.id,
-      ...(d.data() as any),
-    }));
-
-    setLeaderboard(list);
-
-    LayoutAnimation.configureNext(
-      LayoutAnimation.Presets.easeInEaseOut
-    );
-  },
-  (error) => {
-    console.error("❌ Leaderboard listener error:", error);
+  if (!selectedTournament?.id) {
+    setLeaderboard([]);
   }
-);
-
-  return () => unsub();
 }, [selectedTournament?.id]);
 
 // ---------- REGISTER USER TO TOURNAMENT ----------
@@ -382,20 +337,23 @@ const handleRegister = async (tournamentId: string) => {
       }
     );
 
-    const result = await response.json();
-    const msg = result?.error || result?.message;
+    const text = await response.text();
 
+console.log("REGISTER STATUS:", response.status);
+console.log("REGISTER RESPONSE:", text);
+    
     if (!response.ok) {
-      throw new Error(msg || "Registration failed");
+      throw new Error(text || "Registration failed");
     }
 
     Alert.alert("Success", "Successfully joined tournament!");
 
     // 🔥 SIMPLE STATE UPDATE (CORRECT FOR YOUR STRUCTURE)
-    setTournamentCounts((prev: Record<string, number>) => ({
-      ...prev,
-      [tournamentId]: (prev[tournamentId] || 0) + 1,
-    }));
+   // refresh UI count locally (optional optimistic update)
+setTournamentCounts((prev) => ({
+  ...prev,
+  [tournamentId]: (prev[tournamentId] || 0) + 1,
+}));
   } catch (error: any) {
     Alert.alert("Error", error.message || "Registration failed.");
   } finally {
@@ -454,6 +412,12 @@ const handleRebuy = async (tournamentId: string) => {
   }
 };
 
+const tournamentAccount =
+  activeAccount.type === "tournament"
+    ? tournamentAccounts.find(
+        t => t.tournamentId === activeAccount.tournamentId
+      )
+    : null;
   const formatDuration = (ms: number) => {
   const sec = Math.floor(ms / 1000);
   const min = Math.floor(sec / 60);
@@ -511,178 +475,200 @@ const formatFullDate = (ms: number) => {
 
 }; 
   
-  // Tournament card
- const TournamentCard = ({ item }: { item: Tournament }) => {
-if (!item.startTime || !item.endTime) return null;
+  // TOURNAMENT CARD
+const TournamentCard = ({ item }: { item: any }) => {
+  const status: TournamentStatus = getTournamentStatus(
+    item.startTime,
+    item.endTime,
+    now
+  );
 
-const status = getTournamentStatus(item.startTime, item.endTime, now);
- 
-  const duration = Math.max(1, item.endTime - item.startTime);
-  
-const progress =
-  status === "finished"
-    ? 1
-    : status === "upcoming"
-    ? 0
-    : Math.max(0, Math.min((now - item.startTime) / duration, 1));
+  const isActiveTournament = status === "ongoing";
 
- const durationText = formatDuration(duration);
+  const progress =
+    status === "upcoming"
+      ? 0
+      : status === "finished"
+      ? 1
+      : Math.min(
+          1,
+          (Date.now() - item.startTime) /
+            (item.endTime - item.startTime)
+        );
+
+  const durationText = formatDuration(item.endTime - item.startTime);
+
+  const tagStyle =
+    status === "upcoming"
+      ? styles.tagUpcoming
+      : status === "ongoing"
+      ? styles.tagOngoing
+      : styles.tagPast;
+
   const rebuyFee = item.rebuyFee ?? item.entryFee ?? 0;
 
-   // Step 4: Rebuy logic (fixed)
-const tAccount = tournamentAccounts.find(
-  t => t.tournamentId === item.id
-);
+  const allowRebuy =
+    status === "ongoing" && joinedMap[item.id];
 
-const currentBalance = tAccount?.balance ?? 0;
-
-const initialBalance =
-  tAccount?.initialBalance ??
-  item.startingBalance ??
-  0;
-
-const allowRebuy =
-  !!tAccount &&
-  !!joinedMap[item.id] &&
-  status === "ongoing" &&
-  currentBalance < initialBalance / 2;
-  // Step 5: Active tournament highlight
-  const isActiveTournament =
-  activeAccount.type === "tournament" && activeAccount.tournamentId === item.id;
-  
-  // color by status
-  const tagStyle =
-    status === "ongoing" ? styles.tagOngoing : status === "upcoming" ? styles.tagUpcoming : styles.tagPast;
- 
   return (
     <TouchableOpacity
       activeOpacity={0.95}
-      style={[styles.card, status === "ongoing" && styles.cardGlow]}
+      style={[
+        styles.card,
+        status === "ongoing" && styles.cardGlow,
+      ]}
       onPress={() => {
         setSelectedTournament(item);
         setViewTab("info");
       }}
     >
+      {/* TITLE */}
+      <Text
+        style={[
+          styles.cardBigTitle,
+          {
+            color: isActiveTournament
+              ? "#22c55e"
+              : "rgba(236, 220, 220, 1)",
+          },
+        ]}
+      >
+        {item.name}
+      </Text>
 
-      {/* STRONG BOLD TITLE */}
-     <Text style={[styles.cardBigTitle, { color: isActiveTournament ? "#22c55e" : "rgba(236, 220, 220, 1)" }]}>
-  {item.name}
-</Text>
+      {/* DURATION */}
+      <Text style={styles.metaText}>
+        Duration: {durationText}
+      </Text>
 
-
-<Text style={styles.metaText}>Duration: {durationText}</Text>
-
-      {/* STATUS TAG */}
+      {/* STATUS */}
       <View style={[styles.tag, tagStyle]}>
-       <Text style={styles.tagText}>
-  {status === "upcoming"
-    ? "Upcoming"
-    : status === "ongoing"
-    ? "Ongoing"
-    : "Past"}
-</Text>
-
+        <Text style={styles.tagText}>
+          {status === "upcoming"
+            ? "Upcoming"
+            : status === "ongoing"
+            ? "Ongoing"
+            : "Past"}
+        </Text>
       </View>
 
-      {/* PROGRESS BAR */}
+      {/* PROGRESS */}
       <View style={styles.progressBar}>
-        <View style={[styles.progressFill, { width: `${progress * 100}%` }]} />
+        <View
+          style={[
+            styles.progressFill,
+            { width: `${progress * 100}%` },
+          ]}
+        />
       </View>
 
-      {/* PRIZE + ENTRY */}
+      {/* PRIZE INFO */}
       <View style={styles.cardPrizeRow}>
-     <Text style={styles.cardPrizeText}>  🏆 Prize Pool: {item.prizePool ?? 0} $</Text>
-          <Text style={styles.cardPrizeText}>🏆🏅 Top Ranked Winners:{item.payoutStructure?.length ?? 0}</Text>
-            <Text style={styles.cardFeeText}>🎟 Entry Fee: {item.entryFee} $</Text>
-        <Text style={styles.cardFeeText}>♻️ Rebuy: {item.rebuyFee ?? item.entryFee} $</Text>
-<Text style={styles.cardFeeText}>💵 Starting Balance: {item.startingBalance ?? 0} $</Text> {/* ✅ new line */}
+        <Text style={styles.cardPrizeText}>
+          🏆 Prize Pool: {item.prizePool ?? 0} $
+        </Text>
+
+        <Text style={styles.cardPrizeText}>
+          🏅 Winners: {item.payoutStructure?.length ?? 0}
+        </Text>
+
+        <Text style={styles.cardFeeText}>
+          🎟 Entry Fee: {item.entryFee ?? 0} $
+        </Text>
+
+        <Text style={styles.cardFeeText}>
+          ♻️ Rebuy: {rebuyFee} $
+        </Text>
+
+        <Text style={styles.cardFeeText}>
+          💵 Start: {item.startingBalance ?? 0} $
+        </Text>
       </View>
 
       {/* LIVE STATS */}
       <View style={styles.cardStatsRow}>
-      <Text style={styles.cardDetail}>
+       <Text style={styles.cardDetail}>
   {status === "upcoming"
     ? `⏳ Starts in ${formatCountdown(item.startTime - now)} (${formatFullDate(item.startTime)})`
     : status === "ongoing"
     ? `⏰ Ends in ${formatCountdown(item.endTime - now)} (${formatFullDate(item.endTime)})`
     : `🏁 Finished on ${formatFullDate(item.endTime)}`}
 </Text>
-        <Text style={styles.cardDetail}>👥 {tournamentCounts[item.id] ?? 0} Joined</Text>
-        <Text style={styles.cardDetail}>♻️ {tournamentRebuys[item.id] ?? 0} Rebuys</Text>
-   <Text style={styles.cardDetail}>🏅 Winners: {item.payoutStructure?.length ?? 0}</Text>
+
+        <Text style={styles.cardDetail}>
+          👥 {tournamentCounts[item.id] ?? 0} Joined
+        </Text>
+
+        <Text style={styles.cardDetail}>
+          ♻️ {tournamentRebuys[item.id] ?? 0} Rebuys
+        </Text>
       </View>
 
-      {/* ACTION BUTTONS */}
+      {/* ACTIONS */}
       <View style={styles.cardFooter}>
-      
-<TouchableOpacity
+        <TouchableOpacity
+          style={[
+            styles.actionBtn,
+            (status === "finished" ||
+              loadingActions[item.id]?.register ||
+              joinedMap[item.id]) &&
+              styles.disabledBtn,
+          ]}
+          disabled={
+            status === "finished" ||
+            loadingActions[item.id]?.register ||
+            joinedMap[item.id]
+          }
+          onPress={() => handleRegister(item.id)}
+        >
+          <Text style={styles.actionText}>
+            {status === "finished"
+              ? "Closed"
+              : joinedMap[item.id]
+              ? "You're In"
+              : loadingActions[item.id]?.register
+              ? "Processing..."
+              : (item.entryFee ?? 0) === 0
+              ? "Register (Free)"
+              : `Register • ${item.entryFee} $`}
+          </Text>
+        </TouchableOpacity>
 
-  style={[
-  
-    styles.actionBtn,
-    (status === "finished" ||
-      loadingActions[item.id]?.register ||
-      joinedMap[item.id]) &&
-      styles.disabledBtn,
-  ]}
-  disabled={
-  status === "finished" ||
-  loadingActions[item.id]?.register ||
-  joinedMap[item.id]
-}
-  
-  onPress={() => handleRegister(item.id)}
->
-  <Text style={styles.actionText}>
-    {status === "finished"
-      ? "Closed"
-      : joinedMap[item.id]
-      ? "You're In"
-      : loadingActions[item.id]?.register
-      ? "Processing..."
-      : item.entryFee === 0
-      ? "Register (Free)"
-   : "Register"}
-  </Text>
-</TouchableOpacity>
-
-<TouchableOpacity
-  style={[
-    styles.actionBtnAlt,
-    (status !== "ongoing" ||
- !joinedMap[item.id] ||
- !allowRebuy ||
- loadingActions[item.id]?.rebuy) &&
- styles.disabledBtn,
-  ]}
-  disabled={
-  status !== "ongoing" ||
-  !joinedMap[item.id] ||
-  !allowRebuy ||
-  !!loadingActions[item.id]?.rebuy
-}
- onPress={() => {
-  Alert.alert(
-    "Confirm Rebuy",
-    `Rebuy for ${rebuyFee} $?`,
-    [
-      { text: "Cancel", style: "cancel" },
-      { text: "Confirm", onPress: () => handleRebuy(item.id) }
-    ]
-  );
-}}
->
-  <Text style={styles.actionTextAlt}>
-    {loadingActions[item.id]?.rebuy
-      ? "Processing..."
-      : rebuyFee === 0
-      ? "Rebuy (Free)"
-      : `Rebuy • ${rebuyFee} $`}
-  </Text>
-</TouchableOpacity>
-
+        <TouchableOpacity
+          style={[
+            styles.actionBtnAlt,
+            (!allowRebuy ||
+              loadingActions[item.id]?.rebuy) &&
+              styles.disabledBtn,
+          ]}
+          disabled={
+            !allowRebuy ||
+            !!loadingActions[item.id]?.rebuy
+          }
+          onPress={() =>
+            Alert.alert(
+              "Confirm Rebuy",
+              `Rebuy for ${rebuyFee} $?`,
+              [
+                { text: "Cancel", style: "cancel" },
+                {
+                  text: "Confirm",
+                  onPress: () =>
+                    handleRebuy(item.id),
+                },
+              ]
+            )
+          }
+        >
+          <Text style={styles.actionTextAlt}>
+            {loadingActions[item.id]?.rebuy
+              ? "Processing..."
+              : rebuyFee === 0
+              ? "Rebuy (Free)"
+              : `Rebuy • ${rebuyFee} $`}
+          </Text>
+        </TouchableOpacity>
       </View>
-
     </TouchableOpacity>
   );
 };
@@ -737,63 +723,88 @@ const allowRebuy =
 };
   // table header for leaderboard
   const LeaderboardTable = ({ list }: { list: LeaderboardUser[] }) => {
-    return (
-      <View>
-        {renderPinnedUserRow(list)}
-        <View style={styles.tableHeader}>
-          <Text style={[styles.tableColSmall, styles.headerText]}>#</Text>
-<Text style={[styles.tableColName, styles.headerText]}>Participant</Text>
-<Text style={[styles.tableColBalance, styles.headerText]}>Balance</Text>
-<Text style={[styles.tableColTier, styles.headerText]}>Level</Text>
-<Text style={[styles.tableColPrize, styles.headerText]}>Prize</Text>
-        </View>
-        {list.map((row, i) => (
-          <View
-            key={row.id}
-            style={[ 
-              styles.tableRow,
-              row.id === currentUser?.uid ? styles.currentRowHighlight : null,
-            ]}
-          >
-          <Text style={styles.tableColSmall}>
-  {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : i + 1}
-</Text>
+  return (
+    <View>
+      {renderPinnedUserRow(list)}
 
-<View style={styles.tableColName}>
-  <NameWithFlag
-    username={row.username || row.email || "Player"}
-    countryCode={row.countryCode}
-  />
-</View>
-
-<Text
-  style={styles.tableColBalance}
-  numberOfLines={1}
->
- {row.balance ?? 0}T ({row.performance ?? 0})
-</Text>
-
-<Text style={styles.tableColTier}>
-  {getTierForRank(i + 1)}
-</Text>
-
-<Text style={styles.tableColPrize}>
-  {(() => {
-    if (!selectedTournament) return "-";
-    const prize = getPrizeForRank(i + 1, selectedTournament);
-    return prize ? `${prize} $` : "-";
-  })()}
-</Text>
-          </View>
-        ))}
+      <View style={styles.tableHeader}>
+        <Text style={[styles.tableColSmall, styles.headerText]}>#</Text>
+        <Text style={[styles.tableColName, styles.headerText]}>
+          Participant
+        </Text>
+        <Text style={[styles.tableColBalance, styles.headerText]}>
+          Balance
+        </Text>
+        <Text style={[styles.tableColTier, styles.headerText]}>
+          Level
+        </Text>
+        <Text style={[styles.tableColPrize, styles.headerText]}>
+          Prize
+        </Text>
       </View>
-    );
-  };
+
+      {list.map((row, i) => (
+        <View
+          key={row.id}
+          style={[
+            styles.tableRow,
+            row.id === currentUser?.uid &&
+              styles.currentRowHighlight,
+          ]}
+        >
+          <Text style={styles.tableColSmall}>
+            {i === 0
+              ? "🥇"
+              : i === 1
+              ? "🥈"
+              : i === 2
+              ? "🥉"
+              : i + 1}
+          </Text>
+
+          <View style={styles.tableColName}>
+            <NameWithFlag
+              username={row.username || "Player"}
+              countryCode={row.countryCode}
+            />
+          </View>
+
+          <Text style={styles.tableColBalance}>
+            {row.balance ?? 0}T
+          </Text>
+
+          <Text style={styles.tableColTier}>
+            {getTierForRank(i + 1)}
+          </Text>
+
+          <Text style={styles.tableColPrize}>
+            {selectedTournament
+              ? (() => {
+                  const prize = getPrizeForRank(
+                    i + 1,
+                    selectedTournament
+                  );
+                  return prize ? `${prize} $` : "-";
+                })()
+              : "-"}
+          </Text>
+        </View>
+      ))}
+    </View>
+  );
+};
 
   return (
     <View style={styles.container}>
       <Text style={styles.pageTitle}>💹 Forex Tournaments</Text>
-
+      {activeAccount && (
+  <Text style={{ color: "#9ca3af", textAlign: "center", marginBottom: 6 }}>
+     Active Account Balance: {tournamentAccount?.balance ?? 0} $
+  </Text>
+)}
+<Text style={{ color: "#6b7280", textAlign: "center", fontSize: 12 }}>
+  Accounts Loaded: {Object.keys(tournamentAccounts || {}).length}
+</Text>
     <FlatList
   data={tournaments}
   renderItem={({ item }) => <TournamentCard item={item} />}

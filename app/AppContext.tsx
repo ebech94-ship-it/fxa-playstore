@@ -64,6 +64,7 @@ type UserProfile = {
 
   // personal
   country?: string;
+  countryCode?: string;
   dateOfBirth?: string;
 
   // media
@@ -83,6 +84,7 @@ type FirestoreUserDoc = {
   email?: string;
   phone?: string;
   country?: string;
+  countryCode?: string;
   dateOfBirth?: string;
   avatarUrl?: string;
 
@@ -306,7 +308,7 @@ const tournamentAccounts = useMemo(() =>
     id: t.tournamentId,
     name: tournamentMeta[t.tournamentId]?.name ?? "Tournament",
     symbol: tournamentMeta[t.tournamentId]?.symbol ?? "T",
-    balance: liveTournamentBalances[t.tournamentId] ?? t.balance,
+  balance: liveTournamentBalances[t.tournamentId] ?? t.balance,
     initialBalance: t.initialBalance,
     currency: t.currency,
     status: t.status ?? "upcoming",
@@ -491,17 +493,19 @@ useEffect(() => {
     setAccounts(acc);
 
     // Build tournament list from user accounts, only include joined tournaments
-    const tournamentList = acc.tournaments
-      ? Object.entries(acc.tournaments)
-          .map(([id, t]) => ({
-            ...t,
-            tournamentId: id,
-            status: "upcoming" as const, // will be updated by your time-based effect
-          }))
-          .filter(t => t.joined) // ✅ only include joined tournaments
-      : [];
-
+   const tournamentList = acc.tournaments
+  ? Object.entries(acc.tournaments)
+      .map(([id, t]) => ({
+        ...t,
+        tournamentId: id,
+      }))
+  : [];
     setTournaments(tournamentList);
+    console.log(
+  "Tournament List:",
+  tournamentList.length,
+  tournamentList
+);
 
     // ✅ Reset active tournament if it was deleted
     if (activeAccountRef.current.type === "tournament") {
@@ -607,7 +611,7 @@ useEffect(() => {
   const payload = {
     balance: demoBalance,
     username: profile?.username ?? "Demo User",
-    countryCode: profile?.country ?? "CM",
+    countryCode: userDoc?.countryCode ?? "CM",
     avatar: profile?.avatarUrl ?? "",
     updatedAt: Date.now(),
   };
@@ -619,6 +623,8 @@ useEffect(() => {
   demoBalance,
   profile?.username,
   profile?.country,
+  userDoc?.countryCode,
+
   profile?.avatarUrl
 ]);
 

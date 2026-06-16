@@ -270,6 +270,7 @@ app.post("/tournament/rebuy", authenticate, async (req, res) => {
     res.status(400).json({ success: false, error: err.message });
   }
 });
+
 /* ---------------------------------------------------
     TOURNAMENT PAYOUT (RACE-CONDITION SAFE)
 --------------------------------------------------- */
@@ -823,3 +824,21 @@ app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Backend running on port ${PORT}`);
 });
   console.log("Routes loaded: payin, payout, tournament, admin");
+app.get("/admin/transactions", authenticate, requireAdmin, async (req, res) => {
+  try {
+    const snap = await db
+      .collection("transactions")
+      .orderBy("createdAt", "desc")
+      .limit(200)
+      .get();
+
+    const transactions = snap.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
+    res.json(transactions);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});

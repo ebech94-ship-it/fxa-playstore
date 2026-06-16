@@ -198,7 +198,10 @@ useEffect(() => {
   const loadRates = async () => {
     try {
       const API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL;
-
+if (!API_BASE) {
+  console.log("API URL missing");
+  return;
+}
       const res = await fetch(`${API_BASE}/api/currency`);
       const data = await res.json();
 
@@ -371,8 +374,9 @@ const handleWithdrawal = async () => {
   }
 
   try {
-  setWithdrawProcessing(true);
+  
     if (!auth.currentUser) {
+    setWithdrawProcessing(true);
       Alert.alert("Auth Error", "User not logged in.");
       return;
     }
@@ -380,6 +384,7 @@ const handleWithdrawal = async () => {
     const token = await auth.currentUser.getIdToken(true);
     const API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL;
     if (!API_BASE) {
+    setWithdrawProcessing(false);
   Alert.alert("Config Error", "API URL not set");
   return;
 }

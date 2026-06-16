@@ -24,7 +24,7 @@ async processWithdrawal(userId, amount, momoNumber) {
 
     if (!userSnap.exists) throw new Error("User not found");
 
-    const wallet = userSnap.data().accounts.real.balance || 0;
+    const wallet = userSnap.data()?.accounts?.real?.balance || 0;
 
     if (wallet < numericAmount) {
       throw new Error("User does not have enough balance");
@@ -108,9 +108,6 @@ async registerTournament(t, userId, tournamentId) {
     throw new Error("Tournament join in progress");
   }
 
-  if (user.accounts?.activeTournamentId) {
-    throw new Error("User already in a tournament");
-  }
 
   if (entryFee > 0 && (user.accounts.real.balance || 0) < entryFee) {
     throw new Error("Insufficient wallet balance");
@@ -156,9 +153,11 @@ async registerTournament(t, userId, tournamentId) {
   t.set(participantRef, {
     uid: userId,
     username: user.username || "Participant",
+     countryCode: user.countryCode || null,
     balance: startingBalance,
     initialBalance: startingBalance,
     performance: 0,
+    rebuyCount: 0,
     rebuys: [],
     joinedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
@@ -168,20 +167,37 @@ async registerTournament(t, userId, tournamentId) {
     .doc(userId)
     .collection("tournaments")
     .doc(tournamentId);
+t.set(tRef, {
+  balance: startingBalance,
+  initialBalance: startingBalance,
+  performance: 0,
+  name: tournament.name || "Tournament",
+  symbol: tournament.symbol || "$",
+  startTime: tournament.startTime || null,
+  endTime: tournament.endTime || null,
+  status: "ongoing",
+  tournamentId,
+  joinedAt: admin.firestore.FieldValue.serverTimestamp(),
+}, { merge: true });
 
-  t.set(tRef, {
-    balance: startingBalance,
-    initialBalance: startingBalance,
-    performance: 0,
-    name: tournament.name || "Tournament",
-    symbol: tournament.symbol || "$",
-    startTime: tournament.startTime || null,
-    endTime: tournament.endTime || null,
-    status: "ongoing",
-    tournamentId,
-    joinedAt: admin.firestore.FieldValue.serverTimestamp(),
-  }, { merge: true });
 
+// 👇 ADD THIS NEW BLOCK
+t.set(
+  userRef,
+  {
+    [`accounts.tournaments.${tournamentId}`]: {
+      balance: startingBalance,
+      initialBalance: startingBalance,
+      currency: tournament.symbol || "$",
+      joined: true,
+      name: tournament.name || "Tournament",
+      symbol: tournament.symbol || "$",
+      startTime: tournament.startTime || null,
+      endTime: tournament.endTime || null,
+    },
+  },
+  { merge: true }
+);
   t.update(userRef, {
     "locks.joiningTournament": admin.firestore.FieldValue.delete(),
   });
@@ -272,6 +288,7 @@ async processRebuy(t, userId, tournamentId) {
 
   t.update(participantRef, {
     balance: admin.firestore.FieldValue.increment(startingBalance),
+     rebuyCount: admin.firestore.FieldValue.increment(1),
     lastRebuyAt: admin.firestore.FieldValue.serverTimestamp(),
     rebuys: admin.firestore.FieldValue.arrayUnion({
       amount: rebuyFee,
@@ -288,7 +305,10 @@ async processRebuy(t, userId, tournamentId) {
   t.update(tRef, {
     balance: admin.firestore.FieldValue.increment(startingBalance),
   });
-
+t.update(userRef, {
+  [`accounts.tournaments.${tournamentId}.balance`]:
+    admin.firestore.FieldValue.increment(startingBalance),
+});
   t.set(db.collection("transactions").doc(), {
     userId,
     tournamentId,
@@ -360,104 +380,173 @@ async processTournamentPayout(tournamentId) {
 
   const payoutLogs = [];
 
-  await db.runTransaction(async (t) => {
+  try {
 
-    const tournamentSnap = await t.get(tournamentRef);
-    if (!tournamentSnap.exists) throw new Error("Tournament not found");
+    await db.runTransaction(async (t) => {
 
-    const tournament = tournamentSnap.data();
+      // ======================
+      // READS FIRST
+      // ======================
+      const tournamentSnap = await t.get(tournamentRef);
 
-    if (tournament.paidOut) throw new Error("Already paid out");
-    if (tournament.payoutLocked) throw new Error("Payout running");
+      if (!tournamentSnap.exists) {
+        throw new Error("Tournament not found");
+      }
 
-    const prizePool = Number(tournament.prizePool || 0);
-    const payoutStructure = tournament.payoutStructure || [];
+      const tournament = tournamentSnap.data();
 
-    if (!Array.isArray(payoutStructure) || payoutStructure.length === 0) {
-      throw new Error("Invalid payout structure");
-    }
+      if (tournament.paidOut) {
+        throw new Error("Already paid out");
+      }
 
-    t.update(tournamentRef, { payoutLocked: true });
+      if (tournament.payoutLocked) {
+        throw new Error("Payout running");
+      }
 
-    const treasurySnap = await t.get(treasuryRef);
-    if (!treasurySnap.exists) throw new Error("Treasury missing");
+      const prizePool = Number(tournament.prizePool || 0);
+      const payoutStructure = tournament.payoutStructure || [];
 
-    const treasuryBalance = treasurySnap.data().balance || 0;
+      if (!Array.isArray(payoutStructure) || payoutStructure.length === 0) {
+        throw new Error("Invalid payout structure");
+      }
 
-    if (treasuryBalance < prizePool) {
-      throw new Error("Treasury insufficient");
-    }
+      const treasurySnap = await t.get(treasuryRef);
 
-    const participantSnap = await t.get(
-      tournamentRef.collection("participants")
+      if (!treasurySnap.exists) {
+        throw new Error("Treasury missing");
+      }
+
+      const treasuryBalance = treasurySnap.data().balance || 0;
+
+      if (treasuryBalance < prizePool) {
+        throw new Error("Treasury insufficient");
+      }
+
+      const participantsQuery = tournamentRef
+        .collection("participants")
         .orderBy("performance", "desc")
-        .orderBy("balance", "desc")
-        .limit(payoutStructure.length)
-    );
+        .limit(payoutStructure.length);
 
-    if (participantSnap.empty) throw new Error("No participants");
+      const participantSnap = await t.get(participantsQuery);
 
-    let distributed = 0;
+      if (participantSnap.empty) {
+        throw new Error("No participants");
+      }
 
-    const winners = participantSnap.docs.map((doc, i) => ({
-      userId: doc.id,
-      amount: payoutStructure[i].amount,
-    }));
+      const winners = participantSnap.docs
+        .slice(0, payoutStructure.length)
+        .map((doc, i) => ({
+          userId: doc.id,
+          amount: Number(payoutStructure[i]?.amount || 0),
+        }))
+        .filter((w) => w.amount > 0);
 
-    for (const w of winners) {
+      // ======================
+      // READ ALL WINNER DOCS
+      // ======================
+      const winnerData = [];
 
-      const userRef = db.collection("users").doc(w.userId);
-      const partRef = tournamentRef.collection("participants").doc(w.userId);
+      for (const w of winners) {
 
-      const [userSnap, partSnap] = await Promise.all([
-        t.get(userRef),
-        t.get(partRef),
-      ]);
+        const userRef = db.collection("users").doc(w.userId);
+        const partRef = tournamentRef.collection("participants").doc(w.userId);
 
-      if (!userSnap.exists || !partSnap.exists) continue;
+        const [userSnap, partSnap] = await Promise.all([
+          t.get(userRef),
+          t.get(partRef),
+        ]);
 
-      if (partSnap.data().paidOut) continue;
+        winnerData.push({
+          w,
+          userRef,
+          partRef,
+          userSnap,
+          partSnap,
+        });
+      }
 
-      t.update(userRef, {
-        "accounts.real.balance": admin.firestore.FieldValue.increment(w.amount),
+      // ======================
+      // WRITES START HERE
+      // ======================
+      t.update(tournamentRef, {
+        payoutLocked: true,
+        status: "processing",
       });
 
-      t.update(partRef, { paidOut: true });
+      let distributed = 0;
 
-      distributed += w.amount;
+      for (const item of winnerData) {
 
-      payoutLogs.push({
-        userId: w.userId,
-        tournamentId,
-        amount: w.amount,
-        type: "tournament_payout",
-        status: "PAID",
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        const {
+          w,
+          userRef,
+          partRef,
+          userSnap,
+          partSnap,
+        } = item;
+
+        if (!userSnap.exists || !partSnap.exists) continue;
+
+        if (partSnap.data().paidOut) continue;
+
+        t.update(userRef, {
+          "accounts.real.balance":
+            admin.firestore.FieldValue.increment(w.amount),
+        });
+
+        t.update(partRef, {
+          paidOut: true,
+          payoutAmount: w.amount,
+          payoutAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+
+        distributed += w.amount;
+
+        payoutLogs.push({
+          userId: w.userId,
+          tournamentId,
+          amount: w.amount,
+          type: "tournament_payout",
+          status: "PAID",
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        });
+      }
+
+      if (distributed > prizePool) {
+        throw new Error("Over-distribution detected");
+      }
+
+      t.update(treasuryRef, {
+        balance: admin.firestore.FieldValue.increment(-distributed),
+        lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
       });
-    }
 
-    if (distributed > prizePool) {
-      throw new Error("Over-distribution detected");
-    }
+      t.update(tournamentRef, {
+        paidOut: true,
+        payoutLocked: false,
+        status: "completed",
+        paidOutAt: admin.firestore.FieldValue.serverTimestamp(),
+      });
 
-    t.update(treasuryRef, {
-      balance: admin.firestore.FieldValue.increment(-distributed),
-      lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    t.update(tournamentRef, {
-      paidOut: true,
-      payoutLocked: true,
-      status: "completed",
-      paidOutAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
-  });
+    for (const log of payoutLogs) {
+      await db.collection("transactions").add(log);
+    }
 
-  for (const log of payoutLogs) {
-    await db.collection("transactions").add(log);
+    console.log(`🏆 Tournament ${tournamentId} paid out`);
+
+  } catch (error) {
+
+    await db.runTransaction(async (t) => {
+      t.update(tournamentRef, {
+        status: "live",
+        payoutLocked: false,
+      });
+    });
+
+    console.error("Payout failed:", error.message);
+    throw error;
   }
-
-  console.log(`🏆 Tournament ${tournamentId} paid out`);
 }
-
 };

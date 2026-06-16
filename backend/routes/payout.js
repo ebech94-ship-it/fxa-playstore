@@ -121,6 +121,10 @@ router.post("/", async (req, res) => {
 
     await db.runTransaction(async (t) => {
       const userSnap = await t.get(userRef);
+
+  if (!userSnap.exists) {
+    throw new Error("USER_NOT_FOUND");
+  }
       const balance = userSnap.data()?.accounts?.real?.balance || 0;
 
       if (balance < withdrawalUSD) {
@@ -222,11 +226,31 @@ router.post("/", async (req, res) => {
 
     clearTimeout(timeout);
 
- if (!response.ok) {
+if (!response.ok) {
   await db.runTransaction(async (t) => {
+
     t.update(userRef, {
-      "accounts.real.balance": admin.firestore.FieldValue.increment(withdrawalUSD),
+      "accounts.real.balance":
+        admin.firestore.FieldValue.increment(withdrawalUSD),
     });
+
+    const treasuryRef =
+      db.collection("treasury").doc("main");
+
+    t.set(
+      treasuryRef,
+      {
+        balance:
+          admin.firestore.FieldValue.increment(-feeUSD),
+
+        totalFees:
+          admin.firestore.FieldValue.increment(-feeUSD),
+
+        lastUpdated:
+          admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
 
     t.update(payoutRef, {
       status: "failed",
@@ -239,8 +263,36 @@ router.post("/", async (req, res) => {
 const payoutData = await response.json();
 
 if (!payoutData || payoutData.status === "error") {
-  await payoutRef.update({
-    status: "failed",
+
+  await db.runTransaction(async (t) => {
+
+    t.update(userRef, {
+      "accounts.real.balance":
+        admin.firestore.FieldValue.increment(withdrawalUSD),
+    });
+
+    const treasuryRef =
+      db.collection("treasury").doc("main");
+
+    t.set(
+      treasuryRef,
+      {
+        balance:
+          admin.firestore.FieldValue.increment(-feeUSD),
+
+        totalFees:
+          admin.firestore.FieldValue.increment(-feeUSD),
+
+        lastUpdated:
+          admin.firestore.FieldValue.serverTimestamp(),
+      },
+      { merge: true }
+    );
+
+    t.update(payoutRef, {
+      status: "failed",
+    });
+
   });
 
   throw new Error("PAYOUT_FAILED");
@@ -418,14 +470,13 @@ router.post("/webhook", async (req, res) => {
   refunds: admin.firestore.FieldValue.arrayUnion(refundKey),
 });
 
-          t.set(
-            treasuryRef,
-            {
-              balance: admin.firestore.FieldValue.increment(payout.amount),
-              lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
-            },
-            { merge: true }
-          );
+     t.set(
+  treasuryRef,
+  {
+    lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+  },
+  { merge: true }
+);
 
           t.set(db.collection("ledger").doc(), {
             userId: payout.userId,
