@@ -824,10 +824,18 @@ app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Backend running on port ${PORT}`);
 });
   console.log("Routes loaded: payin, payout, tournament, admin");
+
 app.get("/admin/transactions", authenticate, requireAdmin, async (req, res) => {
   try {
-    const snap = await db
-      .collection("transactions")
+    const { type } = req.query;
+
+    let ref = db.collection("transactions");
+
+    if (type) {
+      ref = ref.where("type", "==", type);
+    }
+
+    const snap = await ref
       .orderBy("createdAt", "desc")
       .limit(200)
       .get();
@@ -840,5 +848,29 @@ app.get("/admin/transactions", authenticate, requireAdmin, async (req, res) => {
     res.json(transactions);
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+app.get("/admin/pending-transactions", authenticate, requireAdmin, async (req, res) => {
+  try {
+    const snap = await db
+      .collection("transactions")
+      .where("status", "==", "pending")
+      .orderBy("createdAt", "desc")
+      .limit(100)
+      .get();
+
+    const transactions = snap.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
+    res.json(transactions);
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      error: err.message,
+    });
   }
 });
