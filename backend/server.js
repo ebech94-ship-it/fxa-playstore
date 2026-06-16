@@ -825,20 +825,21 @@ app.listen(PORT, "0.0.0.0", () => {
 });
   console.log("Routes loaded: payin, payout, tournament, admin");
 
+  
 app.get("/admin/transactions", authenticate, requireAdmin, async (req, res) => {
   try {
     const { type } = req.query;
 
-    let ref = db.collection("transactions");
+    let query = db.collection("transactions");
 
     if (type) {
-      ref = ref.where("type", "==", type);
+      query = query.where("type", "==", type);
     }
 
-    const snap = await ref
-      .orderBy("createdAt", "desc")
-      .limit(200)
-      .get();
+    // ALWAYS ensure createdAt exists
+    query = query.orderBy("createdAt", "desc").limit(200);
+
+    const snap = await query.get();
 
     const transactions = snap.docs.map(doc => ({
       id: doc.id,
@@ -847,18 +848,19 @@ app.get("/admin/transactions", authenticate, requireAdmin, async (req, res) => {
 
     res.json(transactions);
   } catch (err) {
+    console.error("ADMIN TRANSACTIONS ERROR:", err.code, err.message);
     res.status(500).json({ error: err.message });
   }
 });
-
 app.get("/admin/pending-transactions", authenticate, requireAdmin, async (req, res) => {
   try {
-    const snap = await db
+    const query = db
       .collection("transactions")
       .where("status", "==", "pending")
       .orderBy("createdAt", "desc")
-      .limit(100)
-      .get();
+      .limit(100);
+
+    const snap = await query.get();
 
     const transactions = snap.docs.map(doc => ({
       id: doc.id,
@@ -866,11 +868,8 @@ app.get("/admin/pending-transactions", authenticate, requireAdmin, async (req, r
     }));
 
     res.json(transactions);
-
   } catch (err) {
-    console.error(err);
-    res.status(500).json({
-      error: err.message,
-    });
+    console.error("PENDING TRANSACTIONS ERROR:", err.code, err.message);
+    res.status(500).json({ error: err.message });
   }
 });
