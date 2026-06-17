@@ -501,10 +501,10 @@ useEffect(() => {
       }))
   : [];
     setTournaments(tournamentList);
-    console.log(
-  "Tournament List:",
-  tournamentList.length,
-  tournamentList
+
+console.log(
+  "🔥 TOURNAMENT LIST:",
+  JSON.stringify(tournamentList, null, 2)
 );
 
     // ✅ Reset active tournament if it was deleted

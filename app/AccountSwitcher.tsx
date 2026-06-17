@@ -68,14 +68,15 @@ export default function AccountSwitcher({
 
   // convert context tournaments to UI-friendly shape
 const switcherTournaments = tournamentAccounts
-  .filter(t => t.status === "ongoing" || t.status === "upcoming")
+
   .map(t => ({
     id: t.tournamentId,
     name: t.name,
     status: formatTournamentStatus(t.status),
     balance: Number(t.balance ?? 0),
   }));
-
+console.log("tournamentAccounts =", tournamentAccounts);
+console.log("switcherTournaments =", switcherTournaments);
 
 
 
@@ -156,7 +157,8 @@ const displayBalance = (() => {
   return Number(t?.balance ?? 0);
 })();
 
-
+console.log("expanded =", expanded);
+console.log("switcherTournaments count =", switcherTournaments.length);
 
   return (
     <View style={styles.container}>
@@ -253,8 +255,9 @@ const displayBalance = (() => {
     
           {/* TOURNAMENTS */}
 <>
-  <Text style={styles.sectionTitle}>  YOUR TOURNAMENTS</Text>
-
+  <Text style={styles.sectionTitle}>
+  YOUR TOURNAMENTS ({switcherTournaments.length})
+</Text>
   {switcherTournaments.length === 0 ? (
     <View style={[styles.card, { opacity: 0.6 }]}>
       <Text style={styles.cardTitle}>Tournament Account</Text>

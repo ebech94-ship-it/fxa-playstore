@@ -180,6 +180,7 @@ app.get("/api/treasury/balances", authenticate, requireAdmin, async (req, res) =
     res.status(500).json({ success: false, error: err.message });
   }
 });
+
 // ---------------------------------------------------------------------
 // TOURNAMENT REGISTER (CLEAN - SINGLE SOURCE OF TRUTH)
 // ---------------------------------------------------------------------
@@ -825,7 +826,7 @@ app.listen(PORT, "0.0.0.0", () => {
 });
   console.log("Routes loaded: payin, payout, tournament, admin");
 
-  
+
 app.get("/admin/transactions", authenticate, requireAdmin, async (req, res) => {
   try {
     const { type } = req.query;
@@ -852,6 +853,7 @@ app.get("/admin/transactions", authenticate, requireAdmin, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
 app.get("/admin/pending-transactions", authenticate, requireAdmin, async (req, res) => {
   try {
     const query = db
@@ -869,7 +871,7 @@ app.get("/admin/pending-transactions", authenticate, requireAdmin, async (req, r
 
     res.json(transactions);
   } catch (err) {
-    console.error("PENDING TRANSACTIONS ERROR:", err.code, err.message);
+   console.error("FULL ERROR:", err);
     res.status(500).json({ error: err.message });
   }
 });
