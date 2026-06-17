@@ -11,7 +11,7 @@ import { useApp } from "./AppContext"; // <-- add this at the top
 
 
 import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Alert, FlatList,
   KeyboardAvoidingView,
@@ -144,12 +144,10 @@ const [tournamentRebuys, setTournamentRebuys] = useState<Record<string, number>>
 
   const [viewTab, setViewTab] = useState("info"); // "info" | "leaderboard"
   
-
- 
-
- type LoadingState = {
+type LoadingState = {
   register?: boolean;
   rebuy?: boolean;
+  rebuyDone?: boolean;
 };
 
 const [loadingActions, setLoadingActions] = useState<
@@ -233,54 +231,40 @@ const joinedMap = useMemo(() => {
 
 // ---------- SELECTED TOURNAMENT LIVE ENGINE (STATS + LEADERBOARD MERGED) ----------
 useEffect(() => {
-  if (!selectedTournament?.id) return;
+  const unsubs: (() => void)[] = [];
 
-  const ref = collection(
-    db,
-    "tournaments",
-    selectedTournament.id,
-    "participants"
-  );
+  tournaments.forEach((tour) => {
+    const ref = collection(
+      db,
+      "tournaments",
+      tour.id,
+      "participants"
+    );
 
-  const unsub = onSnapshot(ref, (snap) => {
-    let rebuyTotal = 0;
+    const unsub = onSnapshot(ref, (snap) => {
+      let rebuyTotal = 0;
 
-  const leaderboardList = snap.docs.map((doc) => {
-  const data = doc.data() as any;
+      snap.docs.forEach((doc) => {
+        const data = doc.data() as any;
+        rebuyTotal += data.rebuys?.length ?? 0;
+      });
 
-  rebuyTotal += data.rebuys?.length ?? 0;
+      setTournamentCounts((prev) => ({
+        ...prev,
+        [tour.id]: snap.size,
+      }));
 
-  const balance = data.balance ?? 0;
-  const starting = selectedTournament?.startingBalance ?? 0;
-
-  return {
-    id: doc.id,
-    ...data,
-    performance: balance - (data.initialBalance ?? starting),
-  };
-});
-
-    leaderboardList.sort((a, b) => b.performance - a.performance);
-
-    setLeaderboard(leaderboardList);
-
-    // ⚡ avoid useless rerenders
-    setTournamentCounts((prev) => {
-      if (prev[selectedTournament.id] === snap.size) return prev;
-      return { ...prev, [selectedTournament.id]: snap.size };
+      setTournamentRebuys((prev) => ({
+        ...prev,
+        [tour.id]: rebuyTotal,
+      }));
     });
 
-    setTournamentRebuys((prev) => {
-      if (prev[selectedTournament.id] === rebuyTotal) return prev;
-      return { ...prev, [selectedTournament.id]: rebuyTotal };
-    });
-
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    unsubs.push(unsub);
   });
 
-  return () => unsub();
-}, [selectedTournament?.id, selectedTournament?.startingBalance]);
-
+  return () => unsubs.forEach((u) => u());
+}, [tournaments]);
 
 // ---------- GLOBAL LEADERBOARD ----------
 useEffect(() => {
@@ -363,25 +347,41 @@ setTournamentCounts((prev) => ({
 
 // ----------- REBUY ACTION (SECURE BACKEND VERSION) -----------
 const handleRebuy = async (tournamentId: string) => {
-  if (loadingActions[tournamentId]?.rebuy) return;
+  const tour = tournaments.find((t) => t.id === tournamentId);
+  if (!tour) return;
+console.log("REBUY CLICKED", tournamentId);
 
+const account = tournamentAccounts.find(
+  t => t.tournamentId === tournamentId
+);
+
+console.log("ACCOUNT", account);
+console.log("BALANCE", account?.balance);
+console.log("STARTING", tour.startingBalance);
   if (!currentUser) {
     Alert.alert("Error", "You must be logged in.");
     return;
   }
+  const userBalance = account?.balance ?? 0;
+  const minAllowed = (tour.startingBalance ?? 0) / 2;
 
-  const tour = tournaments.find((t) => t.id === tournamentId);
-  if (!tour) {
-    Alert.alert("Error", "Tournament not found.");
+  // 🔒 HARD GUARD
+  if (userBalance >= minAllowed) {
+    Alert.alert(
+      "Rebuy Not Allowed",
+      `Your balance must drop below ${minAllowed}$ before you can rebuy.\n\nCurrent balance: ${userBalance}$`
+    );
     return;
   }
 
-  if (Date.now() > tour.endTime) {
-    Alert.alert("Closed", "Tournament already ended.");
-    return;
-  }
-
-  setLoadingFor(tournamentId, "rebuy", true);
+  setLoadingActions(prev => ({
+    ...prev,
+    [tournamentId]: {
+      ...prev[tournamentId],
+      rebuy: true,
+      rebuyDone: false,
+    },
+  }));
 
   try {
     const token = await currentUser.getIdToken();
@@ -405,10 +405,41 @@ const handleRebuy = async (tournamentId: string) => {
     }
 
     Alert.alert("Success", "Rebuy successful!");
+
+    setTournamentRebuys(prev => ({
+      ...prev,
+      [tournamentId]: (prev[tournamentId] || 0) + 1,
+    }));
+
+    setLoadingActions(prev => ({
+      ...prev,
+      [tournamentId]: {
+        ...prev[tournamentId],
+        rebuy: false,
+        rebuyDone: true,
+      },
+    }));
+
+    setTimeout(() => {
+      setLoadingActions(prev => ({
+        ...prev,
+        [tournamentId]: {
+          ...prev[tournamentId],
+          rebuyDone: false,
+        },
+      }));
+    }, 3000);
+
   } catch (error: any) {
     Alert.alert("Error", error.message || "Rebuy failed.");
-  } finally {
-    setLoadingFor(tournamentId, "rebuy", false);
+
+    setLoadingActions(prev => ({
+      ...prev,
+      [tournamentId]: {
+        ...prev[tournamentId],
+        rebuy: false,
+      },
+    }));
   }
 };
 
@@ -507,9 +538,17 @@ const TournamentCard = ({ item }: { item: any }) => {
 
   const rebuyFee = item.rebuyFee ?? item.entryFee ?? 0;
 
-  const allowRebuy =
-    status === "ongoing" && joinedMap[item.id];
+  const tournamentAccountForCard = tournamentAccounts.find(
+  t => t.tournamentId === item.id
+);
 
+const userBalance = tournamentAccountForCard?.balance ?? 0;
+const startingBalance = item.startingBalance ?? 0;
+
+const allowRebuy =
+  status === "ongoing" &&
+  joinedMap[item.id] &&
+  userBalance < startingBalance / 2;
   return (
     <TouchableOpacity
       activeOpacity={0.95}
@@ -633,39 +672,54 @@ const TournamentCard = ({ item }: { item: any }) => {
               : `Register • ${item.entryFee} $`}
           </Text>
         </TouchableOpacity>
+<TouchableOpacity
+  activeOpacity={0.6}
+  style={[
+    styles.actionBtnAlt,
+    (!allowRebuy || loadingActions[item.id]?.rebuy) && styles.disabledBtn,
+    loadingActions[item.id]?.rebuy && { opacity: 0.4 }
+  ]}
+  disabled={!allowRebuy || !!loadingActions[item.id]?.rebuy}
 
-        <TouchableOpacity
-          style={[
-            styles.actionBtnAlt,
-            (!allowRebuy ||
-              loadingActions[item.id]?.rebuy) &&
-              styles.disabledBtn,
-          ]}
-          disabled={
-            !allowRebuy ||
-            !!loadingActions[item.id]?.rebuy
-          }
-          onPress={() =>
-            Alert.alert(
-              "Confirm Rebuy",
-              `Rebuy for ${rebuyFee} $?`,
-              [
-                { text: "Cancel", style: "cancel" },
-                {
-                  text: "Confirm",
-                  onPress: () =>
-                    handleRebuy(item.id),
-                },
-              ]
-            )
-          }
+         onPress={() => {
+  const tour = item;
+const account = tournamentAccounts.find(
+  t => t.tournamentId === tournamentId
+);
+  const userBalance = account?.balance ?? 0;
+  const minAllowed = (tour.startingBalance ?? 0) / 2;
+
+  if (userBalance >= minAllowed) {
+    Alert.alert(
+      "Rebuy Locked",
+      `You need your balance to drop below ${minAllowed}$ to enable rebuy.\n\nCurrent: ${userBalance}$`
+    );
+    return;
+  }
+
+  Alert.alert(
+    "Confirm Rebuy",
+    `Rebuy for ${rebuyFee} $?`,
+    [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Confirm",
+        onPress: () => handleRebuy(item.id),
+      },
+    ]
+  );
+}}
         >
           <Text style={styles.actionTextAlt}>
-            {loadingActions[item.id]?.rebuy
-              ? "Processing..."
-              : rebuyFee === 0
-              ? "Rebuy (Free)"
-              : `Rebuy • ${rebuyFee} $`}
+         {loadingActions[item.id]?.rebuy
+  ? "⏳ Processing..."
+  : loadingActions[item.id]?.rebuyDone
+  ? "✅ Rebuy Done"
+  : !allowRebuy
+  ? "Rebuy Locked"
+  : rebuyFee === 0
+  ? "Rebuy (Free)"
+  : `Rebuy • ${rebuyFee} $`}
           </Text>
         </TouchableOpacity>
       </View>
@@ -803,7 +857,7 @@ const TournamentCard = ({ item }: { item: any }) => {
   </Text>
 )}
 <Text style={{ color: "#6b7280", textAlign: "center", fontSize: 12 }}>
-  Accounts Loaded: {Object.keys(tournamentAccounts || {}).length}
+  Accounts Loaded: {tournamentAccounts?.length ?? 0}
 </Text>
     <FlatList
   data={tournaments}

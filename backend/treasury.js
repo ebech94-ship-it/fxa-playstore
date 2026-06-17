@@ -225,12 +225,18 @@ async processRebuy(t, userId, tournamentId) {
 
   if (rebuyFee <= 0) throw new Error("Invalid rebuy fee");
 
-  const participant = participantSnap.data();
-  const currentBalance = participant.balance || 0;
+ const participant = participantSnap.data();
+const currentBalance = participant.balance || 0;
 
-  if (currentBalance >= startingBalance / 2) {
-    throw new Error("REBUY_NOT_ALLOWED");
-  }
+console.log({
+  currentBalance,
+  startingBalance,
+  allowed: currentBalance < startingBalance / 2,
+});
+
+if (currentBalance >= startingBalance / 2) {
+  throw new Error("REBUY_NOT_ALLOWED");
+}
 
   if (wallet < rebuyFee) {
     throw new Error("Insufficient balance");

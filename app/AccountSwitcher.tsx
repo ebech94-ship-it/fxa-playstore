@@ -75,8 +75,8 @@ const switcherTournaments = tournamentAccounts
     status: formatTournamentStatus(t.status),
     balance: Number(t.balance ?? 0),
   }));
-console.log("tournamentAccounts =", tournamentAccounts);
-console.log("switcherTournaments =", switcherTournaments);
+// console.log("tournamentAccounts =", tournamentAccounts);
+// console.log("switcherTournaments =", switcherTournaments);
 
 
 
@@ -157,8 +157,8 @@ const displayBalance = (() => {
   return Number(t?.balance ?? 0);
 })();
 
-console.log("expanded =", expanded);
-console.log("switcherTournaments count =", switcherTournaments.length);
+// console.log("expanded =", expanded);
+// console.log("switcherTournaments count =", switcherTournaments.length);
 
   return (
     <View style={styles.container}>

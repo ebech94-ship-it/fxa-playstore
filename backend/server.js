@@ -229,6 +229,7 @@ app.post("/tournament/register", authenticate, async (req, res) => {
     });
   }
 });
+
 // ---------------------------------------------------------------------
 // TOURNAMENT REBUY (CLEAN - SINGLE SOURCE OF TRUTH)
 // ---------------------------------------------------------------------
