@@ -162,42 +162,23 @@ async registerTournament(t, userId, tournamentId) {
     joinedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
 
-  const tRef = db
-    .collection("users")
-    .doc(userId)
-    .collection("tournaments")
-    .doc(tournamentId);
-t.set(tRef, {
-  balance: startingBalance,
-  initialBalance: startingBalance,
-  performance: 0,
-  name: tournament.name || "Tournament",
-  symbol: tournament.symbol || "$",
-  startTime: tournament.startTime || null,
-  endTime: tournament.endTime || null,
-  status: "ongoing",
-  tournamentId,
-  joinedAt: admin.firestore.FieldValue.serverTimestamp(),
-}, { merge: true });
+ 
 
 
 // 👇 ADD THIS NEW BLOCK
-t.set(
-  userRef,
-  {
-    [`accounts.tournaments.${tournamentId}`]: {
-      balance: startingBalance,
-      initialBalance: startingBalance,
-      currency: tournament.symbol || "$",
-      joined: true,
-      name: tournament.name || "Tournament",
-      symbol: tournament.symbol || "$",
-      startTime: tournament.startTime || null,
-      endTime: tournament.endTime || null,
-    },
+t.update(userRef, {
+  [`accounts.tournaments.${tournamentId}`]: {
+    balance: startingBalance,
+    initialBalance: startingBalance,
+    currency: tournament.symbol || "$",
+    joined: true,
+    name: tournament.name || "Tournament",
+    symbol: tournament.symbol || "$",
+    startTime: tournament.startTime || null,
+    endTime: tournament.endTime || null,
+    status: "ongoing",
   },
-  { merge: true }
-);
+});
   t.update(userRef, {
     "locks.joiningTournament": admin.firestore.FieldValue.delete(),
   });

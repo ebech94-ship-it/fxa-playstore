@@ -491,13 +491,25 @@ useEffect(() => {
 
     const acc: Accounts = data.accounts ?? {};
     setAccounts(acc);
-
+console.log(
+  "TOURNAMENTS RAW:",
+  JSON.stringify(acc.tournaments, null, 2)
+);
     // Build tournament list from user accounts, only include joined tournaments
-   const tournamentList = acc.tournaments
+  const tournamentList = acc.tournaments
+  
   ? Object.entries(acc.tournaments)
-      .map(([id, t]) => ({
-        ...t,
+      .map(([id, t]: any) => ({
         tournamentId: id,
+        balance: Number(t.balance ?? 0),
+        initialBalance: Number(t.initialBalance ?? 0),
+        currency: t.currency ?? "$",
+        joined: t.joined ?? true,
+        name: t.name,
+        symbol: t.symbol,
+        startTime: t.startTime,
+        endTime: t.endTime,
+        status: t.status ?? "ongoing",
       }))
   : [];
     setTournaments(tournamentList);
