@@ -27,7 +27,7 @@ import {
 } from "firebase/auth";
 
 
-import { collection, doc, getDoc, getDocs, query, runTransaction, serverTimestamp, setDoc, where } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, query, runTransaction, setDoc, where } from "firebase/firestore";
 import { useEffect, useRef, useState } from "react";
 
 
@@ -52,7 +52,7 @@ const createDemoBalance = async (uid: string, username: string) => {
     balance: 1000, // default demo balance
     avatar: "",     // optional
     country: "",    // optional
-    createdAt: serverTimestamp(),
+    createdAt: new Date().toISOString(),
   });
 };
 
@@ -104,7 +104,7 @@ const publicUserId = await generateUserId();
   verified: false,
   verifiedAt: null,
    referredBy: referredBy,
-  createdAt: serverTimestamp(),
+  createdAt: new Date().toISOString(),
   accounts: {
     demo: { balance: 1000, type: "practice" },
     real: { balance: 0, type: "real" },

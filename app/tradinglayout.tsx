@@ -42,7 +42,7 @@ import {
   doc,
 
   increment, onSnapshot, runTransaction,
-  serverTimestamp, setDoc, updateDoc
+   setDoc, updateDoc
 } from "firebase/firestore";
 import { db } from "../firebaseConfig";
 
@@ -127,7 +127,7 @@ const payoutTournamentWin = async (
 
 tx.update(participantRef, {
   balance: newBalance,
-  updatedAt: serverTimestamp(),
+  updatedAt: new Date().toISOString(),
 });
 
 const userRef = doc(db, "users", uid);
@@ -149,7 +149,7 @@ const updateDemoBalance = async (uid: string, newBalance: number) => {
       demoRef,
       {
         balance: newBalance,
-        updatedAt: serverTimestamp(),
+        updatedAt: new Date().toISOString(),
       },
       { merge: true }
     );
@@ -416,7 +416,7 @@ const handleTrade = async (type: "buy" | "sell") => {
 
         tx.update(participantRef, {
   balance: newBalance,
-  updatedAt: serverTimestamp(),
+  updatedAt: new Date().toISOString(),
 });
 
 const userRef = doc(db, "users", uid);

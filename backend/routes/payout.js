@@ -163,7 +163,7 @@ router.post("/", async (req, res) => {
 
         status: "processing",
         retryCount: 0,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: new Date().toISOString(),
         processedStatuses: [],
       });
 
@@ -175,7 +175,7 @@ router.post("/", async (req, res) => {
         {
           balance: admin.firestore.FieldValue.increment(feeUSD),
           totalFees: admin.firestore.FieldValue.increment(feeUSD),
-          lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+          lastUpdated: new Date().toISOString(),
         },
         { merge: true }
       );
@@ -189,7 +189,7 @@ router.post("/", async (req, res) => {
         currency: "USD",
         userId: uid,
         transactionId,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: new Date().toISOString(),
       });
     });
 
@@ -247,7 +247,7 @@ if (!response.ok) {
           admin.firestore.FieldValue.increment(-feeUSD),
 
         lastUpdated:
-          admin.firestore.FieldValue.serverTimestamp(),
+          admin.firestore.FieldValue.toISOString(),
       },
       { merge: true }
     );
@@ -284,7 +284,7 @@ if (!payoutData || payoutData.status === "error") {
           admin.firestore.FieldValue.increment(-feeUSD),
 
         lastUpdated:
-          admin.firestore.FieldValue.serverTimestamp(),
+          admin.firestore.FieldValue.toISOString(),
       },
       { merge: true }
     );
@@ -362,7 +362,7 @@ router.post("/webhook", async (req, res) => {
         await auditRef.set({
           type: "invalid_signature",
           payload: req.body,
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          createdAt: admin.firestore.FieldValue.toISOString(),
         });
 
         return res.status(401).json({ error: "Invalid signature" });
@@ -381,7 +381,7 @@ router.post("/webhook", async (req, res) => {
       await db.collection("webhookAudit").add({
         type: "invalid_payload",
         payload: req.body,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: new Date().toISOString(),
       });
 
       return res.status(200).json({ received: true });
@@ -411,7 +411,7 @@ router.post("/webhook", async (req, res) => {
         type: "payout_not_found",
         transactionId,
         status: newStatus,
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: new Date().toISOString(),
       });
 
       return res.status(200).json({ received: true });
@@ -445,7 +445,7 @@ const beforeBalance = user?.accounts?.real?.balance || 0;
 
       if (alreadyProcessed) {
         return t.update(payoutRef, {
-          lastChecked: admin.firestore.FieldValue.serverTimestamp(),
+          lastChecked: new Date().toISOString(),
         });
       }
 
@@ -454,7 +454,7 @@ const beforeBalance = user?.accounts?.real?.balance || 0;
       // ----------------------
       t.update(payoutRef, {
         status: newStatus,
-        lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+        lastUpdated: admin.firestore.FieldValue.server(),
         processedStatuses: admin.firestore.FieldValue.arrayUnion(processedKey),
       });
 
@@ -475,7 +475,7 @@ const beforeBalance = user?.accounts?.real?.balance || 0;
      t.set(
   treasuryRef,
   {
-    lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+    lastUpdated: new Date().toISOString(),
   },
   { merge: true }
 );
@@ -489,7 +489,7 @@ const beforeBalance = user?.accounts?.real?.balance || 0;
             beforeBalance,
             afterBalance: beforeBalance + payout.amount,
             reference: transactionId,
-            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            createdAt: new Date().toISOString(),
           });
 
           t.set(db.collection("transactions").doc(), {
@@ -500,7 +500,7 @@ const beforeBalance = user?.accounts?.real?.balance || 0;
             reason: `Payout ${newStatus}`,
             transactionId,
             status: "completed",
-            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+            createdAt: admin.firestore.FieldValue.server(),
           });
         }
       }
@@ -513,7 +513,7 @@ const beforeBalance = user?.accounts?.real?.balance || 0;
           treasuryRef,
           {
             balance: admin.firestore.FieldValue.increment(-payout.amount),
-            lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+            lastUpdated: new Date().toISOString(),
           },
           { merge: true }
         );
@@ -527,7 +527,7 @@ const beforeBalance = user?.accounts?.real?.balance || 0;
           beforeBalance,
           afterBalance: beforeBalance,
           reference: transactionId,
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          createdAt: new Date().toISOString(),
         });
 
         t.set(db.collection("transactions").doc(), {
@@ -537,7 +537,7 @@ const beforeBalance = user?.accounts?.real?.balance || 0;
           amount: payout.amount,
           transactionId,
           status: "completed",
-          createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          createdAt: new Date().toISOString(),
         });
       }
     });
@@ -549,7 +549,7 @@ const beforeBalance = user?.accounts?.real?.balance || 0;
       type: "processed",
       transactionId,
       status: newStatus,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: new Date().toISOString(),
     });
 
     return res.status(200).json({ received: true });
@@ -561,7 +561,7 @@ const beforeBalance = user?.accounts?.real?.balance || 0;
       type: "error",
       error: err.message,
       stack: err.stack,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: new Date().toISOString(),
     }).catch(() => {});
 
     return res.status(200).json({ received: true });

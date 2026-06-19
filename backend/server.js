@@ -427,10 +427,10 @@ app.post("/support/send", authenticate, async (req, res) => {
         username: resolvedUsername,
 
         status: "open",
-        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        createdAt: new Date().toISOString(),
 
         lastMessage: message,
-        lastMessageAt: admin.firestore.FieldValue.serverTimestamp(),
+        lastMessageAt: admin.firestore.FieldValue.toISOString(),
       });
     } else {
       threadRef = db.collection("supportThreads").doc(threadId);
@@ -441,13 +441,13 @@ app.post("/support/send", authenticate, async (req, res) => {
       sender: "user",
       text: message,
       read: false,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: new Date().toISOString(),
     });
 
     // 🔄 Update thread metadata
     await threadRef.update({
       lastMessage: message,
-      lastMessageAt: admin.firestore.FieldValue.serverTimestamp(),
+      lastMessageAt: new Date().toISOString(),
       status: "open",
     });
 
@@ -476,7 +476,7 @@ app.post("/admin/send-notification", authenticate, requireAdmin, async (req, res
       message,
       type: "admin",
       read: false,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: new Date().toISOString(),
     });
 
     res.json({ success: true, alertId: alertRef.id });
@@ -510,14 +510,14 @@ app.post("/admin/reply-support", authenticate, requireAdmin, async (req, res) =>
       sender: "admin",
       text: message.trim(),
       read: false,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+      createdAt: new Date().toISOString(),
       adminId: req.user.uid, // 🔥 track which admin replied
     });
 
     // ✅ Update thread metadata
     await threadRef.update({
       lastMessage: message.trim(),
-      lastMessageAt: admin.firestore.FieldValue.serverTimestamp(),
+      lastMessageAt: new Date().toISOString(),
       status: "answered",
       answeredBy: req.user.uid, // 🔥 track responder
     });
@@ -547,7 +547,7 @@ app.post("/admin/delete-user", authenticate, requireAdmin, async (req, res) => {
 
   await db.collection("users").doc(userId).update({
     deleted: true,
-    deletedAt: admin.firestore.FieldValue.serverTimestamp(),
+    deletedAt: new Date().toISOString(),
   });
 
   res.json({ success: true });
@@ -567,7 +567,7 @@ app.get("/admin/system-logs", authenticate, requireAdmin, async (req, res) => {
       return {
         id: doc.id,
         message: `${data.adminId || "Unknown"} → ${data.action || data.reason || "Performed action"}`,
-        timestamp: data.createdAt?.toMillis() || Date.now(),
+        createdAt: data.createdAt?.toDate?.().toISOString() || null,
       };
     });
     res.json(logs);
@@ -588,7 +588,7 @@ app.get("/admin/activity-history", authenticate, requireAdmin, async (req, res) 
         id: doc.id,
         admin: data.adminId || "Unknown",
         action: data.action || data.reason || "Performed action",
-        timestamp: data.createdAt?.toMillis() || Date.now(),
+          createdAt: data.createdAt?.toDate?.().toISOString() || null,
       };
     });
     res.json(activities);
@@ -741,10 +741,15 @@ app.get("/transactions", authenticate, async (req, res) => {
       .limit(50)
       .get();
 
-    const transactions = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
+    const transactions = snapshot.docs.map(doc => {
+  const data = doc.data();
+
+  return {
+    id: doc.id,
+    ...data,
+    createdAt: data.createdAt?.toDate?.().toISOString() || null,
+  };
+});
 
     res.json({
       success: true,
@@ -818,10 +823,16 @@ app.get("/admin/transactions", authenticate, requireAdmin, async (req, res) => {
 
     const snap = await query.get();
 
-    const transactions = snap.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
+   const transactions = snap.docs.map(doc => {
+
+  const data = doc.data();
+
+  return {
+    id: doc.id,
+    ...data,
+    createdAt: data.createdAt?.toDate?.().toISOString() || null,
+  };
+});
 
     res.json(transactions);
   } catch (err) {
@@ -861,6 +872,7 @@ app.get("/admin/pending-transactions", authenticate, requireAdmin, async (req, r
     user: data.username || "Unknown",
     amount: data.amount || 0,
     status: data.status || "pending",
+      createdAt: data.createdAt?.toDate?.().toISOString() || null,
   };
 });
 

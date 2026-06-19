@@ -466,14 +466,14 @@ const handleSupportSend = async () => {
   try {
     const token = await user.getIdToken();
 
-    // Create payload with all user details + timestamp
+    // Create payload with all user details 
     const payload = {
   threadId: userThread?.id ?? null,
   userId: user.uid,
   userEmail: user.email || supportEmail || "No Email",
   name: supportName || appProfile?.displayName || "Unknown User",
   message: supportMessage,
-  timestamp: new Date().toISOString(),
+  createdAt: new Date().toISOString(),
   profileSnapshot: profile ? {
     displayName: profile.displayName,
     username: profile.username,

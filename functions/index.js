@@ -16,7 +16,7 @@ exports.onAuthUserCreate = functions.auth.user().onCreate(async (user) => {
     verified: false,
     verifiedAt: null,
 
-    createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    createdAt: admin.firestore.FieldValue.server(),
 
     accounts: {
       demo: { balance: 1000, type: "practice" },
