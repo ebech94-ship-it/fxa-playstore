@@ -21,6 +21,7 @@ async processWithdrawal(userId, amount, momoNumber) {
 
   await db.runTransaction(async (t) => {
     const userSnap = await t.get(userRef);
+    const user = userSnap.data();
 
     if (!userSnap.exists) throw new Error("User not found");
 
@@ -50,6 +51,7 @@ async processWithdrawal(userId, amount, momoNumber) {
 
     t.set(transactionRef, {
       userId,
+       username: user.username || "Unknown",
       amount: numericAmount,
       type: "withdrawal",
       status: "pending",
@@ -188,6 +190,7 @@ t.update(userRef, {
 
   t.set(db.collection("transactions").doc(), {
     userId,
+    username: user.username || "Unknown",
     tournamentId,
     amount: entryFee,
     type: "tournament_registration",
@@ -315,7 +318,8 @@ if (now > tournament.endTime) {
   });
 
   t.set(db.collection("transactions").doc(), {
-    userId,
+   userId,
+    username: user.username || "Unknown",
     tournamentId,
     amount: rebuyFee,
     type: "rebuy",
@@ -339,6 +343,7 @@ async adminAdjustBalance(t, userId, amount, mode, reason = "", adminId = null) {
   const treasuryRef = db.collection("treasury").doc("main");
 
   const userSnap = await t.get(userRef);
+  const user = userSnap.data();
   if (!userSnap.exists) throw new Error("User not found");
 
   const userBalance = userSnap.data().accounts.real.balance || 0;
@@ -365,7 +370,8 @@ async adminAdjustBalance(t, userId, amount, mode, reason = "", adminId = null) {
   );
 
   t.set(db.collection("transactions").doc(), {
-    userId,
+     userId,
+     username: user.username || "Unknown",
     amount,
     type: mode === "add" ? "admin_credit" : "admin_debit",
     reason,

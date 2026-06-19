@@ -427,9 +427,11 @@ router.post("/webhook", async (req, res) => {
       const payout = snap.data();
 
       const userRef = db.collection("users").doc(payout.userId);
-      const userSnap = await t.get(userRef);
 
-      const beforeBalance = userSnap.data()?.accounts.real.balance || 0;
+     const userSnap = await t.get(userRef);
+const user = userSnap.data();
+
+const beforeBalance = user?.accounts?.real?.balance || 0;
 
       const processedKey = `${transactionId}_${newStatus}`;
       const refundKey = `${transactionId}_${newStatus}`;
@@ -480,6 +482,7 @@ router.post("/webhook", async (req, res) => {
 
           t.set(db.collection("ledger").doc(), {
             userId: payout.userId,
+            username: user.username || "Unknown",
             type: "refund",
             amount: payout.amount,
             currency: "USD",
@@ -491,6 +494,7 @@ router.post("/webhook", async (req, res) => {
 
           t.set(db.collection("transactions").doc(), {
             userId: payout.userId,
+            username: user.username || "Unknown",
             type: "refund",
             amount: payout.amount,
             reason: `Payout ${newStatus}`,
@@ -516,6 +520,7 @@ router.post("/webhook", async (req, res) => {
 
         t.set(db.collection("ledger").doc(), {
           userId: payout.userId,
+          username: user.username || "Unknown",
           type: "payout",
           amount: payout.amount,
           currency: "USD",
@@ -527,6 +532,7 @@ router.post("/webhook", async (req, res) => {
 
         t.set(db.collection("transactions").doc(), {
           userId: payout.userId,
+          username: user.username || "Unknown",
           type: "payout",
           amount: payout.amount,
           transactionId,

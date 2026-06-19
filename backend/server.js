@@ -170,11 +170,15 @@ app.get("/api/treasury/balances", authenticate, requireAdmin, async (req, res) =
   try {
     const doc = await db.collection("treasury").doc("main").get();
 
-    res.json({
-      success: true,
-      balance: doc.data()?.balance || 0,
-      lastUpdated: doc.data()?.lastUpdated || null,
-    });
+    const data = doc.data();
+
+res.json({
+  success: true,
+  balance: data?.balance || 0,
+  lastUpdated: data?.lastUpdated
+    ? data.lastUpdated.toDate().toISOString()
+    : null,
+});
   } catch (err) {
     console.error("Treasury check error:", err.message);
     res.status(500).json({ success: false, error: err.message });
