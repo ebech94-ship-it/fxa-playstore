@@ -533,15 +533,7 @@ app.post("/admin/reply-support", authenticate, requireAdmin, async (req, res) =>
   }
 });
 
-app.post("/admin/toggle-freeze", authenticate, requireAdmin, async (req, res) => {
-  const { userId, freeze } = req.body;
 
-  await db.collection("users").doc(userId).update({
-    frozen: !!freeze,
-  });
-
-  res.json({ success: true });
-});
 
 app.post("/admin/reset-password", authenticate, requireAdmin, async (req, res) => {
   const { email } = req.body;
@@ -569,6 +561,7 @@ app.post("/admin/delete-user", authenticate, requireAdmin, async (req, res) => {
 app.get("/admin/system-logs", authenticate, requireAdmin, async (req, res) => {
   try {
     const snapshot = await db.collection("adminLogs").orderBy("createdAt", "desc").limit(100).get();
+    console.log("LOG COUNT:", snapshot.size);
     const logs = snapshot.docs.map(doc => {
       const data = doc.data();
       return {
@@ -588,6 +581,7 @@ app.get("/admin/system-logs", authenticate, requireAdmin, async (req, res) => {
 app.get("/admin/activity-history", authenticate, requireAdmin, async (req, res) => {
   try {
     const snapshot = await db.collection("adminLogs").orderBy("createdAt", "desc").limit(100).get();
+    console.log("LOG COUNT:", snapshot.size);
     const activities = snapshot.docs.map(doc => {
       const data = doc.data();
       return {
@@ -836,6 +830,19 @@ app.get("/admin/transactions", authenticate, requireAdmin, async (req, res) => {
   }
 });
 
+app.post("/admin/toggle-freeze", authenticate, requireAdmin, async (req, res) => {
+ const { freeze } = req.body;
+
+await db.collection("system").doc("settings").set(
+  {
+    frozen: !!freeze,
+  },
+  { merge: true }
+);
+
+  res.json({ success: true });
+});
+
 app.get("/admin/pending-transactions", authenticate, requireAdmin, async (req, res) => {
   try {
     const query = db
@@ -846,10 +853,16 @@ app.get("/admin/pending-transactions", authenticate, requireAdmin, async (req, r
 
     const snap = await query.get();
 
-    const transactions = snap.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
+   const transactions = snap.docs.map(doc => {
+  const data = doc.data();
+
+  return {
+    id: doc.id,
+    user: data.username || "Unknown",
+    amount: data.amount || 0,
+    status: data.status || "pending",
+  };
+});
 
     res.json(transactions);
   } catch (err) {
