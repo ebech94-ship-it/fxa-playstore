@@ -1,6 +1,6 @@
 // LeaderboardBar.tsx — Fixed & clean version
 
-import { useEffect, useRef, useState, } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import ViewShot from "react-native-view-shot";
 
 
@@ -185,8 +185,6 @@ const [page, setPage] = useState(1);
 
 const [pagedParticipants, setPagedParticipants] = useState<Participant[]>([]);
 const [showSharePreview, setShowSharePreview] = useState(false);
-const rank =
-  (liveParticipants.findIndex((p) => p.id === currentUser?.uid) + 1) || 1;
 
 const shareLeaderboard = async () => {
   try {
@@ -300,6 +298,7 @@ const participants: Participant[] = activeAccount.type === "demo"
 const displayParticipants = participants.map((p) => {
   const isCurrent = currentUser && p.id === currentUser.uid;
 
+
   // If this is the demo account of the current user, force the local demoBalance
   if (activeAccount.type === "demo" && isCurrent) {
     return { ...p, balance: demoBalance ?? p.balance };
@@ -307,6 +306,10 @@ const displayParticipants = participants.map((p) => {
 
   return p;
 });
+
+const rank =
+  (displayParticipants.findIndex((p) => p.id === currentUser?.uid) + 1) || 1;
+
  useEffect (() => {
   const backAction = () => {
     if (showFull) {
@@ -330,13 +333,19 @@ useEffect(() => {
 
 const chunkSize = isLandscape ? 1 : 2; // 1 row in landscape, 2 rows in portrait
 
-const chunkedParticipants: Participant[][] = [];
+const chunkedParticipants = useMemo(() => {
+  const chunks: Participant[][] = [];
 
-for (let i = 0; i < displayParticipants.length; i += chunkSize) {
-  chunkedParticipants.push(displayParticipants.slice(i, i + chunkSize));
+  for (let i = 0; i < displayParticipants.length; i += chunkSize) {
+    chunks.push(displayParticipants.slice(i, i + chunkSize));
+  }
 
-}
-const topTraders = displayParticipants.slice(0, 5);
+  return chunks;
+}, [displayParticipants, chunkSize]);
+
+const topTraders = useMemo(() => {
+  return displayParticipants.slice(0, 5);
+}, [displayParticipants]);
 
 
 return (
@@ -490,7 +499,7 @@ return (
   }}
 >
   <Text style={{ color: "white", fontWeight: "bold" }}>
-    Share Challenge
+    Take Screenshot & Share
   </Text>
 </TouchableOpacity>
 <TouchableOpacity
@@ -504,7 +513,7 @@ return (
   }}
 >
   <Text style={{ color: "white", fontWeight: "bold" }}>
-    Copy Invite Link
+    Share/Invite 
   </Text>
 </TouchableOpacity>
          <FlatList
@@ -536,6 +545,7 @@ return (
         </View>
       </Modal>
     )}
+
     {showSharePreview && (
   <Modal visible transparent animationType="fade">
     <View style={{
@@ -557,12 +567,28 @@ return (
     alignItems: "center"
   }}
 >
+  {/* BRAND HEADER */}
+<Text
+  style={{
+    fontSize: 24,
+    fontWeight: "900",
+    marginBottom: 12,
+  }}
+>
+  <Text style={{ color: "#FFCC00" }}>God</Text>
+  <Text style={{ color: "#9CA3AF" }}>Speed</Text>
+  <Text style={{ color: "#FFCC00" }}> Tech</Text>
+</Text>
         <Text style={{ color: "#fff", fontSize: 18, fontWeight: "bold" }}>
-          🏆 {activeTourney?.name || "FX Arena Challenge"}
-        </Text>
+  {activeAccount.type === "tournament"
+    ? `🏆 ${activeTourney?.name}`
+    : "🌍 FX Arena Global Demo Leaderboard"}
+</Text>
 
-       <Text style={{ color: "#fff", marginTop: 10 }}>
-  Rank #{rank}
+      <Text style={{ color: "#fff", marginTop: 10 }}>
+  {activeAccount.type === "tournament"
+    ? `Tournament Rank #${rank}`
+    : `Global Rank #${rank}`}
 </Text>
 
 <Text style={{ color: "#facc15", marginTop: 5 }}>
@@ -611,7 +637,7 @@ return (
     fontWeight: "bold",
   }}
 >
-  Try Foreign Exchange Simulation Trading Challenge?
+🔥 Don&apos;t trade alone. Battle traders and climb the leaderboard.!
 </Text>
 
 <Text

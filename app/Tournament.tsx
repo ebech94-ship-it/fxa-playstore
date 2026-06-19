@@ -153,6 +153,7 @@ type LoadingState = {
 const [loadingActions, setLoadingActions] = useState<
   Record<string, LoadingState>
 >({});
+const [participantMap, setParticipantMap] = useState<Record<string, any>>({});
 // If you already have a context like useApp() that provides tournamentAccounts:
 const { activeAccount, tournamentAccounts, profile } = useApp(); // or replace with your actual context
 
@@ -173,12 +174,14 @@ const { activeAccount, tournamentAccounts, profile } = useApp(); // or replace w
 };
 // ---------- TIMER ----------
 useEffect(() => {
+  if (!selectedTournament?.id) return;
+
   const interval = setInterval(() => {
     setNow(Date.now());
   }, 1000);
 
   return () => clearInterval(interval);
-}, []);
+}, [selectedTournament?.id]);
 
 
 // ---------- TOURNAMENTS + DEEPLINK AUTO SELECT ----------
@@ -231,46 +234,69 @@ const joinedMap = useMemo(() => {
 
 // ---------- SELECTED TOURNAMENT LIVE ENGINE (STATS + LEADERBOARD MERGED) ----------
 useEffect(() => {
-  const unsubs: (() => void)[] = [];
+  if (!selectedTournament?.id) return;
 
-  tournaments.forEach((tour) => {
-    const ref = collection(
-      db,
-      "tournaments",
-      tour.id,
-      "participants"
-    );
+  const ref = collection(
+    db,
+    "tournaments",
+    selectedTournament.id,
+    "participants"
+  );
 
-    const unsub = onSnapshot(ref, (snap) => {
-      let rebuyTotal = 0;
+  const unsub = onSnapshot(ref, (snap) => {
+  let rebuyTotal = 0;
 
-      snap.docs.forEach((doc) => {
-        const data = doc.data() as any;
-        rebuyTotal += data.rebuys?.length ?? 0;
-      });
+  const map: Record<string, any> = {};
 
-      setTournamentCounts((prev) => ({
-        ...prev,
-        [tour.id]: snap.size,
-      }));
+  snap.docs.forEach((doc) => {
+    const data = doc.data() as any;
 
-      setTournamentRebuys((prev) => ({
-        ...prev,
-        [tour.id]: rebuyTotal,
-      }));
-    });
+    rebuyTotal += data.rebuys?.length ?? 0;
 
-    unsubs.push(unsub);
+    map[doc.id] = data; // 🔥 store participant snapshot
   });
 
-  return () => unsubs.forEach((u) => u());
-}, [tournaments]);
+  setParticipantMap(map);
+    setTournamentCounts((prev) => ({
+      ...prev,
+      [selectedTournament.id]: snap.size,
+    }));
+
+    setTournamentRebuys((prev) => ({
+      ...prev,
+      [selectedTournament.id]: rebuyTotal,
+    }));
+  });
+
+  return () => unsub();
+}, [selectedTournament?.id]);
 
 // ---------- GLOBAL LEADERBOARD ----------
 useEffect(() => {
   if (!selectedTournament?.id) {
     setLeaderboard([]);
+    return;
   }
+
+  const ref = collection(
+    db,
+    "tournaments",
+    selectedTournament.id,
+    "participants"
+  );
+
+  const unsub = onSnapshot(ref, (snap) => {
+    const rows = snap.docs.map((doc) => ({
+      id: doc.id,
+      ...(doc.data() as any),
+    }));
+
+    
+
+    setLeaderboard(rows);
+  });
+
+  return () => unsub();
 }, [selectedTournament?.id]);
 
 // ---------- REGISTER USER TO TOURNAMENT ----------
@@ -347,33 +373,25 @@ setTournamentCounts((prev) => ({
 
 // ----------- REBUY ACTION (SECURE BACKEND VERSION) -----------
 const handleRebuy = async (tournamentId: string) => {
-  const tour = tournaments.find((t) => t.id === tournamentId);
-  if (!tour) return;
-console.log("REBUY CLICKED", tournamentId);
+  if (loadingActions[tournamentId]?.rebuy) return;
 
-const account = tournamentAccounts.find(
-  t => t.tournamentId === tournamentId
-);
+   // 🔥 ADD THIS PRE-CHECK HERE
+  const tour = tournaments.find(t => t.id === tournamentId);
+  
+  const myAccount = participantMap[currentUser?.uid || ""];
 
-console.log("ACCOUNT", account);
-console.log("BALANCE", account?.balance);
-console.log("STARTING", tour.startingBalance);
-  if (!currentUser) {
-    Alert.alert("Error", "You must be logged in.");
-    return;
+  if (tour && myAccount) {
+    const currentBalance = myAccount.balance ?? 0;
+    const initialBalance = tour.startingBalance ?? 0;
+
+    if (currentBalance >= initialBalance * 0.5) {
+      Alert.alert(
+        "Rebuy Locked",
+        "You can only rebuy when your balance drops below 50%."
+      );
+      return;
+    }
   }
-  const userBalance = account?.balance ?? 0;
-  const minAllowed = (tour.startingBalance ?? 0) / 2;
-
-  // 🔒 HARD GUARD
-  if (userBalance >= minAllowed) {
-    Alert.alert(
-      "Rebuy Not Allowed",
-      `Your balance must drop below ${minAllowed}$ before you can rebuy.\n\nCurrent balance: ${userBalance}$`
-    );
-    return;
-  }
-
   setLoadingActions(prev => ({
     ...prev,
     [tournamentId]: {
@@ -384,7 +402,17 @@ console.log("STARTING", tour.startingBalance);
   }));
 
   try {
-    const token = await currentUser.getIdToken();
+    const auth = getAuth();
+const user = auth.currentUser;
+console.log("AUTH USER", user?.uid);
+console.log("PROP USER", currentUser?.uid);
+if (!user) {
+  throw new Error("You must be logged in.");
+}
+
+   const token = await user.getIdToken(true);
+
+    console.log("🔥 REBUY REQUEST START");
 
     const response = await fetch(
       "https://forexapp2-backend.onrender.com/tournament/rebuy",
@@ -394,22 +422,46 @@ console.log("STARTING", tour.startingBalance);
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ tournamentId }),
+        body: JSON.stringify({
+          tournamentId,
+        }),
       }
     );
 
-    const result = await response.json();
+    const text = await response.text();
+
+    console.log("🔥 REBUY STATUS:", response.status);
+    console.log("🔥 REBUY RESPONSE:", text);
+
+    let result: any = {};
+
+    try {
+      result = JSON.parse(text);
+    } catch {}
 
     if (!response.ok) {
-      throw new Error(result?.error || result?.message || "Rebuy failed");
+      throw new Error(
+        result?.error ||
+        result?.message ||
+        text ||
+        "Rebuy failed"
+      );
     }
 
-    Alert.alert("Success", "Rebuy successful!");
+    if (!response.ok) {
+  const errorMsg =
+    result?.error === "REBUY_NOT_ALLOWED"
+      ? "Rebuy not allowed yet (balance must drop below 50%)."
+      : result?.error === "Insufficient balance"
+      ? "Not enough wallet balance."
+      : result?.error || "Rebuy failed";
 
-    setTournamentRebuys(prev => ({
-      ...prev,
-      [tournamentId]: (prev[tournamentId] || 0) + 1,
-    }));
+  throw new Error(errorMsg);
+}
+
+Alert.alert("Success", "Rebuy successful!");
+
+   
 
     setLoadingActions(prev => ({
       ...prev,
@@ -419,25 +471,20 @@ console.log("STARTING", tour.startingBalance);
         rebuyDone: true,
       },
     }));
-
-    setTimeout(() => {
-      setLoadingActions(prev => ({
-        ...prev,
-        [tournamentId]: {
-          ...prev[tournamentId],
-          rebuyDone: false,
-        },
-      }));
-    }, 3000);
-
   } catch (error: any) {
-    Alert.alert("Error", error.message || "Rebuy failed.");
+    console.log("🔥 REBUY ERROR:", error);
+
+    Alert.alert(
+      "Rebuy Failed",
+      error?.message || "Unknown error"
+    );
 
     setLoadingActions(prev => ({
       ...prev,
       [tournamentId]: {
         ...prev[tournamentId],
         rebuy: false,
+        rebuyDone: false,
       },
     }));
   }
@@ -505,6 +552,16 @@ const formatFullDate = (ms: number) => {
   return `${ordinal} ${month} ${year}, ${hours}:${minutes}`;
 
 }; 
+const sortedLeaderboard = useMemo(() => {
+  const copy = [...leaderboard];
+
+  copy.sort(
+    (a: any, b: any) =>
+      (b.performance ?? 0) - (a.performance ?? 0)
+  );
+
+  return copy;
+}, [leaderboard]);
   
   // TOURNAMENT CARD
 const TournamentCard = ({ item }: { item: any }) => {
@@ -538,17 +595,10 @@ const TournamentCard = ({ item }: { item: any }) => {
 
   const rebuyFee = item.rebuyFee ?? item.entryFee ?? 0;
 
-  const tournamentAccountForCard = tournamentAccounts.find(
-  t => t.tournamentId === item.id
-);
-
-const userBalance = tournamentAccountForCard?.balance ?? 0;
-const startingBalance = item.startingBalance ?? 0;
-
 const allowRebuy =
   status === "ongoing" &&
-  joinedMap[item.id] &&
-  userBalance < startingBalance / 2;
+  joinedMap[item.id];
+
   return (
     <TouchableOpacity
       activeOpacity={0.95}
@@ -672,6 +722,7 @@ const allowRebuy =
               : `Register • ${item.entryFee} $`}
           </Text>
         </TouchableOpacity>
+
 <TouchableOpacity
   activeOpacity={0.6}
   style={[
@@ -679,48 +730,20 @@ const allowRebuy =
     (!allowRebuy || loadingActions[item.id]?.rebuy) && styles.disabledBtn,
     loadingActions[item.id]?.rebuy && { opacity: 0.4 }
   ]}
-  disabled={!allowRebuy || !!loadingActions[item.id]?.rebuy}
+ disabled={!!loadingActions[item.id]?.rebuy}
 
-         onPress={() => {
-  const tour = item;
-const account = tournamentAccounts.find(
-  t => t.tournamentId === tournamentId
-);
-  const userBalance = account?.balance ?? 0;
-  const minAllowed = (tour.startingBalance ?? 0) / 2;
-
-  if (userBalance >= minAllowed) {
-    Alert.alert(
-      "Rebuy Locked",
-      `You need your balance to drop below ${minAllowed}$ to enable rebuy.\n\nCurrent: ${userBalance}$`
-    );
-    return;
-  }
-
-  Alert.alert(
-    "Confirm Rebuy",
-    `Rebuy for ${rebuyFee} $?`,
-    [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Confirm",
-        onPress: () => handleRebuy(item.id),
-      },
-    ]
-  );
+    onPress={() => {
+  console.log("🔥 REBUY BUTTON PRESSED");
+  handleRebuy(item.id);
 }}
         >
-          <Text style={styles.actionTextAlt}>
-         {loadingActions[item.id]?.rebuy
-  ? "⏳ Processing..."
-  : loadingActions[item.id]?.rebuyDone
-  ? "✅ Rebuy Done"
-  : !allowRebuy
-  ? "Rebuy Locked"
-  : rebuyFee === 0
-  ? "Rebuy (Free)"
-  : `Rebuy • ${rebuyFee} $`}
-          </Text>
+        <Text style={styles.actionTextAlt}>
+  {loadingActions[item.id]?.rebuy
+    ? "⏳ Processing..."
+    : loadingActions[item.id]?.rebuyDone
+    ? "✅ Rebuy Done"
+    : `♻️ Rebuy • ${rebuyFee} $`}
+</Text>
         </TouchableOpacity>
       </View>
     </TouchableOpacity>
@@ -1034,7 +1057,7 @@ const account = tournamentAccounts.find(
     showsVerticalScrollIndicator={false}
   >
     <View style={{ flexGrow: 1 }}>
-      <LeaderboardTable list={leaderboard} />
+      <LeaderboardTable list={sortedLeaderboard} />
     </View>
   </ScrollView>
 )}

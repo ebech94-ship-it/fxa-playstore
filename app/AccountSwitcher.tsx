@@ -68,18 +68,13 @@ export default function AccountSwitcher({
 
   // convert context tournaments to UI-friendly shape
 const switcherTournaments = tournamentAccounts
-
+  .filter(t => t.status !== "finished")
   .map(t => ({
     id: t.tournamentId,
     name: t.name,
     status: formatTournamentStatus(t.status),
     balance: Number(t.balance ?? 0),
   }));
-// console.log("tournamentAccounts =", tournamentAccounts);
-// console.log("switcherTournaments =", switcherTournaments);
-
-
-
 
 
   const [expanded, setExpanded] = useState(false);
@@ -180,10 +175,16 @@ const displayBalance = (() => {
       },
   ]}
 >
-{activeAccount.type === "real"
-  ? `$${balances.real.toFixed(2)}`
-  : `$${displayBalance.toFixed(2)}`}
-
+{activeAccount.type === "demo"
+  ? `Demo • $${balances.demo.toFixed(2)}`
+  : activeAccount.type === "real"
+  ? `Real • $${balances.real.toFixed(2)}`
+  : `${
+      tournamentAccounts.find(
+        t => t.tournamentId === activeAccount.tournamentId
+      )?.name ?? "Tournament"
+    } • $${displayBalance.toFixed(2)}`
+}
 </Text>
 
       </TouchableOpacity>
@@ -201,7 +202,10 @@ const displayBalance = (() => {
             <TouchableOpacity
               onPress={() => handleSelect({ type: "demo" })}
             >
-              <Text style={styles.cardTitle}>Demo Account</Text>
+            <Text style={styles.cardTitle}>
+  {activeAccount.type === "demo" ? "✓ " : ""}
+  Demo Account
+</Text>
               <Text style={[styles.balance, { color: "#60a5fa" }]}>
                 ${balances.demo.toFixed(2)}
               </Text>
@@ -225,7 +229,10 @@ const displayBalance = (() => {
             <TouchableOpacity
               onPress={() => handleSelect({ type: "real" })}
             >
-              <Text style={styles.cardTitle}>Real Account</Text>
+              <Text style={styles.cardTitle}>
+  {activeAccount.type === "real" ? "✓ " : ""}
+  Real Account
+</Text>
              <Text style={[styles.balance, { color: "#facc15" }]}>
   ${balances.real.toFixed(2)}
 </Text>
@@ -300,7 +307,8 @@ const displayBalance = (() => {
                 : { color: "#27e90dff" },
             ]}
           >
-            {t.name}
+          {isActive ? "✓ " : ""}
+{t.name}
           </Text>
 
           <Text
@@ -366,7 +374,11 @@ textShadowRadius: 8, },
     borderRadius: 12,  padding: 10, },
   card: { borderWidth: 1, borderColor: "#374151", borderRadius: 10, padding: 10,
     marginBottom: 8, },
-  activeCard: { borderColor: "#22d3ee", backgroundColor: "#1f2937", },
+ activeCard: {
+  borderColor: "#22d3ee",
+  borderWidth: 2,
+  backgroundColor: "#0f2a3d",
+},
   cardTitle: { color: "#fff", fontSize: 14,fontWeight: "700", },
   balance: { fontSize: 13, marginTop: 2, },
   row: { flexDirection: "row", justifyContent: "space-between", gap: 8, marginTop: 6,

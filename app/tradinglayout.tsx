@@ -123,10 +123,19 @@ const payoutTournamentWin = async (
 
     const balance = snap.data().balance ?? 0;
 
-    tx.update(participantRef, {
-      balance: balance + payout,
-      updatedAt: serverTimestamp(),
-    });
+   const newBalance = balance + payout;
+
+tx.update(participantRef, {
+  balance: newBalance,
+  updatedAt: serverTimestamp(),
+});
+
+const userRef = doc(db, "users", uid);
+
+tx.update(userRef, {
+  [`accounts.tournaments.${tournamentId}.balance`]:
+    newBalance,
+});
   });
 };
 // FIRESTORE DEMO HELPERS
@@ -406,9 +415,16 @@ const handleTrade = async (type: "buy" | "sell") => {
         const newBalance = balance - stake;
 
         tx.update(participantRef, {
-          balance: newBalance,
-          updatedAt: serverTimestamp(),
-        });
+  balance: newBalance,
+  updatedAt: serverTimestamp(),
+});
+
+const userRef = doc(db, "users", uid);
+
+tx.update(userRef, {
+  [`accounts.tournaments.${activeAccount.tournamentId}.balance`]:
+    newBalance,
+});
 
       
 
@@ -568,6 +584,7 @@ if (t.account.type === "demo") {
       const uid = auth.currentUser?.uid;
       if (uid) closeTradeInFirestore(uid, closedTrade);
     }
+
 
     chartRef.current?.removeMarker?.(t.id);
   });
