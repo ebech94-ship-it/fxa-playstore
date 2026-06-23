@@ -1250,17 +1250,11 @@ rankHeaderCol: {
 cardStatsRow: {
   flexDirection: "row",
   marginTop: 8,
-  gap: 20,
+  gap: 80,
 },
+timeColumn: {},
 
-timeColumn: {
-  flex: 2,
-},
-
-statsColumn: {
-  flex: 1,
-  alignItems: "flex-end",
-},
+statsColumn: {},
 
 cardDate: {
   color: "#9ca3af",

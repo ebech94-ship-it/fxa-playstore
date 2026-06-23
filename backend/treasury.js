@@ -279,7 +279,7 @@ async processRebuy(t, userId, tournamentId) {
 
     rebuys: admin.firestore.FieldValue.arrayUnion({
       amount: rebuyFee,
-      at: admin.firestore.FieldValue.serverTimestamp(),
+      at: Date.now(),
     }),
 
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -296,7 +296,7 @@ async processRebuy(t, userId, tournamentId) {
     [`accounts.tournaments.${tournamentId}.rebuys`]:
       admin.firestore.FieldValue.arrayUnion({
         amount: rebuyFee,
-        at: admin.firestore.FieldValue.serverTimestamp(),
+        at: Date.now(),
       }),
   });
 

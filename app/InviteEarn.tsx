@@ -17,7 +17,7 @@ useEffect(() => {
     const snap = await getDoc(doc(db, "users", user.uid));
 
     if (snap.exists()) {
-      setPublicId(snap.data().publicId || user.uid);
+      setPublicId(snap.data().publicId ||  "Generating...");
     }
   };
 
