@@ -41,7 +41,7 @@ async processWithdrawal(userId, amount, momoNumber) {
       treasuryRef,
       {
         balance: admin.firestore.FieldValue.increment(-numericAmount),
-        lastUpdated: new Date().toISOString(),
+        lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
       },
       { merge: true }
     );
@@ -55,7 +55,7 @@ async processWithdrawal(userId, amount, momoNumber) {
       amount: numericAmount,
       type: "withdrawal",
       status: "pending",
-      createdAt: new Date().toISOString(),
+      createdAt: admin.firestore.FieldValue.server(),
     });
 
     t.set(payoutRef, {
@@ -64,7 +64,7 @@ async processWithdrawal(userId, amount, momoNumber) {
       momoNumber,
       status: "pending",
       transactionId: transactionRef.id,
-      createdAt: new Date().toISOString(),
+      createdAt: admin.firestore.FieldValue.server(),
     });
   });
 
@@ -72,15 +72,15 @@ async processWithdrawal(userId, amount, momoNumber) {
 },
 
 /* ---------------------------------------------------
-   2️⃣ TOURNAMENT REGISTRATION (FIXED VALIDATION)
+   2️⃣ TOURNAMENT REGISTRATION (FINAL CLEAN VERSION)
 --------------------------------------------------- */
 async registerTournament(t, userId, tournamentId) {
 
   const userRef = db.collection("users").doc(userId);
   const tournamentRef = db.collection("tournaments").doc(tournamentId);
   const participantRef = tournamentRef.collection("participants").doc(userId);
-  const cofferRef = db.collection("tournamentCoffers").doc(tournamentId);
   const treasuryRef = db.collection("treasury").doc("main");
+  const cofferRef = db.collection("tournamentCoffers").doc(tournamentId);
 
   const [userSnap, tournamentSnap, participantSnap] = await Promise.all([
     t.get(userRef),
@@ -95,99 +95,106 @@ async registerTournament(t, userId, tournamentId) {
   const user = userSnap.data();
   const tournament = tournamentSnap.data();
 
-  // 🔒 HARD VALIDATION FIX (NEW)
   const entryFee = Number(tournament.entryFee || 0);
+  const startingBalance = Number(tournament.startingBalance || 0);
 
- const startingBalance = Number(
-  tournament.startingBalance || 0
-);
-
-  if (entryFee < 0) throw new Error("Invalid entry fee");
-  if (startingBalance < 0) throw new Error("Invalid starting balance");
-
-  if (!Array.isArray(tournament.payoutStructure) && tournament.prizePool > 0) {
-    throw new Error("Invalid payout structure");
+  if (entryFee < 0 || startingBalance < 0) {
+    throw new Error("Invalid tournament config");
   }
 
   if (user.locks?.joiningTournament) {
     throw new Error("Tournament join in progress");
   }
 
-
-  if (entryFee > 0 && (user.accounts.real.balance || 0) < entryFee) {
+  if (entryFee > 0 && (user.accounts?.real?.balance || 0) < entryFee) {
     throw new Error("Insufficient wallet balance");
   }
 
+  // lock user
   t.update(userRef, {
     "locks.joiningTournament": true,
   });
 
+  // wallet deduction + treasury
   if (entryFee > 0) {
-
     t.update(userRef, {
       "accounts.real.balance": admin.firestore.FieldValue.increment(-entryFee),
     });
 
-    t.set(
-      treasuryRef,
-      {
-        balance: admin.firestore.FieldValue.increment(entryFee),
-        lastUpdated: new Date().toISOString(),
-      },
-      { merge: true }
-    );
+    t.set(treasuryRef, {
+      balance: admin.firestore.FieldValue.increment(entryFee),
+      lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
 
-    t.set(
-      cofferRef,
-      {
-        registration: {
-          count: admin.firestore.FieldValue.increment(1),
-          totalAmount: admin.firestore.FieldValue.increment(entryFee),
-        },
-        lastUpdated: admin.firestore.FieldValue.server(),
+    t.set(cofferRef, {
+      registration: {
+        count: admin.firestore.FieldValue.increment(1),
+        totalAmount: admin.firestore.FieldValue.increment(entryFee),
       },
-      { merge: true }
-    );
+      lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+    }, { merge: true });
   }
 
+  // tournament global update
   t.update(tournamentRef, {
     collectedFunds: admin.firestore.FieldValue.increment(entryFee),
-    lastUpdated: admin.firestore.FieldValue.toISOString(),
+    lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
   });
 
+  // 🟡 LEADERBOARD CACHE (FAST UI ONLY)
   t.set(participantRef, {
     uid: userId,
-    username: user.username || "Participant",
-     countryCode: user.countryCode || null,
+    username: user.username || "Player",
+    publicId: user.publicId || null,
+    countryCode: user.countryCode || null,
+
+    tournamentId,
+    tournamentName: tournament.name || "Tournament",
+
     balance: startingBalance,
-    initialBalance: startingBalance,
-    performance: 0,
     rebuyCount: 0,
-    rebuys: [],
-    joinedAt: admin.firestore.FieldValue.toISOString(),
+
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
 
- 
+  // 🧠 USER DOC = SINGLE SOURCE OF TRUTH
+  t.update(userRef, {
+    [`accounts.tournaments.${tournamentId}`]: {
+      tournamentId,
+      name: tournament.name || "Tournament",
+      entryFee,
+      symbol: tournament.symbol || "$",
 
+      startingBalance,
+      balance: startingBalance,
+      initialBalance: startingBalance,
 
-// 👇 ADD THIS NEW BLOCK
-t.update(userRef, {
-  [`accounts.tournaments.${tournamentId}`]: {
-    balance: startingBalance,
-    initialBalance: startingBalance,
-    currency: tournament.symbol || "$",
-    joined: true,
-    name: tournament.name || "Tournament",
-    symbol: tournament.symbol || "$",
-    startTime: tournament.startTime || null,
-    endTime: tournament.endTime || null,
-    status: "ongoing",
-  },
-});
+      prizePool: tournament.prizePool || 0,
+
+      joined: true,
+      status:
+  Date.now() < tournament.startTime
+    ? "upcoming"
+    : Date.now() <= tournament.endTime
+    ? "ongoing"
+    : "finished",
+
+      rebuyCount: 0,
+      rebuys: [],
+
+      startTime: tournament.startTime || null,
+      endTime: tournament.endTime || null,
+
+      joinedAt: admin.firestore.FieldValue.serverTimestamp(),
+    },
+  });
+
+  // unlock
   t.update(userRef, {
     "locks.joiningTournament": admin.firestore.FieldValue.delete(),
   });
 
+  // transaction log
   t.set(db.collection("transactions").doc(), {
     userId,
     username: user.username || "Unknown",
@@ -195,17 +202,14 @@ t.update(userRef, {
     amount: entryFee,
     type: "tournament_registration",
     status: "completed",
-    createdAt: new Date().toISOString(),
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
   });
 
   console.log(`🎟 Tournament registered for ${userId}`);
 },
 
 /* ---------------------------------------------------
-   3️⃣ REBUYS (HARDENED VERSION)
---------------------------------------------------- */
-/* ---------------------------------------------------
-   3️⃣ REBUYS (SOURCE OF TRUTH VERSION)
+   3️⃣ REBUYS (FINAL SOURCE OF TRUTH VERSION)
 --------------------------------------------------- */
 async processRebuy(t, userId, tournamentId) {
 
@@ -223,112 +227,92 @@ async processRebuy(t, userId, tournamentId) {
 
   if (!userSnap.exists) throw new Error("User not found");
   if (!tournamentSnap.exists) throw new Error("Tournament not found");
-  if (!participantSnap.exists) throw new Error("Participant not in tournament");
+  if (!participantSnap.exists) throw new Error("Not in tournament");
 
   const user = userSnap.data();
   const tournament = tournamentSnap.data();
   const participant = participantSnap.data();
 
-  const wallet = user.accounts?.real?.balance || 0;
   const rebuyFee = Number(tournament.rebuyFee || 0);
+  const wallet = user.accounts?.real?.balance || 0;
 
-  if (rebuyFee <= 0) {
-    throw new Error("Invalid rebuy fee");
-  }
+  if (rebuyFee <= 0) throw new Error("Invalid rebuy fee");
 
   const currentBalance = Number(participant.balance || 0);
-  const initialBalance = Number(participant.initialBalance || 0);
+  const initialBalance = Number(participant.initialBalance || tournament.startingBalance || 0);
 
-  const rebuyUnlocked =
-    currentBalance < initialBalance * 0.5;
+  const rebuyUnlocked = currentBalance < initialBalance * 0.5;
+  if (!rebuyUnlocked) throw new Error("REBUY_NOT_ALLOWED");
 
-  if (!rebuyUnlocked) {
-    throw new Error("REBUY_NOT_ALLOWED");
-  }
+  const now = Date.now();
+  const lastRebuy = participant.lastRebuyAt?.toMillis?.() || 0;
+  if (now - lastRebuy < 3000) throw new Error("Too many requests");
 
-  if (wallet < rebuyFee) {
-    throw new Error("Insufficient balance");
-  }
-const now = Date.now();
+  if (now > tournament.endTime) throw new Error("TOURNAMENT_ENDED");
+  if (wallet < rebuyFee) throw new Error("Insufficient balance");
 
-if (now > tournament.endTime) {
-  throw new Error("TOURNAMENT_ENDED");
-}
- 
-
-  if (participant.lastRebuyAt) {
-    const lastRebuy =
-      participant.lastRebuyAt.toMillis?.() || 0;
-
-    if (now - lastRebuy < 3000) {
-      throw new Error("Too many requests");
-    }
-  }
-
+  // wallet deduction
   t.update(userRef, {
-    "accounts.real.balance":
-      admin.firestore.FieldValue.increment(-rebuyFee),
+    "accounts.real.balance": admin.firestore.FieldValue.increment(-rebuyFee),
   });
 
-  t.set(
-    treasuryRef,
-    {
-      balance:
-        admin.firestore.FieldValue.increment(rebuyFee),
-      lastUpdated: new Date().toISOString(),
-    },
-    { merge: true }
-  );
+  // treasury
+  t.set(treasuryRef, {
+    balance: admin.firestore.FieldValue.increment(rebuyFee),
+    lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true });
 
-  t.set(
-    cofferRef,
-    {
-      rebuys: {
-        count:
-          admin.firestore.FieldValue.increment(1),
-        totalAmount:
-          admin.firestore.FieldValue.increment(rebuyFee),
-      },
-      lastUpdated:
-        admin.firestore.FieldValue.toISOString(),
+  // coffer
+  t.set(cofferRef, {
+    rebuys: {
+      count: admin.firestore.FieldValue.increment(1),
+      totalAmount: admin.firestore.FieldValue.increment(rebuyFee),
     },
-    { merge: true }
-  );
+    lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true });
 
-  // SOURCE OF TRUTH
+  // 🟡 PARTICIPANT CACHE (UI ONLY)
   t.update(participantRef, {
-    balance:
-      admin.firestore.FieldValue.increment(initialBalance),
-    rebuyCount:
-      admin.firestore.FieldValue.increment(1),
-    lastRebuyAt:
-      admin.firestore.FieldValue.toISOString(),
-    rebuys:
-      admin.firestore.FieldValue.arrayUnion({
-        amount: rebuyFee,
-        at: new Date().toISOString(),
-      }),
+    balance: admin.firestore.FieldValue.increment(initialBalance),
+    rebuyCount: admin.firestore.FieldValue.increment(1),
+    lastRebuyAt: admin.firestore.FieldValue.serverTimestamp(),
+
+    rebuys: admin.firestore.FieldValue.arrayUnion({
+      amount: rebuyFee,
+      at: admin.firestore.FieldValue.serverTimestamp(),
+    }),
+
+    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
 
-  // UI ACCOUNT COPY
+  // 🧠 USER DOC = SOURCE OF TRUTH
   t.update(userRef, {
     [`accounts.tournaments.${tournamentId}.balance`]:
       admin.firestore.FieldValue.increment(initialBalance),
+
+    [`accounts.tournaments.${tournamentId}.rebuyCount`]:
+      admin.firestore.FieldValue.increment(1),
+
+    [`accounts.tournaments.${tournamentId}.rebuys`]:
+      admin.firestore.FieldValue.arrayUnion({
+        amount: rebuyFee,
+        at: admin.firestore.FieldValue.serverTimestamp(),
+      }),
   });
 
+  // transaction log
   t.set(db.collection("transactions").doc(), {
-   userId,
+    userId,
     username: user.username || "Unknown",
     tournamentId,
     amount: rebuyFee,
     type: "rebuy",
     status: "completed",
-    createdAt: new Date().toISOString(),
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
   });
 
   console.log(`🔄 Rebuy processed for ${userId}`);
 },
-
 /* ---------------------------------------------------
    4️⃣ ADMIN ADJUST BALANCE (UNCHANGED SAFE)
 --------------------------------------------------- */
@@ -356,14 +340,14 @@ async adminAdjustBalance(t, userId, amount, mode, reason = "", adminId = null) {
 
   t.update(userRef, {
     "accounts.real.balance": admin.firestore.FieldValue.increment(userDelta),
-    lastBalanceUpdate: new Date().toISOString(),
+    lastBalanceUpdate: admin.firestore.FieldValue.serverTimestamp(),
   });
 
   t.set(
     treasuryRef,
     {
       balance: admin.firestore.FieldValue.increment(treasuryDelta),
-      lastUpdated: new Date().toISOString(),
+      lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
     },
     { merge: true }
   );
@@ -376,7 +360,7 @@ async adminAdjustBalance(t, userId, amount, mode, reason = "", adminId = null) {
     reason,
     performedBy: adminId || "unknown",
     status: "completed",
-    createdAt: new Date().toISOString(),
+    createdAt: admin.firestore.FieldValue.serverTimestamp(),
   });
 },
 
@@ -530,14 +514,14 @@ t.update(partRef, {
 
       t.update(treasuryRef, {
         balance: admin.firestore.FieldValue.increment(-distributed),
-        lastUpdated: new Date().toISOString(),
+        lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
       });
 
       t.update(tournamentRef, {
         paidOut: true,
         payoutLocked: false,
         status: "completed",
-        paidOutAt: new Date().toISOString(),
+        paidOutAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
     });

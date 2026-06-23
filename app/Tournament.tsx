@@ -25,20 +25,6 @@ if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-// Helper to format remaining time
-const formatTime = (ms: number) => {
-  if (ms <= 0) return "00:00:00:00";
-  let seconds = Math.floor(ms / 1000);
-  let days = Math.floor(seconds / (3600 * 24));
-  seconds %= 3600 * 24;
-  let hrs = Math.floor(seconds / 3600);
-  seconds %= 3600;
-  let mins = Math.floor(seconds / 60);
-  seconds %= 60;
-  return `${String(days).padStart(2, "0")}:${String(hrs).padStart(2, "0")}:${String(
-    mins
-  ).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`;
-};
 
 type TournamentScreenProps = {
   currentUser: User | null;
@@ -137,7 +123,6 @@ export default function TournamentScreen({ currentUser }: TournamentScreenProps)
     const { tournamentId } = useLocalSearchParams<{ tournamentId: string }>();
   // live players list for the currently selected tournament (used for counts / participant preview)
 
-
 const [tournamentCounts, setTournamentCounts] = useState<Record<string, number>>({});
 const [tournamentRebuys, setTournamentRebuys] = useState<Record<string, number>>({});
 
@@ -153,9 +138,9 @@ type LoadingState = {
 const [loadingActions, setLoadingActions] = useState<
   Record<string, LoadingState>
 >({});
-const [participantMap, setParticipantMap] = useState<Record<string, any>>({});
+const [participantMap] = useState<Record<string, any>>({});
 // If you already have a context like useApp() that provides tournamentAccounts:
-const { activeAccount, tournamentAccounts, profile } = useApp(); // or replace with your actual context
+const { balances, joinedMap,  profile } = useApp(); // or replace with your actual context
 
 
 
@@ -174,14 +159,12 @@ const { activeAccount, tournamentAccounts, profile } = useApp(); // or replace w
 };
 // ---------- TIMER ----------
 useEffect(() => {
-  if (!selectedTournament?.id) return;
-
   const interval = setInterval(() => {
     setNow(Date.now());
   }, 1000);
 
   return () => clearInterval(interval);
-}, [selectedTournament?.id]);
+}, []);
 
 
 // ---------- TOURNAMENTS + DEEPLINK AUTO SELECT ----------
@@ -221,55 +204,44 @@ useEffect(() => {
 }, [tournamentId]); // ✅ ONLY tournamentId
 
 
-// ---------- USER JOINED TOURNAMENTS ----------
-const joinedMap = useMemo(() => {
-  const map: Record<string, boolean> = {};
-
-  tournamentAccounts.forEach((t) => {
-    map[t.tournamentId] = true;
-  });
-
-  return map;
-}, [tournamentAccounts]);
 
 // ---------- SELECTED TOURNAMENT LIVE ENGINE (STATS + LEADERBOARD MERGED) ----------
 useEffect(() => {
-  if (!selectedTournament?.id) return;
+  if (!tournaments.length) return;
 
-  const ref = collection(
-    db,
-    "tournaments",
-    selectedTournament.id,
-    "participants"
-  );
+  const unsubs: (() => void)[] = [];
 
-  const unsub = onSnapshot(ref, (snap) => {
-  let rebuyTotal = 0;
+  tournaments.forEach((t) => {
+    const ref = collection(
+      db,
+      "tournaments",
+      t.id,
+      "participants"
+    );
 
-  const map: Record<string, any> = {};
+    const unsub = onSnapshot(ref, (snap) => {
+      let rebuyTotal = 0;
 
-  snap.docs.forEach((doc) => {
-    const data = doc.data() as any;
+      snap.docs.forEach((d) => {
+        rebuyTotal += d.data()?.rebuys?.length ?? 0;
+      });
 
-    rebuyTotal += data.rebuys?.length ?? 0;
+      setTournamentCounts(prev => ({
+        ...prev,
+        [t.id]: snap.size,
+      }));
 
-    map[doc.id] = data; // 🔥 store participant snapshot
+      setTournamentRebuys(prev => ({
+        ...prev,
+        [t.id]: rebuyTotal,
+      }));
+    });
+
+    unsubs.push(unsub);
   });
 
-  setParticipantMap(map);
-    setTournamentCounts((prev) => ({
-      ...prev,
-      [selectedTournament.id]: snap.size,
-    }));
-
-    setTournamentRebuys((prev) => ({
-      ...prev,
-      [selectedTournament.id]: rebuyTotal,
-    }));
-  });
-
-  return () => unsub();
-}, [selectedTournament?.id]);
+  return () => unsubs.forEach(u => u());
+}, [tournaments]);
 
 // ---------- GLOBAL LEADERBOARD ----------
 useEffect(() => {
@@ -358,12 +330,13 @@ console.log("REGISTER RESPONSE:", text);
 
     Alert.alert("Success", "Successfully joined tournament!");
 
+setTournamentCounts(prev => ({
+  ...prev,
+  [tournamentId]: (prev[tournamentId] ?? 0) + 1,
+}));
     // 🔥 SIMPLE STATE UPDATE (CORRECT FOR YOUR STRUCTURE)
    // refresh UI count locally (optional optimistic update)
-setTournamentCounts((prev) => ({
-  ...prev,
-  [tournamentId]: (prev[tournamentId] || 0) + 1,
-}));
+
   } catch (error: any) {
     Alert.alert("Error", error.message || "Registration failed.");
   } finally {
@@ -490,12 +463,7 @@ Alert.alert("Success", "Rebuy successful!");
   }
 };
 
-const tournamentAccount =
-  activeAccount.type === "tournament"
-    ? tournamentAccounts.find(
-        t => t.tournamentId === activeAccount.tournamentId
-      )
-    : null;
+
   const formatDuration = (ms: number) => {
   const sec = Math.floor(ms / 1000);
   const min = Math.floor(sec / 60);
@@ -512,21 +480,27 @@ const tournamentAccount =
 
   return `${sec} second${sec > 1 ? "s" : ""}`;
 };
+
 // New helper: formats milliseconds to human-readable like 2d 3h 15m
 const formatCountdown = (ms: number) => {
   if (ms <= 0) return "0s";
 
-  let seconds = Math.floor(ms / 1000);
-  const days = Math.floor(seconds / (3600 * 24));
-  seconds %= 3600 * 24;
-  const hours = Math.floor(seconds / 3600);
-  seconds %= 3600;
-  const minutes = Math.floor(seconds / 60);
-  seconds %= 60;
+  const totalSeconds = Math.floor(ms / 1000);
 
-  if (days > 0) return `${days}d ${hours}h`;
-  if (hours > 0) return `${hours}h ${minutes}m`;
-  if (minutes > 0) return `${minutes}m ${seconds}s`;
+  const days = Math.floor(totalSeconds / 86400);
+  const hours = Math.floor((totalSeconds % 86400) / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+
+  if (days > 0)
+    return `${days}d ${hours}h ${minutes}m ${seconds}s`;
+
+  if (hours > 0)
+    return `${hours}h ${minutes}m ${seconds}s`;
+
+  if (minutes > 0)
+    return `${minutes}m ${seconds}s`;
+
   return `${seconds}s`;
 };
 const formatFullDate = (ms: number) => {
@@ -676,23 +650,35 @@ const allowRebuy =
 
       {/* LIVE STATS */}
       <View style={styles.cardStatsRow}>
-       <Text style={styles.cardDetail}>
-  {status === "upcoming"
-    ? `⏳ Starts in ${formatCountdown(item.startTime - now)} (${formatFullDate(item.startTime)})`
-    : status === "ongoing"
-    ? `⏰ Ends in ${formatCountdown(item.endTime - now)} (${formatFullDate(item.endTime)})`
-    : `🏁 Finished on ${formatFullDate(item.endTime)}`}
-</Text>
+  
+  <View style={styles.timeColumn}>
+    <Text style={styles.cardDetail}>
+      {status === "upcoming"
+        ? `⏳ Starts in ${formatCountdown(item.startTime - now)}`
+        : status === "ongoing"
+        ? `⏰ Ends in ${formatCountdown(item.endTime - now)}`
+        : "🏁 Finished"}
+    </Text>
 
-        <Text style={styles.cardDetail}>
-          👥 {tournamentCounts[item.id] ?? 0} Joined
-        </Text>
+    <Text style={styles.cardDate}>
+      📅 {formatFullDate(
+        status === "upcoming"
+          ? item.startTime
+          : item.endTime
+      )}
+    </Text>
+  </View>
 
-        <Text style={styles.cardDetail}>
-          ♻️ {tournamentRebuys[item.id] ?? 0} Rebuys
-        </Text>
-      </View>
+  <View style={styles.statsColumn}>
+    <Text style={styles.cardDetail}>
+      👥 {tournamentCounts[item.id] ?? 0} Joined
+    </Text>
 
+    <Text style={styles.cardDetail}>
+      ♻️ {tournamentRebuys[item.id] ?? 0} Rebuys
+    </Text>
+  </View>
+ </View>
       {/* ACTIONS */}
       <View style={styles.cardFooter}>
         <TouchableOpacity
@@ -711,15 +697,15 @@ const allowRebuy =
           onPress={() => handleRegister(item.id)}
         >
           <Text style={styles.actionText}>
-            {status === "finished"
-              ? "Closed"
-              : joinedMap[item.id]
-              ? "You're In"
-              : loadingActions[item.id]?.register
-              ? "Processing..."
-              : (item.entryFee ?? 0) === 0
-              ? "Register (Free)"
-              : `Register • ${item.entryFee} $`}
+           {joinedMap[item.id]
+  ? "You're In"
+  : status === "finished"
+  ? "Closed"
+  : loadingActions[item.id]?.register
+  ? "Processing..."
+  : (item.entryFee ?? 0) === 0
+  ? "Register (Free)"
+  : `Register • ${item.entryFee} $`}
           </Text>
         </TouchableOpacity>
 
@@ -873,15 +859,66 @@ const allowRebuy =
 
   return (
     <View style={styles.container}>
-      <Text style={styles.pageTitle}>💹 Forex Tournaments</Text>
-      {activeAccount && (
-  <Text style={{ color: "#9ca3af", textAlign: "center", marginBottom: 6 }}>
-     Active Account Balance: {tournamentAccount?.balance ?? 0} $
+    <Text style={styles.pageTitle}>🏆 Forex Tournaments</Text>
+
+<View
+  style={{
+    alignSelf: "center",
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#0f172a",
+    borderWidth: 1,
+    borderColor: "rgba(34,197,94,0.25)",
+    paddingHorizontal: 25,
+    paddingVertical: 15,
+    borderRadius: 999,
+    marginTop: 8,
+    marginBottom: 14,
+  }}
+>
+  <Ionicons
+    name="wallet-outline"
+    size={25}
+    color="#22c55e"
+    style={{ marginRight: 6 }}
+  />
+
+  <Text
+    style={{
+      color: "#94a3b8",
+      fontSize: 15,
+      marginRight: 4,
+    }}
+  >
+    Wallet:
   </Text>
-)}
-<Text style={{ color: "#6b7280", textAlign: "center", fontSize: 12 }}>
-  Accounts Loaded: {tournamentAccounts?.length ?? 0}
+
+ <Text>
+  <Text
+    style={{
+      color: "#3b82f6",
+      fontWeight: "800",
+      fontSize: 14,
+      letterSpacing: 1,
+    }}
+  >
+    USD{" "}
+  </Text>
+
+  <Text
+    style={{
+      color: "#fbbf24",
+      fontWeight: "900",
+      fontSize: 20,
+      textShadowColor: "rgba(251,191,36,0.7)",
+      textShadowOffset: { width: 0, height: 0 },
+      textShadowRadius: 10,
+    }}
+  >
+    {(balances?.real ?? 0).toLocaleString()}
+  </Text>
 </Text>
+</View>
     <FlatList
   data={tournaments}
   renderItem={({ item }) => <TournamentCard item={item} />}
@@ -940,9 +977,15 @@ const allowRebuy =
               <Text style={styles.modalPrize}>
                 🏆 Prize Pool: {selectedTournament.prizePool ?? 0} $
               </Text>
-              <Text style={styles.modalInfo}>
-                ⏰ {formatTime(selectedTournament.endTime - now)}
-              </Text>
+             <Text style={styles.modalInfo}>
+  ⏰ {
+    now < selectedTournament.startTime
+      ? `Starts in ${formatCountdown(selectedTournament.startTime - now)}`
+      : now <= selectedTournament.endTime
+      ? `Ends in ${formatCountdown(selectedTournament.endTime - now)}`
+      : "Finished"
+  }
+</Text>
             </View>
 
             <Text style={styles.modalInfo}>
@@ -1179,7 +1222,7 @@ cardPrizeText: { color: "#facc15", fontWeight: "bold", fontSize: 16,},
 
 cardFeeText: { color: "#60a5fa", fontWeight: "bold", fontSize: 15,},
 
-cardStatsRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 8,},
+
 startingBalanceText: { color: "#22c55e", fontWeight: "700", fontSize: 14, marginTop: 4 },
 tableColName: {  flex: 2.5,  color: "#fff",},
 
@@ -1203,6 +1246,26 @@ rankHeaderCol: {
   fontWeight: '900',
   textAlign: 'center',
   flex: 1, // make column flexible by default
+},
+cardStatsRow: {
+  flexDirection: "row",
+  marginTop: 8,
+  gap: 20,
+},
+
+timeColumn: {
+  flex: 2,
+},
+
+statsColumn: {
+  flex: 1,
+  alignItems: "flex-end",
+},
+
+cardDate: {
+  color: "#9ca3af",
+  fontSize: 12,
+  marginTop: 2,
 },
 
 });

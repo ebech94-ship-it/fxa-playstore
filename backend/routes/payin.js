@@ -156,7 +156,7 @@ originalAmount: amountNum,
   momoNumber: cleanPhone,
   status: "pending",
   type: "deposit",
-  createdAt: new Date().toISOString(),
+  createdAt: admin.firestore.FieldValue.serverTimestamp(),
 });
 
  res.json({
@@ -199,7 +199,7 @@ router.post("/webhook", async (req, res) => {
         status: "invalid_signature",
         rawPayload: req.body,
         signatureValid: false,
-        receivedAt: new Date().toISOString(),
+        receivedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
       return res.status(401).send("Unauthorized");
@@ -215,7 +215,7 @@ router.post("/webhook", async (req, res) => {
         status: "invalid_payload",
         rawPayload: payload,
         signatureValid: true,
-        receivedAt: new Date().toISOString(),
+        receivedAt:admin.firestore.FieldValue.serverTimestamp(),
       });
 
       return res.status(200).json({ received: true });
@@ -240,7 +240,7 @@ router.post("/webhook", async (req, res) => {
         status: "not_found",
         rawPayload: payload,
         signatureValid: true,
-        receivedAt: new Date().toISOString(),
+        receivedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
       return res.status(200).json({ received: true });
@@ -300,7 +300,7 @@ router.post("/webhook", async (req, res) => {
           treasuryRef,
           {
             balance: admin.firestore.FieldValue.increment(txAmountUSD),
-            lastUpdated: new Date().toISOString(),
+            lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
           },
           { merge: true }
         );
@@ -308,7 +308,7 @@ router.post("/webhook", async (req, res) => {
         // UPDATE TRANSACTION
         t.update(doc.ref, {
           status: "completed",
-          completedAt: new Date().toISOString(),
+          completedAt: admin.firestore.FieldValue.serverTimestamp(),
           processedWebhook: true,
         });
 
@@ -337,20 +337,20 @@ router.post("/webhook", async (req, res) => {
         status: "success",
         rawPayload: payload,
         signatureValid: true,
-        receivedAt: new Date().toISOString(),
+        receivedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
       if (ledgerData) {
         await db.collection("ledger").add({
           ...ledgerData,
-          createdAt: new Date().toISOString(),
+          createdAt: admin.firestore.FieldValue.server(),
         });
       }
 
       if (treasuryData) {
         await db.collection("treasury_ledger").add({
           ...treasuryData,
-          createdAt: new Date().toISOString(),
+          createdAt: admin.firestore.FieldValue.server(),
         });
       }
 
@@ -370,7 +370,7 @@ router.post("/webhook", async (req, res) => {
 
   await doc.ref.update({
     status: "failed",
-    failedAt: new Date().toISOString(),
+    failedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
 
       await db.collection("webhook_logs").add({

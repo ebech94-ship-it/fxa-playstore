@@ -184,10 +184,9 @@ res.json({
     res.status(500).json({ success: false, error: err.message });
   }
 });
-
-// ---------------------------------------------------------------------
-// TOURNAMENT REGISTER (CLEAN - SINGLE SOURCE OF TRUTH)
-// ---------------------------------------------------------------------
+/* ---------------------------------------------------
+   🎟 TOURNAMENT REGISTER ROUTE
+--------------------------------------------------- */
 app.post("/tournament/register", authenticate, async (req, res) => {
   try {
     const userId = req.user.uid;
@@ -198,34 +197,35 @@ app.post("/tournament/register", authenticate, async (req, res) => {
     }
 
     await db.runTransaction(async (t) => {
-  const tourRef = db.collection("tournaments").doc(tournamentId);
-  const tourSnap = await t.get(tourRef);
+      const tourRef = db.collection("tournaments").doc(tournamentId);
+      const tourSnap = await t.get(tourRef);
 
-  if (!tourSnap.exists) {
-    throw new Error("TOURNAMENT_NOT_FOUND");
-  }
+      if (!tourSnap.exists) {
+        throw new Error("TOURNAMENT_NOT_FOUND");
+      }
 
-  
-  await treasury.registerTournament(t, userId, tournamentId);
-});
+      await treasury.registerTournament(t, userId, tournamentId);
+    });
 
-    res.json({
+    return res.json({
       success: true,
       message: "Tournament registered successfully",
     });
 
   } catch (err) {
     console.error("Tournament register error:", err.message);
-    res.status(400).json({
+
+    return res.status(400).json({
       success: false,
       error: err.message,
     });
   }
 });
 
-// ---------------------------------------------------------------------
-// TOURNAMENT REBUY (CLEAN - SINGLE SOURCE OF TRUTH)
-// ---------------------------------------------------------------------
+
+/* ---------------------------------------------------
+   🔄 TOURNAMENT REBUY ROUTE
+--------------------------------------------------- */
 app.post("/tournament/rebuy", authenticate, async (req, res) => {
   try {
     const userId = req.user.uid;
@@ -236,21 +236,28 @@ app.post("/tournament/rebuy", authenticate, async (req, res) => {
     }
 
     await db.runTransaction(async (t) => {
-  const tourRef = db.collection("tournaments").doc(tournamentId);
-  const tourSnap = await t.get(tourRef);
+      const tourRef = db.collection("tournaments").doc(tournamentId);
+      const tourSnap = await t.get(tourRef);
 
-  if (!tourSnap.exists) {
-    throw new Error("TOURNAMENT_NOT_FOUND");
-  }
+      if (!tourSnap.exists) {
+        throw new Error("TOURNAMENT_NOT_FOUND");
+      }
 
-  await treasury.processRebuy(t, userId, tournamentId);
-});
+      await treasury.processRebuy(t, userId, tournamentId);
+    });
 
-    res.json({ success: true, message: "Rebuy successful" });
+    return res.json({
+      success: true,
+      message: "Rebuy successful",
+    });
 
   } catch (err) {
     console.error("Rebuy error:", err.message);
-    res.status(400).json({ success: false, error: err.message });
+
+    return res.status(400).json({
+      success: false,
+      error: err.message,
+    });
   }
 });
 
@@ -427,7 +434,7 @@ app.post("/support/send", authenticate, async (req, res) => {
         username: resolvedUsername,
 
         status: "open",
-        createdAt: new Date().toISOString(),
+        createdAt: admin.firestore.FieldValue.server(),
 
         lastMessage: message,
         lastMessageAt: admin.firestore.FieldValue.toISOString(),
@@ -441,13 +448,13 @@ app.post("/support/send", authenticate, async (req, res) => {
       sender: "user",
       text: message,
       read: false,
-      createdAt: new Date().toISOString(),
+      createdAt: admin.firestore.FieldValue.server(),
     });
 
     // 🔄 Update thread metadata
     await threadRef.update({
       lastMessage: message,
-      lastMessageAt: new Date().toISOString(),
+      lastMessageAt: admin.firestore.FieldValue.server(),
       status: "open",
     });
 
@@ -476,7 +483,7 @@ app.post("/admin/send-notification", authenticate, requireAdmin, async (req, res
       message,
       type: "admin",
       read: false,
-      createdAt: new Date().toISOString(),
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
     res.json({ success: true, alertId: alertRef.id });
@@ -510,14 +517,14 @@ app.post("/admin/reply-support", authenticate, requireAdmin, async (req, res) =>
       sender: "admin",
       text: message.trim(),
       read: false,
-      createdAt: new Date().toISOString(),
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
       adminId: req.user.uid, // 🔥 track which admin replied
     });
 
     // ✅ Update thread metadata
     await threadRef.update({
       lastMessage: message.trim(),
-      lastMessageAt: new Date().toISOString(),
+      lastMessageAt:admin.firestore.FieldValue.serverTimestamp(),
       status: "answered",
       answeredBy: req.user.uid, // 🔥 track responder
     });
@@ -547,7 +554,7 @@ app.post("/admin/delete-user", authenticate, requireAdmin, async (req, res) => {
 
   await db.collection("users").doc(userId).update({
     deleted: true,
-    deletedAt: new Date().toISOString(),
+    deletedAt: admin.firestore.FieldValue.server(),
   });
 
   res.json({ success: true });

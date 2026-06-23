@@ -473,7 +473,7 @@ const handleSupportSend = async () => {
   userEmail: user.email || supportEmail || "No Email",
   name: supportName || appProfile?.displayName || "Unknown User",
   message: supportMessage,
-  createdAt: new Date().toISOString(),
+  timestamp: new Date().toISOString(),
   profileSnapshot: profile ? {
     displayName: profile.displayName,
     username: profile.username,
@@ -818,12 +818,76 @@ if (!profileLoaded) {
         {/* Balance Section */}
         {activeSection === "balance" && (
   <ScrollView style={styles.section}>
-    <Text style={styles.sectionTitle}>Account Balance</Text>
+ <View
+  style={{
+    marginTop: 10,
+    backgroundColor: "#151515",
+    borderRadius: 24,
+    padding: 20,
+    borderWidth: 1.5,
+    borderColor: "rgba(255,193,7,0.25)",
+    flexDirection: "row",
+    alignItems: "center",
+    shadowColor: "#FFC107",
+    shadowOpacity: 0.15,
+    shadowRadius: 15,
+    elevation: 8,
+  }}
+>
+  {/* Wallet Icon */}
+  <View
+    style={{
+      width: 60,
+      height: 60,
+      borderRadius: 18,
+      backgroundColor: "rgba(255,193,7,0.15)",
+      justifyContent: "center",
+      alignItems: "center",
+      marginRight: 16,
+    }}
+  >
+    <Ionicons
+      name="wallet"
+      size={50}
+      color="#FFC107"
+    />
+  </View>
 
-    <Text style={styles.balance}>
-  XAF {(balances?.real ?? 0).toLocaleString()}
-</Text>
+  {/* Balance Info */}
+  <View style={{ flex: 1 }}>
+    <Text
+      style={{
+        color: "#FFC107",
+        fontSize: 25,
+        fontWeight: "900",
+        letterSpacing: 0.8,
+        marginBottom: 4,
+      }}
+    >
+      ACCOUNT BALANCE
+    </Text>
 
+    <Text
+      style={{
+        color: "#9fec03ff",
+        fontSize: 32,
+        fontWeight: "900",
+      }}
+    >
+      <Text
+        style={{
+          color: "#530c94ff",
+          fontSize: 18,
+          fontWeight: "700",
+        }}
+      >
+        USD{" "}
+      </Text>
+
+      {(balances?.real ?? 0).toLocaleString()}
+    </Text>
+  </View>
+  </View>
     {/* -------- DEPOSITS -------- */}
     <Text style={styles.subTitle}>Deposit History</Text>
 

@@ -1,5 +1,5 @@
 import { db } from "@/lib/firebase";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, serverTimestamp, getDoc, setDoc } from "firebase/firestore";
 
 export const createUserAccounts = async (
   uid: string,
@@ -19,7 +19,7 @@ export const createUserAccounts = async (
     email,
     referredBy,
     profileCompleted: false,
-   createdAt: new Date().toISOString(),
+   createdAt: serverTimestamp(),
 
     accounts: {
       demo: {

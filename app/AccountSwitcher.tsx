@@ -67,14 +67,13 @@ export default function AccountSwitcher({
   const { tournamentAccounts } = useApp(); // context only for tournaments
 
   // convert context tournaments to UI-friendly shape
-const switcherTournaments = tournamentAccounts
-  .filter(t => t.status !== "finished")
-  .map(t => ({
-    id: t.tournamentId,
-    name: t.name,
-    status: formatTournamentStatus(t.status),
-    balance: Number(t.balance ?? 0),
-  }));
+const switcherTournaments = tournamentAccounts.map(t => ({
+  id: t.tournamentId,
+  name: t.name,
+  status: formatTournamentStatus(t.status),
+  balance: Number(t.balance ?? 0),
+  currency: t.currency ?? t.symbol ?? "$",
+}));
 
 
   const [expanded, setExpanded] = useState(false);
@@ -124,8 +123,10 @@ const isTournamentLowBalance = () => {
 
   // find the active tournament from context
   const t = tournamentAccounts.find(
-    (x) => x.tournamentId === activeAccount.tournamentId
-  );
+  x => x.tournamentId === activeAccount.tournamentId
+);
+
+if (!t) return false;
 
   const starting = Number(t?.initialBalance ?? 0);
 
@@ -167,12 +168,13 @@ const displayBalance = (() => {
           ? "#ff4d4f"
           : getColor(activeAccount),
     },
-    activeAccount.type === "tournament" &&
-      isTournamentLowBalance() && {
-        textShadowColor: "#ff0000",
-        textShadowOffset: { width: 0, height: 0 },
-        textShadowRadius: 8,
-      },
+    activeAccount.type === "tournament" && isTournamentLowBalance()
+  ? {
+      textShadowColor: "#ff0000",
+      textShadowOffset: { width: 0, height: 0 },
+      textShadowRadius: 8,
+    }
+  : undefined,
   ]}
 >
 {activeAccount.type === "demo"
@@ -324,7 +326,7 @@ const displayBalance = (() => {
             }
           >
             {" • "}
-            $ {t.balance.toFixed(2)}
+            {t.currency} {t.balance.toFixed(2)}
 
             {" • "}
             {t.status.toUpperCase()}
