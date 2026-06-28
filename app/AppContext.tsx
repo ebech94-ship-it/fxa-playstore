@@ -44,6 +44,15 @@ export type PlayerTournament = {
 
   startTime?: number;
   endTime?: number;
+
+  performance?: {
+  pnl: number;
+  roi: number;
+  wins: number;
+  losses: number;
+  trades: number;
+  winRate: number;
+};
 };
 
 type AppSettings = {
@@ -198,6 +207,15 @@ export type TournamentAccount = {
   status: "upcoming" | "ongoing" | "finished";
 
   joined: boolean;
+
+  performance?: {
+  pnl: number;
+  roi: number;
+  wins: number;
+  losses: number;
+  trades: number;
+  winRate: number;
+};
 };
 
 /* ---------------- CONTEXT ---------------- */
@@ -374,6 +392,7 @@ const tournamentAccounts = useMemo(() =>
       currency: t.currency ?? t.symbol ?? "$", // ✅ SAFETY FALLBACK
     status: t.status ?? "upcoming",
     joined: t.joined,
+    performance: t.performance,
   })), [tournaments, tournamentMeta, liveTournamentBalances]);
 
 const joinedMap = useMemo(() => {
@@ -533,6 +552,15 @@ const tournamentList: PlayerTournament[] = Object.entries(rawTournaments).map(
 
     rebuyCount: t.rebuyCount ?? 0,
     rebuys: t.rebuys ?? [],
+
+    performance: t.performance ?? {
+  pnl: 0,
+  roi: 0,
+  wins: 0,
+  losses: 0,
+  trades: 0,
+  winRate: 0,
+},
 
     startTime: t.startTime ?? null,
     endTime: t.endTime ?? null,

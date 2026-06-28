@@ -235,6 +235,9 @@ exports.settleTournamentTrade = functions.https.onCall(async (data, context) => 
   const userRef = db.doc(`users/${uid}`);
   const tradeRef = db.doc(`users/${uid}/openTrades/${tradeId}`);
   const closedTradeRef = db.doc(`users/${uid}/closedTrades/${tradeId}`);
+const participantRef = db.doc(
+  `tournaments/${tournamentId}/participants/${uid}`
+);
 
   await db.runTransaction(async (tx) => {
     const userSnap = await tx.get(userRef);
@@ -246,18 +249,62 @@ exports.settleTournamentTrade = functions.https.onCall(async (data, context) => 
 
     const trade = tradeSnap.data();
 
-    let balance =
-      userSnap.data()?.accounts?.tournaments?.[tournamentId]?.balance || 0;
+   const tournamentAccount =
+  userSnap.data()?.accounts?.tournaments?.[tournamentId] || {};
 
+let balance = tournamentAccount.balance || 0;
+
+const initialBalance = tournamentAccount.initialBalance || balance;
+
+const performance = tournamentAccount.performance || {
+  pnl: 0,
+  roi: 0,
+  wins: 0,
+  losses: 0,
+  trades: 0,
+  winRate: 0,
+};
     const isWin = result === "GAIN";
     const payout = isWin ? trade.amount * 1.95 : 0;
 
     if (isWin) balance += payout;
+    const trades = performance.trades + 1;
 
-    tx.update(userRef, {
-      [`accounts.tournaments.${tournamentId}.balance`]: balance,
-    });
+const wins = performance.wins + (isWin ? 1 : 0);
 
+const losses = performance.losses + (isWin ? 0 : 1);
+
+const pnl = balance - initialBalance;
+
+const roi = initialBalance > 0 ? (pnl / initialBalance) * 100 : 0;
+
+const winRate = trades > 0 ? (wins / trades) * 100 : 0;
+
+   tx.update(userRef, {
+  [`accounts.tournaments.${tournamentId}.balance`]: balance,
+
+  [`accounts.tournaments.${tournamentId}.performance`]: {
+    pnl,
+    roi,
+    wins,
+    losses,
+    trades,
+    winRate,
+  },
+});
+
+// 👇 ADD THIS HERE
+tx.update(participantRef, {
+  balance,
+  performance: {
+    pnl,
+    roi,
+    wins,
+    losses,
+    trades,
+    winRate,
+  },
+});
     tx.set(closedTradeRef, {
       ...trade,
       result,
