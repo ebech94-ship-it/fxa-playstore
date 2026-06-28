@@ -314,6 +314,8 @@ const handleTrade = async (type: "buy" | "sell") => {
     console.log("Chart not ready yet — can't open trade.");
     return;
   }
+   const now = Date.now();
+  const id = uuid.v4() as string;
 
   // 🔎 CHECK BALANCE FIRST
 
@@ -333,10 +335,14 @@ if (serverBalance < stake) {
   return;
 }
   try {
-  await placeTournamentTrade({
-    tournamentId: activeAccount.tournamentId,
-    amount: stake,
-  });
+ await placeTournamentTrade({
+  tournamentId: activeAccount.tournamentId,
+  tradeId: id,
+  amount: stake,
+  entryPrice,
+  direction: type,
+});
+
 } catch (err: any) {
   const message =
     err instanceof Error ? err.message : "Tournament trade failed";
@@ -377,8 +383,7 @@ setDemoBalance((prev) => {
   return newBalance;
 });
 }
-  const now = Date.now();
-  const id = uuid.v4() as string;
+ 
 
   // Track open trade (include openPrice for summary)
   const t: Trade & { openPrice?: number } = {
@@ -480,10 +485,11 @@ useEffect(() => {
           t.account.type === "tournament" &&
           t.account.tournamentId
         ) {
-         settleTournamentTrade({
+        
+   settleTournamentTrade({
   tournamentId: t.account.tournamentId,
   tradeId: t.id,
-  closePrice: livePrice,
+  result: isWin ? "GAIN" : "LOSS",
 });
         }
 
