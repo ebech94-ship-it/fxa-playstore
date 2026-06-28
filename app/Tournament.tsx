@@ -220,10 +220,16 @@ useEffect(() => {
     );
 
     const unsub = onSnapshot(ref, (snap) => {
-      let rebuyTotal = 0;
+     let rebuyCostTotal = 0;
 
       snap.docs.forEach((d) => {
-        rebuyTotal += d.data()?.rebuys?.length ?? 0;
+
+       const data = d.data() as any;
+
+const rebuyCost =
+  data.rebuyCostTotal ?? 0;
+
+rebuyCostTotal += rebuyCost;
       });
 
       setTournamentCounts(prev => ({
@@ -232,9 +238,9 @@ useEffect(() => {
       }));
 
       setTournamentRebuys(prev => ({
-        ...prev,
-        [t.id]: rebuyTotal,
-      }));
+  ...prev,
+  [t.id]: rebuyCostTotal,
+}));
     });
 
     unsubs.push(unsub);
@@ -531,13 +537,24 @@ const formatFullDate = (ms: number) => {
 const sortedLeaderboard = useMemo(() => {
   const copy = [...leaderboard];
 
-  copy.sort(
-    (a: any, b: any) =>
-      (b.performance ?? 0) - (a.performance ?? 0)
-  );
+  copy.sort((a: any, b: any) => {
+
+  const startBalance = selectedTournament?.startingBalance ?? 0;
+const rebuyCost = selectedTournament?.id
+  ? (tournamentRebuys[selectedTournament.id] ?? 0)
+  : 0;
+
+const aScore =
+  (a.balance ?? 0) - startBalance - rebuyCost;
+
+const bScore =
+  (b.balance ?? 0) - startBalance - rebuyCost;
+    return bScore - aScore;
+  });
 
   return copy;
-}, [leaderboard]);
+}, [leaderboard, selectedTournament?.startingBalance, selectedTournament?.id,
+  tournamentRebuys]);
   
   // TOURNAMENT CARD
 const TournamentCard = ({ item }: { item: any }) => {

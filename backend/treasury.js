@@ -153,7 +153,7 @@ referrerId: user.referredBy || null,
 
     balance: startingBalance,
     rebuyCount: 0,
-
+rebuyCostTotal: 0,
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
 
@@ -275,6 +275,7 @@ async processRebuy(t, userId, tournamentId) {
   t.update(participantRef, {
     balance: admin.firestore.FieldValue.increment(initialBalance),
     rebuyCount: admin.firestore.FieldValue.increment(1),
+      rebuyCostTotal: admin.firestore.FieldValue.increment(rebuyFee),
     lastRebuyAt: admin.firestore.FieldValue.serverTimestamp(),
 
     rebuys: admin.firestore.FieldValue.arrayUnion({
@@ -494,7 +495,7 @@ async processTournamentPayout(tournamentId) {
           payoutAt: admin.firestore.FieldValue.toISOString(),
         });
 t.update(partRef, {
-  performance: admin.firestore.FieldValue.increment(w.amount),
+  performance: admin.firestore.FieldValue.serverTimestamp(),
 });
         distributed += w.amount;
 

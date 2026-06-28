@@ -8,11 +8,12 @@ import { collection, doc, onSnapshot, query, where } from "firebase/firestore";
 import {
   createContext,
   ReactNode,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
   useRef,
-  useState,
+  useState
 } from "react";
 
 /* ---------------- TYPES ---------------- */
@@ -337,7 +338,7 @@ const [unreadCount, setUnreadCount] = useState(0);
 
 
   // ✅ ADD FUNCTION RIGHT HERE ⬇⬇⬇
-const switchAccount = (account: AccountType) => {
+const switchAccount = useCallback((account: AccountType) => {
   if (account.type === "tournament") {
     const t =
   tournaments.find(x => x.tournamentId === account.tournamentId) ||
@@ -352,7 +353,7 @@ const switchAccount = (account: AccountType) => {
 
   setActiveTournament(null);
   setActiveAccount(account);
-};
+}, [tournaments, userDoc?.accounts?.tournaments]);
 
 const [profile, setProfile] = useState<UserProfile | null>(null);
 const [profileLoaded, setProfileLoaded] = useState(false);
@@ -509,12 +510,14 @@ console.log(
   JSON.stringify(acc.tournaments, null, 2)
 );
     // Build tournament list from user accounts, only include joined tournaments
-  const rawTournaments = data?.accounts?.tournaments ?? {};
+const rawTournaments = data?.accounts?.tournaments ?? {};
 
-const tournamentList = Object.entries(rawTournaments).map(
+setUserTournamentRaw(rawTournaments);
+
+// UI CACHE ONLY (NO BUSINESS LOGIC)
+const tournamentList: PlayerTournament[] = Object.entries(rawTournaments).map(
   ([id, t]: any) => ({
     tournamentId: id,
-
     name: t.name ?? "Tournament",
     symbol: t.symbol ?? "$",
     currency: t.currency ?? "$",
@@ -523,7 +526,10 @@ const tournamentList = Object.entries(rawTournaments).map(
     initialBalance: Number(t.initialBalance ?? 0),
 
     joined: t.joined ?? true,
-    status: t.status ?? "upcoming",
+
+    // IMPORTANT: DO NOT TRUST THIS FULLY
+    // status will be computed later
+    status: "upcoming",
 
     rebuyCount: t.rebuyCount ?? 0,
     rebuys: t.rebuys ?? [],
@@ -533,11 +539,7 @@ const tournamentList = Object.entries(rawTournaments).map(
   })
 );
 
-console.log(
-  "TOURNAMENT COUNT",
-  tournamentList.length
-);
-  setTournaments(tournamentList);
+setTournaments(tournamentList);
 
 console.log(
   "🔥 TOURNAMENT LIST:",
@@ -711,48 +713,63 @@ useEffect(() => {
     unsubReads();
   };
 }, [authUser?.uid]);
-  
-  return (
-    <AppContext.Provider
-  value={{
-    appReady,
+  const contextValue = useMemo(() => ({
+  appReady,
   setAppReady,
-     unreadCount,
-    setUnreadCount,
-appSettings,
-    isAdmin,
-    
-    adminLoaded,
-
-    authUser,
-  
-    userDoc,
-    accounts,
-     // 🔥 ADD THESE TWO
-    demoBalance,
-    setDemoBalance,
+  unreadCount,
+  setUnreadCount,
+  appSettings,
+  isAdmin,
+  adminLoaded,
+  authUser,
+  userDoc,
+  accounts,
+  demoBalance,
+  setDemoBalance,
   userTournamentRaw,
-    tournaments,
-    activeAccount,
-    activeTournament,
-    setActiveAccount: switchAccount,
-    setActiveTournament,
-    loading,
-    balances: balancesState,      // ✅ unified balances
-    activeBalance,                // ✅ single source of truth
-    profile, 
-    profileLoaded,
-    setProfile,
-    profileVerified: profile?.verified === true,
-    profileSubmitted,
-   setProfileSubmitted,
-
-          
-    tournamentAccounts,           // ✅ UI-ready tournament info
-  
-   joinedMap,
-  }}
->
+  tournaments,
+  activeAccount,
+  activeTournament,
+  setActiveAccount: switchAccount,
+  setActiveTournament,
+  loading,
+  balances: balancesState,
+  activeBalance,
+  profile,
+  profileLoaded,
+  setProfile,
+  profileVerified: profile?.verified === true,
+  profileSubmitted,
+  setProfileSubmitted,
+  tournamentAccounts,
+  joinedMap,
+}), [
+  appReady,
+  unreadCount,
+  appSettings,
+  isAdmin,
+  adminLoaded,
+  authUser,
+  userDoc,
+  accounts,
+  demoBalance,
+  userTournamentRaw,
+  tournaments,
+  activeAccount,
+  activeTournament,
+  switchAccount,
+  setActiveTournament,
+  loading,
+  balancesState,
+  activeBalance,
+  profile,
+  profileLoaded,
+  profileSubmitted,
+  tournamentAccounts,
+  joinedMap,
+]);
+  return (
+    <AppContext.Provider value={contextValue}>
   {children}
 </AppContext.Provider>
 

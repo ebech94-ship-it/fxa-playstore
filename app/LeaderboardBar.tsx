@@ -259,14 +259,17 @@ useEffect(() => {
     const participants: Participant[] = snap.docs.map((d) => {
       const data = d.data() as any;
 
-      const initialBalance =
-  data.initialBalance ??
-  activeTourney?.initialBalance ??
-  0;
+const initialBalance =
+  data.initialBalance ?? activeTourney?.initialBalance ?? 0;
 
-      const balance = data.balance ?? 0;
+const balance = data.balance ?? 0;
 
-      const performance = balance - initialBalance;
+// 🔥 IMPORTANT: real rebuy cost (must be stored properly in Firestore)
+const rebuyCostTotal = data.rebuyCostTotal ?? 0;
+
+// 🔥 CORE PERFORMANCE LOGIC
+const performance =
+  (balance - initialBalance) - rebuyCostTotal;
 
       return {
         id: d.id,
@@ -275,8 +278,7 @@ useEffect(() => {
       };
     });
 
-    participants.sort((a, b) => (b.performance ?? 0) - (a.performance ?? 0));
-
+   
     setLiveParticipants(participants);
     setLoadingLive(false);
   });
@@ -294,21 +296,43 @@ const participants: Participant[] = activeAccount.type === "demo"
   ? liveParticipants          // Tournament live leaderboard
   : PREVIEW_PARTICIPANTS;     // Fallback
 
-// ✅ Override current user's balance for instant demo updates
+// ✅ Override current user's balance with AppContext first
 const displayParticipants = participants.map((p) => {
   const isCurrent = currentUser && p.id === currentUser.uid;
 
+  if (!isCurrent) return p;
 
-  // If this is the demo account of the current user, force the local demoBalance
-  if (activeAccount.type === "demo" && isCurrent) {
-    return { ...p, balance: demoBalance ?? p.balance };
+  if (activeAccount.type === "demo") {
+    return {
+  ...p,
+  balance: demoBalance ?? p.balance,
+  performance: p.performance,
+};
+  }
+
+  if (activeAccount.type === "tournament") {
+  return {
+  ...p,
+  balance: tournamentBalance ?? p.balance,
+  performance: p.performance,
+};
   }
 
   return p;
 });
 
-const rank =
-  (displayParticipants.findIndex((p) => p.id === currentUser?.uid) + 1) || 1;
+const sortedParticipants = [...displayParticipants].sort((a, b) => {
+  const aScore = a.performance ?? 0;
+const bScore = b.performance ?? 0;
+  return bScore - aScore;
+});
+
+const rankIndex = sortedParticipants.findIndex(
+  (p) => p.id === currentUser?.uid
+);
+
+const rank = rankIndex >= 0 ? rankIndex + 1 : 1;
+
 
  useEffect (() => {
   const backAction = () => {
@@ -336,16 +360,16 @@ const chunkSize = isLandscape ? 1 : 2; // 1 row in landscape, 2 rows in portrait
 const chunkedParticipants = useMemo(() => {
   const chunks: Participant[][] = [];
 
-  for (let i = 0; i < displayParticipants.length; i += chunkSize) {
-    chunks.push(displayParticipants.slice(i, i + chunkSize));
+  for (let i = 0; i < sortedParticipants.length; i += chunkSize) {
+    chunks.push(sortedParticipants.slice(i, i + chunkSize));
   }
 
   return chunks;
-}, [displayParticipants, chunkSize]);
+}, [sortedParticipants, chunkSize]);
 
 const topTraders = useMemo(() => {
-  return displayParticipants.slice(0, 5);
-}, [displayParticipants]);
+  return sortedParticipants.slice(0, 5);
+}, [sortedParticipants]);
 
 
 return (
@@ -517,7 +541,7 @@ return (
   </Text>
 </TouchableOpacity>
          <FlatList
-  data={pagedParticipants}                     // only the players for current page
+  data={pagedParticipants.sort((a, b) => (b.balance ?? 0) - (a.balance ?? 0))}                   // only the players for current page
   keyExtractor={(p) => p.id}
   numColumns={3}                           // keep grid-like layout
   columnWrapperStyle={{ justifyContent: "space-between", marginBottom: 10 }}

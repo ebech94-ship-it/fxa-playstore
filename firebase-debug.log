@@ -1,0 +1,16 @@
+[debug] [2026-06-28T16:44:14.097Z] ----------------------------------------------------------------------
+[debug] [2026-06-28T16:44:14.127Z] Command:       C:\nvm4w\nodejs\node.exe C:\Users\LENOVO\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\firebase.js deploy --only functions
+[debug] [2026-06-28T16:44:14.129Z] CLI Version:   15.4.0
+[debug] [2026-06-28T16:44:14.130Z] Platform:      win32
+[debug] [2026-06-28T16:44:14.131Z] Node Version:  v20.20.2
+[debug] [2026-06-28T16:44:14.132Z] Time:          Sun Jun 28 2026 17:44:14 GMT+0100 (West Africa Time)
+[debug] [2026-06-28T16:44:14.133Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2026-06-28T16:44:30.776Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-06-28T16:44:30.778Z] > authorizing via signed-in user (ekokobechem09@gmail.com)
+[debug] [2026-06-28T16:44:30.779Z] [iam] checking project forex-tournaments-arena for permissions ["cloudfunctions.functions.create","cloudfunctions.functions.delete","cloudfunctions.functions.get","cloudfunctions.functions.list","cloudfunctions.functions.update","cloudfunctions.operations.get","firebase.projects.get"]
+[debug] [2026-06-28T16:44:30.786Z] Checked if tokens are valid: false, expires at: 1782644242279
+[debug] [2026-06-28T16:44:30.787Z] Checked if tokens are valid: false, expires at: 1782644242279
+[debug] [2026-06-28T16:44:30.789Z] > refreshing access token with scopes: []
+[debug] [2026-06-28T16:44:30.800Z] >>> [apiv2][query] POST https://www.googleapis.com/oauth2/v3/token [none]
+[debug] [2026-06-28T16:44:30.801Z] >>> [apiv2][body] POST https://www.googleapis.com/oauth2/v3/token [omitted]

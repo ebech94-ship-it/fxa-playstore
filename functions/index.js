@@ -42,6 +42,8 @@ exports.onAuthUserCreate = functions.auth.user().onCreate(async (user) => {
         referredBy: null,
 
         referralCount: 0,
+      rebuyCostTotal: 0,
+
         pendingReferrals: 0,
         activeReferrals: 0,
         validReferrals: 0,
