@@ -327,8 +327,10 @@ console.log("REGISTER RESPONSE:", text);
     if (!response.ok) {
       throw new Error(text || "Registration failed");
     }
-
-    Alert.alert("Success", "Successfully joined tournament!");
+Alert.alert(
+  "Registration Successful 🎉",
+  "🎯 Switch to your Tournament Account in Account Switcher to start trading."
+);
 
 setTournamentCounts(prev => ({
   ...prev,
@@ -360,7 +362,7 @@ const handleRebuy = async (tournamentId: string) => {
     if (currentBalance >= initialBalance * 0.5) {
       Alert.alert(
         "Rebuy Locked",
-        "You can only rebuy when your balance drops below 50%."
+        "You can only rebuy if your balance drops below 50% of starting balance."
       );
       return;
     }
@@ -432,7 +434,7 @@ if (!user) {
   throw new Error(errorMsg);
 }
 
-Alert.alert("Success", "Rebuy successful!");
+Alert.alert("Success", "Rebuy successful, get back to competition!");
 
    
 
@@ -697,41 +699,60 @@ const allowRebuy =
           onPress={() => handleRegister(item.id)}
         >
           <Text style={styles.actionText}>
-           {joinedMap[item.id]
-  ? "You're In"
-  : status === "finished"
+ {status === "finished"
   ? "Closed"
+  : joinedMap[item.id]
+  ? "You're In"
   : loadingActions[item.id]?.register
   ? "Processing..."
   : (item.entryFee ?? 0) === 0
   ? "Register (Free)"
   : `Register • ${item.entryFee} $`}
-          </Text>
+</Text>
         </TouchableOpacity>
 
 <TouchableOpacity
   activeOpacity={0.6}
   style={[
     styles.actionBtnAlt,
-    (!allowRebuy || loadingActions[item.id]?.rebuy) && styles.disabledBtn,
+   (status === "finished" || !allowRebuy 
+   || loadingActions[item.id]?.rebuy) && styles.disabledBtn,
     loadingActions[item.id]?.rebuy && { opacity: 0.4 }
   ]}
- disabled={!!loadingActions[item.id]?.rebuy}
+disabled={
+  status === "finished" ||
+  !allowRebuy ||
+  !!loadingActions[item.id]?.rebuy
+}
 
     onPress={() => {
   console.log("🔥 REBUY BUTTON PRESSED");
   handleRebuy(item.id);
 }}
         >
-        <Text style={styles.actionTextAlt}>
-  {loadingActions[item.id]?.rebuy
+      <Text style={styles.actionTextAlt}>
+  {status === "finished"
+    ? "Closed"
+    : loadingActions[item.id]?.rebuy
     ? "⏳ Processing..."
-    : loadingActions[item.id]?.rebuyDone
-    ? "✅ Rebuy Done"
     : `♻️ Rebuy • ${rebuyFee} $`}
 </Text>
         </TouchableOpacity>
       </View>
+      {status !== "finished" &&
+ joinedMap[item.id] &&
+ !allowRebuy && (
+  <Text
+    style={{
+      color: "#94a3b8",
+      fontSize: 11,
+      marginTop: 5,
+      textAlign: "center",
+    }}
+  >
+    Rebuy available when current balance{"\n"} falls below 50% of initialBalance!
+  </Text>
+)}
     </TouchableOpacity>
   );
 };

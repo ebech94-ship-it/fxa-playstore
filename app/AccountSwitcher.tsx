@@ -2,11 +2,8 @@
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import { useState } from "react";
-import type { AccountType } from "./AppContext"; // keep type imports separate if you want
+import type { AccountType, TournamentAccount } from "./AppContext"; // keep type imports separate if you want
 import { useApp } from "./AppContext";
-
-
-
 // AccountSwitcher.tsx
 
 import {
@@ -27,7 +24,7 @@ type AccountSwitcherProps = {
     real: number;
     tournament?: number; 
   };
-  tournamentBalances?: Record<string, number>;
+  tournamentBalances: TournamentAccount[];
    
   activeAccount: AccountType;
 

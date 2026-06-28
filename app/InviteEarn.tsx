@@ -1,52 +1,111 @@
 import * as Clipboard from "expo-clipboard";
 import { getAuth } from "firebase/auth";
-import { Alert, Share, StyleSheet, Text,  TouchableOpacity,  View,
+import { useState } from "react";
+import {
+  Alert,
+  ScrollView,
+  Share,
+  StyleSheet,
+  Text,
+  View,
 } from "react-native";
-import { doc, getDoc } from "firebase/firestore";
-import { db } from "../firebaseConfig";
-import { useEffect, useState } from "react";
+
+import LeaderboardTab from "../components/referral/LeaderboardTab";
+import OverviewTab from "../components/referral/OverviewTab";
+import ReferralHero from "../components/referral/ReferralHero";
+import ReferralTabs from "../components/referral/ReferralTabs";
+
+import RewardsTab from "../components/referral/RewardsTab";
+import useReferralLeaderboard from "../hooks/useReferralLeaderboard";
+import useReferralUserData from "../hooks/useReferralUserData";
+
+
 
 export default function InviteEarnScreen() {
   const user = getAuth().currentUser;
-  const [publicId, setPublicId] = useState("");
-  
-useEffect(() => {
-  if (!user?.uid) return;
 
-  const loadPublicId = async () => {
-    const snap = await getDoc(doc(db, "users", user.uid));
+  const [activeTab, setActiveTab] = useState<
+    "overview" | "rewards" | "leaderboard"
+  >("overview");
 
-    if (snap.exists()) {
-      setPublicId(snap.data().publicId ||  "Generating...");
-    }
-  };
+  // ==============================
+  // LIVE USER DATA
+  // ==============================
+  const { data, loading } = useReferralUserData(user?.uid);
 
-  loadPublicId();
-}, [user?.uid]);
+  // ==============================
+  // LIVE LEADERBOARD
+  // ==============================
+  const {
+    leaders,
+    loading: leaderboardLoading,
+  } = useReferralLeaderboard();
 
   if (!user) {
     return (
       <View style={styles.container}>
-        <Text style={styles.text}>Please log in to invite friends</Text>
+        <Text style={styles.text}>
+          Please log in to invite friends
+        </Text>
       </View>
     );
   }
 
+  if (loading || leaderboardLoading) {
+    return (
+      <View style={styles.container}>
+        <Text style={styles.text}>
+          Loading referral data...
+        </Text>
+      </View>
+    );
+  }
 
-const landingLink = `https://forexarena.vercel.app/?ref=${publicId}`;
- 
+  // ==============================
+  // LIVE VALUES
+  // ==============================
+  const publicId = data?.publicId ?? "";
 
+  const referralCount = data?.referralCount ?? 0;
+  const referralPoints = data?.referralPoints ?? 0;
+
+  const tier = data?.tier ?? "Bronze";
+  const nextTierTarget = data?.nextTierTarget ?? 20;
+
+  const landingLink = publicId
+    ? `https://forexarena.vercel.app/?ref=${publicId}`
+    : "";
+
+  // ==============================
+  // USER RANK
+  // ==============================
+  const myRankIndex = leaders.findIndex(
+    (item) => item.uid === user.uid
+  );
+
+  const myRank =
+    myRankIndex >= 0 ? myRankIndex + 1 : null;
+
+  // ==============================
+  // ACTIONS
+  // ==============================
   const copyLink = async () => {
+    if (!landingLink) return;
 
     await Clipboard.setStringAsync(landingLink);
-    Alert.alert("Copied", "Invite link copied to clipboard");
+
+    Alert.alert(
+      "Copied",
+      "Invite link copied to clipboard"
+    );
   };
 
   const shareLink = async () => {
+    if (!landingLink) return;
 
     try {
       await Share.share({
-      message: `🏆 Join me on Forex Arena!
+        message: `🏆 Join me on Forex Arena!
 
 Compete in trading tournaments, climb the leaderboard and win rewards.
 
@@ -59,71 +118,80 @@ ${landingLink}`,
   };
 
   return (
-    <View style={styles.container}>
-      <View style={styles.card}>
-        <Text style={styles.title}>🎁 Invite & Earn</Text>
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={styles.content}
+    >
+      {/* HERO */}
+      <ReferralHero
+        referralCount={referralCount}
+        points={referralPoints}
+        tier={tier}
+        nextTierTarget={nextTierTarget}
+      />
+           {/* BAGS BAR */}
 
-<Text style={{ color: "#ffcc00", fontSize: 13, marginBottom: 6 }}>
-  🚀 Blast off into rewards with every invite you make! Gain access to exclusive free tournaments as your invites grow.
-</Text>
-<Text style={{ color: "#b9b9c5", fontSize: 12, marginBottom: 20 }}>
-  Trading is better with friends—invite yours today and earn together!
-</Text>
-        <Text style={styles.subtitle}>
-          More invites you do can earn more rewards when they join and participates more especially in tournaments.
-        </Text>
-<Text> The greater the community the better the outcome </Text>
-        <View style={styles.codeBox}>
-          <Text style={styles.codeLabel}>Your Invite Code</Text>
-         <Text style={styles.code}>{publicId || "Loading..."}</Text>
-        </View>
 
-        
+      {/* TABS */}
+      <ReferralTabs
+        activeTab={activeTab}
+        onChange={setActiveTab}
+      />
 
-        <TouchableOpacity style={styles.primaryBtn} onPress={copyLink}>
-          <Text style={styles.primaryText}>Copy Invite Link</Text>
-        </TouchableOpacity>
+      {/* OVERVIEW */}
+      {activeTab === "overview" && (
+      <OverviewTab
+  publicId={publicId}
+  landingLink={landingLink}
+  copyLink={copyLink}
+  shareLink={shareLink}
+  referralCount={referralCount}
+  referralPoints={referralPoints}
+/>
+      )}
 
-        <TouchableOpacity style={styles.secondaryBtn} onPress={shareLink}>
-          <Text style={styles.secondaryText}>Share Invite</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
+      {/* REWARDS */}
+      {activeTab === "rewards" && (
+        <RewardsTab
+           validReferrals={data?.validReferrals ?? 0}
+          referralPoints={referralPoints}
+          tier={tier}
+        />
+      )}
+
+      {/* LEADERBOARD */}
+      {activeTab === "leaderboard" && (
+        <LeaderboardTab
+          leaders={leaders}
+          myRank={myRank}
+          myReferralCount={referralCount}
+        />
+      )}
+    </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {flex: 1, backgroundColor: "#0d0d0f", justifyContent: "center",
-    padding: 20, },
-
-  card: {  backgroundColor: "#1a1a1f", borderRadius: 16, padding: 20,
-    borderWidth: 1, borderColor: "#333", },
-
-  title: { fontSize: 22, fontWeight: "bold", color: "#fff",
-    marginBottom: 8, },
-
-  subtitle: { color: "#b9b9c5", fontSize: 14, marginBottom: 20,
+  screen: {
+    flex: 1,
+    backgroundColor: "#050816",
   },
 
-  codeBox: { backgroundColor: "#131317", padding: 12,  borderRadius: 10,
-    marginBottom: 20, },
-
-  codeLabel: {  color: "#888", fontSize: 12, marginBottom: 4,
+  content: {
+    padding: 16,
   },
 
-  code: { color: "#fff", fontSize: 14, fontWeight: "600",  },
+  container: {
+    flex: 1,
+    backgroundColor: "#0d0d0f",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 20,
+  },
 
-  primaryBtn: { backgroundColor: "#4e2cff",
-    paddingVertical: 12,  borderRadius: 10,
-    alignItems: "center",  marginBottom: 10,  },
-
-  primaryText: { color: "#fff", fontWeight: "bold", },
-
-  secondaryBtn: { borderWidth: 1,
-    borderColor: "#4e2cff", paddingVertical: 12, borderRadius: 10,
-    alignItems: "center",  },
-
-  secondaryText: { color: "#4e2cff", fontWeight: "600", },
-
-  text: { color: "#fff", fontSize: 16, textAlign: "center", },
+  text: {
+    color: "#fff",
+    fontSize: 16,
+    textAlign: "center",
+  },
 });

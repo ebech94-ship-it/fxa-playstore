@@ -2,7 +2,7 @@
 import { auth, db } from "@/lib/firebase";
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { onAuthStateChanged, User } from "firebase/auth";
-import { collection, doc, getDoc, onSnapshot, query, setDoc, updateDoc, where } from "firebase/firestore";
+import { collection, doc, onSnapshot, query, where } from "firebase/firestore";
 
 
 import {
@@ -63,22 +63,31 @@ type Accounts = {
   tournaments?: Record<string, PlayerTournament>;
 
 };
-type UserProfile = {
+ export type UserProfile = {
   // identity
+   uid?: string;
   publicId?: string; 
   username?: string;
   displayName?: string;
   email?: string;
   phone?: string;
+provider?: string;
+verifiedAt?: any;
 
+referredBy?: string | null;
+  referralCount?: number;
+  referralPoints?: number;
+  referralEarnings?: number;
+  validReferrals?: number; // 🔥 IMPORTANT (tournament-qualified referrals)
   // personal
   country?: string;
   countryCode?: string;
   dateOfBirth?: string;
 
   // media
-  avatarUrl?: string;
 
+  avatarUrl?: string;
+accounts?: any;
   preview?: boolean; // 👈 ADD THIS
   // status
   verified: boolean;
@@ -101,8 +110,19 @@ type FirestoreUserDoc = {
   verified?: boolean;
 
   accounts?: Accounts;
-   
-    
+  
+     uid?: string;
+  provider?: string;
+  verifiedAt?: any;
+
+  referredBy?: string | null;
+  referralCount?: number;
+  referralPoints?: number;
+  referralEarnings?: number;
+    validReferrals?: number;
+claimedRewards?: string[];
+freeTournamentTickets?: number;
+
   // 🔐 admin / roles
   isAdmin?: boolean;
   roles?: {
@@ -155,7 +175,7 @@ setProfileSubmitted: React.Dispatch<React.SetStateAction<boolean>>;
 
 
   tournamentAccounts: TournamentAccount[];
-  rebuyUnlockedMap: Record<string, boolean>;
+ 
   joinedMap: Record<string, boolean>;
 
 };
@@ -220,7 +240,7 @@ setAppReady: () => {},
   setProfileSubmitted: () => {}, // ✅ ADD
 
   tournamentAccounts: [],
-  rebuyUnlockedMap: {},
+  
   joinedMap: {},
    unreadCount: 0,             // ✅ default
   setUnreadCount: () => {},   // ✅ noop default
@@ -260,8 +280,6 @@ const [liveTournamentBalances, setLiveTournamentBalances] = useState<Record<stri
 const [tournamentMeta, setTournamentMeta] = useState<
   Record<string, { name: string; symbol: string }>
 >({});
-const [rebuyUnlockedMap, setRebuyUnlockedMap] =
-  useState<Record<string, boolean>>({});
 
 const [demoBalance, setDemoBalance] = useState<number>(1000);
 
@@ -370,33 +388,7 @@ const joinedMap = useMemo(() => {
 }, [userDoc?.accounts?.tournaments]);
 /* ---------------- HELPERS ---------------- */
 
-// Generate a new unique publicId for a user
-const generateUserId = async (): Promise<string> => {
-  const counterRef = doc(db, "meta", "userCounter");
 
-  try {
-    let newId = await (async () => {
-      // Simple transaction to increment a counter
-      const snap = await getDoc(counterRef);
-      if (!snap.exists()) {
-        // initialize counter if missing
-        await updateDoc(counterRef, { count: 1 }).catch(() => {});
-        return `USR-000001`;
-      }
-      const current = snap.data()?.count ?? 0;
-      const next = current + 1;
-
-      await updateDoc(counterRef, { count: next });
-
-      return `USR-${String(next).padStart(6, "0")}`;
-    })();
-
-    return newId;
-  } catch (err) {
-    console.error("Failed to generate userId:", err);
-    return `USR-${Date.now()}`; // fallback
-  }
-};
 useEffect(() => {
   const ref = doc(db, "settings", "app");
 
@@ -412,43 +404,7 @@ useEffect(() => {
 
   return unsub;
 }, []);
-useEffect(() => {
-  const fetchUserProfile = async () => {
-    if (!auth.currentUser) return;
 
-    const userRef = doc(db, "users", auth.currentUser.uid);
-    const userSnap = await getDoc(userRef);
-
-    if (userSnap.exists()) {
-      const data = userSnap.data();
-
-      // Generate missing publicId
-      if (!data.publicId) {
-        const newId = await generateUserId();
-        await updateDoc(userRef, { publicId: newId });
-        data.publicId = newId;
-      }
-
-      const mappedProfile: UserProfile = {
-  publicId: data.publicId,
-  username: data.username ?? "New User",
-  displayName: data.displayName ?? data.username ?? "New User",
-  email: data.email ?? "",
-  phone: data.phone ?? "",
-  country: data.country ?? "",
-  dateOfBirth: data.dateOfBirth ?? "",
-  avatarUrl: data.avatarUrl ?? "",
-  preview: false,
-  verified: !!data.username && !!data.country && !!data.avatarUrl, // only true if all filled
-  profileCompleted: data.profileCompleted ?? false,
-};
-
-      setProfile(mappedProfile);
-    }
-  };
-
-  fetchUserProfile();
-}, []);
 
 
   /* 🔐 Auth listener */
@@ -535,6 +491,8 @@ useEffect(() => {
     }
 
     const data = snap.data() as FirestoreUserDoc;
+     // 🔥 ENSURE PUBLIC ID EXISTS
+
     setUserDoc(data);
 
     // 🔐 ADMIN CHECK
@@ -688,74 +646,7 @@ useEffect(() => {
 }, [userDoc, profileSubmitted]);
 
 
-useEffect(() => {
-  if (!authUser?.uid || demoBalance == null) return;
 
-  const ref = doc(db, "demoBalances", authUser.uid);
-
-  const payload = {
-    balance: demoBalance,
-    username: profile?.username ?? "Demo User",
-    countryCode: userDoc?.countryCode ?? "CM",
-    avatar: profile?.avatarUrl ?? "",
-    updatedAt: Date.now(),
-  };
-
-  setDoc(ref, payload, { merge: true }).catch(console.error);
-
-}, [
-  authUser?.uid,
-  demoBalance,
-  profile?.username,
-  profile?.country,
-  userDoc?.countryCode,
-
-  profile?.avatarUrl
-]);
-
-useEffect(() => {
-  if (!authUser || tournaments.length === 0) {
-    setLiveTournamentBalances({});
-    setRebuyUnlockedMap({});
-    return;
-  }
-
-  const unsubs: (() => void)[] = [];
-
-  tournaments.forEach((t) => {
-    const ref = doc(
-      db,
-      "tournaments",
-      t.tournamentId,
-      "participants",
-      authUser.uid
-    );
-
-    const unsub = onSnapshot(ref, (snap) => {
-      if (!snap.exists()) return;
-
-      const data = snap.data();
-const balance = data.balance ?? 0;
-const initialBalance = data.initialBalance ?? t.initialBalance ?? 0;
-
-setLiveTournamentBalances((prev) => ({
-  ...prev,
-  [t.tournamentId]: balance,
-}));
- 
-
-setRebuyUnlockedMap((prev) => ({
-  ...prev,
-  [t.tournamentId]: balance < initialBalance * 0.5,
-}));
-      
-    });
-
-    unsubs.push(unsub);
-  });
-
-  return () => unsubs.forEach((u) => u());
-}, [authUser, tournaments]);
 
 
 useEffect(() => {
@@ -858,7 +749,7 @@ appSettings,
 
           
     tournamentAccounts,           // ✅ UI-ready tournament info
-   rebuyUnlockedMap,
+  
    joinedMap,
   }}
 >

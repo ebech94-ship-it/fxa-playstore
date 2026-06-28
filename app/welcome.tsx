@@ -1,5 +1,5 @@
 import { AntDesign, Ionicons } from "@expo/vector-icons";
-
+import type { UserProfile } from "../app/AppContext";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
@@ -8,11 +8,10 @@ import * as Linking from "expo-linking";
 import PasswordInput from "../components/PasswordInput";
 
 import * as Google from "expo-auth-session/providers/google";
-import * as Localization from "expo-localization";
+
 import { useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { useApp } from "../app/AppContext";
-
 
 import {
   createUserWithEmailAndPassword,
@@ -27,13 +26,14 @@ import {
 } from "firebase/auth";
 
 
-import { collection, doc, getDoc, getDocs, query, runTransaction, serverTimestamp, setDoc, where } from "firebase/firestore";
-import { useEffect, useRef, useState } from "react";
+
+import { collection, doc, getDoc, getDocs, query, serverTimestamp, setDoc, where } from "firebase/firestore";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 
 import {
   ActivityIndicator,
-  Alert,
+
   Animated, ImageBackground, Keyboard, KeyboardAvoidingView, Modal, Platform,
   ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, TouchableWithoutFeedback, View,
 } from "react-native";
@@ -43,103 +43,11 @@ import { auth, db, } from "../firebaseConfig";
 import { makeRedirectUri } from "expo-auth-session";
 
 
-// Create demo balance document for leaderboard
-const createDemoBalance = async (uid: string, username: string) => {
-  const demoRef = doc(db, "demoBalances", uid);
 
-  await setDoc(demoRef, {
-    username,
-    balance: 1000, // default demo balance
-    avatar: "",     // optional
-    country: "",    // optional
-    createdAt: serverTimestamp(),
-  });
-};
 
 WebBrowser.maybeCompleteAuthSession();
 
- // 📘 Create Firestore profile
-export const createUserAccounts = async (
-  uid: string,
-  name: string,
-  email: string
-) => {
-  const userRef = doc(db, "users", uid);
-  const docSnap = await getDoc(userRef);
-const countryCode =
-  Localization.getLocales()?.[0]?.regionCode ?? null;
 
-  // Only create once
-  if (!docSnap.exists()) {
-    // 🔗 Read referral
-    const inviteRef = await AsyncStorage.getItem("inviteRef");
-    Alert.alert(
-  "Referral Check",
-  `inviteRef = ${inviteRef}`
-);
-
-    // ✅ Determine valid referrer BEFORE writing
-    let referredBy: string | null = null;
-
-    if (inviteRef && inviteRef !== uid) {
-      const refUserSnap = await getDoc(doc(db, "users", inviteRef));
-      
-      if (refUserSnap.exists()) {
-        referredBy = inviteRef;
-      }
-    }
-const publicUserId = await generateUserId();
-
-    // ✅ Now create user
-    await setDoc(userRef, {
-  uid,
- publicId: publicUserId,
-  // 🔑 STANDARD FIELDS
-  displayName: name,
-  email,
-  countryCode,
-  provider: auth.currentUser?.providerData[0]?.providerId || "password",
-   // 🔐 PROFILE & VERIFICATION
-  profileCompleted: false,
-  verified: false,
-  verifiedAt: null,
-   referredBy: referredBy,
-  createdAt: serverTimestamp(),
-  accounts: {
-    demo: { balance: 1000, type: "practice" },
-    real: { balance: 0, type: "real" },
-    tournament: { balance: 0, type: "tournament" },
-  },
-});
-// ➕ Add this immediately after the above
-await createDemoBalance(uid, name || "Player");
-
-    // 🧹 Clear referral after use
-    if (inviteRef) {
-      await AsyncStorage.removeItem("inviteRef");
-    }
-  }
-};
-const generateUserId = async () => {
-  const counterRef = doc(db, "meta", "userCounter");
-
-  const newUserId = await runTransaction(db, async (transaction) => {
-    const snap = await transaction.get(counterRef);
-
-    if (!snap.exists()) {
-      throw "Counter does not exist";
-    }
-
-    const current = snap.data().count || 0;
-    const next = current + 1;
-
-    transaction.update(counterRef, { count: next });
-
-    return `USR-${String(next).padStart(6, "0")}`;
-  });
-
-  return newUserId;
-};
 
 // ✅ Validate 5-digit numeric password
 // ✅ Firebase requires minimum 6 characters
@@ -168,7 +76,7 @@ const [showPicker, setShowPicker] = useState(false);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
  
-
+const [storedInviteRef, setStoredInviteRef] = useState<string | null>(null);
 
   // 🔗 Google → Email linking
 const [showSetPassword, setShowSetPassword] = useState(false);
@@ -207,11 +115,14 @@ const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
   const [showSignupPhone, setShowSignupPhone] = useState(false);
   const [showLogin, setShowLogin] = useState(false);
 const [inviteRef, setInviteRef] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+ 
+const [loading, setLoading] = useState(false);
+const [otpLoading, setOtpLoading] = useState(false);
+const [verifyLoading, setVerifyLoading] = useState(false);
+
   const [confirmationResult, setConfirmationResult] = useState<any>(null);  // ✅ add this
 const [referrerName, setReferrerName] = useState<string | null>(null);
 
-const [verificationId, setVerificationId] = useState<string | null>(null);
 const [otp, setOtp] = useState("");
 const googleHandledRef = useRef(false);
    // 🔑 WEB + MOBILE OTP
@@ -258,16 +169,55 @@ const COUNTRIES = [
   { code: "DE", name: "Germany", callingCode: "49" },
 ];
 
+const loadUserProfile = useCallback(async () => {
+  const uid = auth.currentUser?.uid;
+  if (!uid) return;
+
+  const snap = await getDoc(doc(db, "users", uid));
+  if (!snap.exists()) return;
+
+  const data = snap.data() as UserProfile;
+  if (!data) return;
+
+  const profile: UserProfile = {
+    uid: data.uid,
+    publicId: data.publicId,
+    email: data.email,
+    phone: data.phone,
+    provider: data.provider,
+    referredBy: data.referredBy,
+    referralCount: data.referralCount ?? 0,
+    referralPoints: data.referralPoints ?? 0,
+    referralEarnings: data.referralEarnings ?? 0,
+    profileCompleted: data.profileCompleted ?? false,
+    verified: data.verified ?? false,
+    verifiedAt: data.verifiedAt ?? null,
+    accounts: data.accounts,
+  };
+
+  setProfile(profile);
+
+  if (profile.publicId) {
+    await AsyncStorage.setItem("publicId", profile.publicId);
+  }
+}, [setProfile]);
+
+
 const sendOTP = async () => {
+
   if (!name.trim()) {
     alert("Please enter your full name");
     return;
   }
+  if (!phone.trim()) {
+  alert("Enter phone number");
+  return;
+}
 
   const cleanedPhone = phone.replace(/\s+/g, "");
 
   try {
-    setLoading(true);
+    setOtpLoading(true);
 
     // ✅ Only create Recaptcha for web
     let appVerifier: RecaptchaVerifier | undefined = undefined;
@@ -290,7 +240,7 @@ const sendOTP = async () => {
     );
 
     setConfirmationResult(result);
-    setVerificationId("sent");
+  
 
     alert("OTP sent to your phone");
 
@@ -298,52 +248,70 @@ const sendOTP = async () => {
     console.error(e);
     alert("Failed to send OTP");
   } finally {
-    setLoading(false);
+    setOtpLoading(false);
   }
 };
 
 
 const verifyOTP = async () => {
-  if (!verificationId || otp.length < 6) {
+  if (!confirmationResult || otp.length < 6) {
     alert("Enter valid OTP");
     return;
   }
 
   try {
-    setLoading(true);
+    setVerifyLoading(true);
 
-    if (!confirmationResult || otp.length < 6) {
-      alert("Enter valid OTP");
-      return;
+    await confirmationResult.confirm(otp);
+
+    // OPTIONAL: save referral for phone users (IMPORTANT FIX)
+    const user = auth.currentUser;
+
+    if (user && storedInviteRef) {
+      await setDoc(
+        doc(db, "users", user.uid),
+        {
+          referredBy: storedInviteRef,
+        },
+        { merge: true }
+      );
     }
 
-    const userCred = await confirmationResult.confirm(otp); // confirm OTP
-
-    await createUserAccounts(
-      userCred.user.uid,
-      name || "Phone User",
-      `${userCred.user.uid}@phone.fx`
-    );
-
     await AsyncStorage.setItem("isLoggedIn", "true");
+
     router.replace("/tradinglayout");
 
   } catch (error) {
     alert("Invalid OTP");
     console.error(error);
   } finally {
-    setLoading(false);
+    setVerifyLoading(false);
   }
 };
 
 useEffect(() => {
-  const handleDeepLink = ({ url }: { url: string }) => {
-    const { queryParams } = Linking.parse(url);
-    if (queryParams?.ref) {
-      AsyncStorage.setItem("inviteRef", queryParams.ref as string);
-      setInviteRef(queryParams.ref as string); // update state to show ref UI
-    }
-  };
+  if (inviteRef) {
+    AsyncStorage.setItem("inviteRef", inviteRef);
+  }
+}, [inviteRef]);
+
+useEffect(() => {
+  const handleDeepLink = async ({ url }: { url: string }) => {
+  const { queryParams } = Linking.parse(url);
+
+  if (!queryParams?.ref) return;
+
+  const ref = queryParams.ref as string;
+
+  await AsyncStorage.setItem("inviteRef", ref);
+  setInviteRef(ref);
+
+  await setDoc(doc(db, "meta/pendingRefs", ref), {
+    inviteRef: ref,
+    createdAt: serverTimestamp(),
+  });
+};
+  
 
   // Subscribe to deep links
   const subscription = Linking.addEventListener("url", handleDeepLink);
@@ -369,9 +337,16 @@ useEffect(() => {
 }, [inviteRef]);
 
 useEffect(() => {
-  AsyncStorage.getItem("inviteRef").then((ref) => {
-    if (ref) setInviteRef(ref);
-  });
+  const loadRef = async () => {
+    const ref = await AsyncStorage.getItem("inviteRef");
+
+    if (ref) {
+      setInviteRef(ref);
+      setStoredInviteRef(ref); // ✅ ADD THIS
+    }
+  };
+
+  loadRef();
 }, []);
   
 
@@ -390,51 +365,49 @@ useEffect(() => {
     return;
   }
 
-  const run = async () => {
-    try {
-      setLoading(true);
-      googleHandledRef.current = true;
+const run = async () => {
+  try {
+    setLoading(true);
+    googleHandledRef.current = true;
 
-      const credential = GoogleAuthProvider.credential(
-        idToken ?? undefined,
-        accessToken ?? undefined
+    const credential = GoogleAuthProvider.credential(
+      idToken ?? undefined,
+      accessToken ?? undefined
+    );
+
+    const userCred = await signInWithCredential(auth, credential);
+
+    const uid = userCred.user.uid;
+
+    const ref = inviteRef || storedInviteRef;// ✅ FIX HERE
+
+    if (ref) {
+      await setDoc(
+        doc(db, "users", uid),
+        {
+          referredBy: ref,
+        },
+        { merge: true }
       );
-
-      const userCred = await signInWithCredential(auth, credential);
-
-      // Ensure Firestore profile exists
-      await createUserAccounts(
-        userCred.user.uid,
-        userCred.user.displayName || "Google User",
-        userCred.user.email || ""
-      );
-
-      // 🔍 Get all provider IDs
-      const providers = userCred.user.providerData.map(p => p.providerId);
-
-      // ✅ Google-only account? Prompt to set password
-      if (providers.includes("google.com") && !providers.includes("password")) {
-        setPendingGoogleUser(userCred.user);
-        setShowSetPassword(true);
-        return;
-      }
-
-      // Already linked (password exists) → proceed to app
-      await AsyncStorage.setItem("isLoggedIn", "true");
-      router.replace("/tradinglayout");
-
-    } catch (e) {
-      googleHandledRef.current = false;
-      alert((e as Error).message);
-    } finally {
-      setLoading(false);
     }
-  };
+
+    await auth.currentUser?.getIdToken(true);
+
+    await AsyncStorage.setItem("isLoggedIn", "true");
+
+    router.replace("/tradinglayout");
+
+  } catch (e) {
+    googleHandledRef.current = false;
+    alert((e as Error).message);
+  } finally {
+    setLoading(false);
+  }
+};
 
   run();
-}, [response, router]);
-
-
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [response, router, loadUserProfile]);
 
 
   // Animations
@@ -462,47 +435,40 @@ useEffect(() => {
 
 // 📧 Email Signup
 const handleSignupEmail = async () => {
-  if (!name.trim()) {
-    return alert("Enter your full name");
-  }
-  if (!isValidPassword(password)) {
-    return alert("Password must be at least 6 characters");
-  }
-  if (password !== confirmPassword) {
-    return alert("Passwords do not match");
-  }
+  if (!name.trim()) return alert("Enter your full name");
+  if (!isValidPassword(password)) return alert("Password must be at least 6 characters");
+  if (password !== confirmPassword) return alert("Passwords do not match");
 
   setLoading(true);
 
   try {
-    // 1️⃣ Create Firebase Auth user
-    const userCred = await createUserWithEmailAndPassword(
-      auth,
-      email.trim().toLowerCase(),
-      password
-    );
 
-    // 2️⃣ Force token refresh to ensure auth propagation
-    await auth.currentUser?.getIdToken(true);
+await createUserWithEmailAndPassword(
+  auth,
+  email.trim().toLowerCase(),
+  password
+);
 
-    if (!auth.currentUser) {
-      alert("Something went wrong with authentication. Try again.");
-      return;
-    }
+const user = auth.currentUser;
+const uid = user?.uid;
 
-    // 3️⃣ Create Firestore profile
-    try {
-      await createUserAccounts(userCred.user.uid, name, email);
-    } catch (e) {
-      console.warn("Firestore profile creation failed but continuing navigation", e);
-    }
+if (uid && storedInviteRef) {
+  await setDoc(
+    doc(db, "users", uid),
+    {
+      referredBy: storedInviteRef,
+    },
+    { merge: true }
+  );
+}
+await auth.currentUser?.getIdToken(true);
 
-    // 4️⃣ Mark user as logged in and navigate
-    await AsyncStorage.setItem("isLoggedIn", "true");
-    router.replace("/tradinglayout");
+await AsyncStorage.setItem("isLoggedIn", "true");
+
+router.replace("/tradinglayout");
 
   } catch (e) {
-    console.error("Signup error:", e);
+    console.error(e);
     alert((e as Error).message);
   } finally {
     setLoading(false);
@@ -926,46 +892,62 @@ onPress={() => accepted && !loading && request && promptAsync()}
   setPhone(cleaned.replace(/[^0-9]/g, ""));
 }}
       />
+      {/* STEP 1 — SEND OTP BUTTON */}
+<TouchableOpacity
+  style={[
+    styles.button,
+    { opacity: otpLoading ? 0.5 : 1 }
+  ]}
+  onPress={sendOTP}
+  disabled={otpLoading}
+>
+  <Text style={styles.buttonText}>
+    {otpLoading ? "Sending OTP..." : "Send OTP"}
+  </Text>
+</TouchableOpacity>
     </View>
 
-    {/* STEP 1 — SEND OTP */}
-    {!verificationId && (
-   <TouchableOpacity
-  style={[styles.button, { opacity: !loading ? 1 : 0.4 }]}
-  onPress={() => !loading && sendOTP()}
-  disabled={loading}
->
-  <Text style={styles.buttonText}>
-    {loading ? "Sending OTP..." : "Send OTP"}
-  </Text>
-</TouchableOpacity>
+   
+   {/* STEP 2 — OTP VERIFY */}
+ {/* STEP 2 — VERIFY OTP */}
+{confirmationResult && (
+  <>
+    <TextInput
+      style={styles.input}
+      placeholder="Enter 6-digit OTP"
+      placeholderTextColor="#aaa"
+      keyboardType="number-pad"
+      value={otp}
+      onChangeText={setOtp}
+    />
 
-    )}
+    <TouchableOpacity
+      style={[
+        styles.button,
+        { opacity: verifyLoading ? 0.5 : 1 }
+      ]}
+      onPress={verifyOTP}
+      disabled={verifyLoading}
+    >
+      <Text style={styles.buttonText}>
+        {verifyLoading ? "Verifying..." : "Verify & Continue"}
+      </Text>
+    </TouchableOpacity>
 
-    {/* STEP 2 — VERIFY OTP */}
-    {verificationId && (
-      <>
-        <TextInput
-          style={styles.input}
-          placeholder="Enter 6-digit OTP"
-          placeholderTextColor="#aaa"
-          keyboardType="number-pad"
-          value={otp}
-          onChangeText={setOtp}
-        />
-
-     <TouchableOpacity
-  style={[styles.button, { opacity: !loading ? 1 : 0.4 }]}
-  onPress={() => !loading && verifyOTP()}
-  disabled={loading}
->
-  <Text style={styles.buttonText}>
-    {loading ? "Verifying..." : "Verify & Continue"}
-  </Text>
-</TouchableOpacity>
-
-      </>
-    )}
+    {/* OPTIONAL RESET */}
+    <TouchableOpacity
+      style={styles.link}
+      onPress={() => {
+        setConfirmationResult(null);
+        setOtp("");
+      }}
+    >
+      <Text style={styles.linkText}>
+        Change phone number
+      </Text>
+    </TouchableOpacity>
+  </>
+)}
 
     <TouchableOpacity style={styles.link} onPress={closeForm}>
       <Text style={styles.linkText}>Back</Text>

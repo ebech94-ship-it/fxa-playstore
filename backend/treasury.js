@@ -147,7 +147,7 @@ async registerTournament(t, userId, tournamentId) {
     username: user.username || "Player",
     publicId: user.publicId || null,
     countryCode: user.countryCode || null,
-
+referrerId: user.referredBy || null,
     tournamentId,
     tournamentName: tournament.name || "Tournament",
 

@@ -1,5 +1,5 @@
 // firebaseConfig.tsx
-import  {app, auth, db } from "@/lib/firebase";
+import  app, {auth, db } from "@/lib/firebase";
 import { getStorage } from "firebase/storage";
 
 // ✅ now `app` is a modular FirebaseApp
