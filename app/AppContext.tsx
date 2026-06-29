@@ -24,6 +24,7 @@ export type AccountType =
   | { type: "tournament"; tournamentId: string };
 
 export type PlayerTournament = {
+ id: string; 
   tournamentId: string;
 
   // UI
@@ -34,13 +35,17 @@ export type PlayerTournament = {
   // core
   balance: number;
   initialBalance: number;
-
+startingBalance?: number; 
   joined: boolean;
 
   status: "upcoming" | "ongoing" | "finished";
 
   rebuyCount?: number;
   rebuys?: any[];
+
+  rankingScore?: number;
+rebuyInjectedTotal?: number;
+lastRebuyAt?: number;
 
   startTime?: number;
   endTime?: number;
@@ -52,6 +57,7 @@ export type PlayerTournament = {
   losses: number;
   trades: number;
   winRate: number;
+  rebuyInjectedTotal?: number;
 };
 };
 
@@ -172,7 +178,7 @@ setAppReady: (value: boolean) => void;
   unreadCount: number;
   setUnreadCount: React.Dispatch<React.SetStateAction<number>>;
   loading: boolean;
-userTournamentRaw: Record<string, PlayerTournament>;
+
   // ✅ New additions
   balances: { demo: number; real: number; tournament: number };
   activeBalance: number;
@@ -185,9 +191,21 @@ setProfileSubmitted: React.Dispatch<React.SetStateAction<boolean>>;
 
 
   tournamentAccounts: TournamentAccount[];
+  activeLeaderboardParticipants: Participant[];
  
   joinedMap: Record<string, boolean>;
+  leaderboardParticipants?: Record<string, Participant[]>;
 
+};
+export type Participant = {
+  id: string;
+  username?: string;
+  balance?: number;
+  avatar?: string;
+  countryCode?: string;
+  performance?: number;
+  rankingScore?: number;
+  initialBalance?: number;
 };
 
 
@@ -215,6 +233,7 @@ export type TournamentAccount = {
   losses: number;
   trades: number;
   winRate: number;
+  rebuyInjectedTotal?: number;
 };
 };
 
@@ -231,10 +250,12 @@ const AppContext = createContext<AppContextType>({
   authUser: null,
   userDoc: null,
   accounts: null,
+ 
   tournaments: [],
   activeAccount: { type: "demo" },
   activeTournament: null,
-   userTournamentRaw: {},
+  activeLeaderboardParticipants: [],
+ 
   setActiveAccount: () => {},
   setActiveTournament: () => {},
 
@@ -272,16 +293,16 @@ export const AppProvider = ({ children }: { children: ReactNode }) => {
   // 🔐 Admin state
 const [isAdmin, setIsAdmin] = useState(false);
 const [adminLoaded, setAdminLoaded] = useState(false);
-const [userTournamentRaw, setUserTournamentRaw] =
-  useState<Record<string, PlayerTournament>>({});
+
 
   const [authUser, setAuthUser] = useState<User | null>(null);
 
   const [accounts, setAccounts] = useState<Accounts | null>(null);
-
-  const [tournaments, setTournaments] = useState<PlayerTournament[]>([]);
-const [activeTournament, setActiveTournament] =
+const [tournaments, setTournaments] = useState<PlayerTournament[]>([]);
+  
+  const [activeTournament, setActiveTournament] =
   useState<PlayerTournament | null>(null);
+
 const activeAccountRef = useRef<AccountType>({ type: "demo" });
 const activeTournamentRef = useRef<PlayerTournament | null>(null);
 
@@ -298,6 +319,9 @@ const [userDoc, setUserDoc] = useState<FirestoreUserDoc | null>(null);
 const [liveTournamentBalances, setLiveTournamentBalances] = useState<Record<string, number>>({});
 const [tournamentMeta, setTournamentMeta] = useState<
   Record<string, { name: string; symbol: string }>
+>({});
+const [leaderboardParticipants, setLeaderboardParticipants] = useState<
+  Record<string, Participant[]>
 >({});
 
 const [demoBalance, setDemoBalance] = useState<number>(1000);
@@ -354,13 +378,63 @@ const balancesState = useMemo(
   const [appReady, setAppReady] = useState(false);
 const [unreadCount, setUnreadCount] = useState(0);
 
+const tournamentsRef = useRef<PlayerTournament[]>([]);
+
+const userTournamentMap = useMemo(() => {
+  return userDoc?.accounts?.tournaments ?? {};
+}, [userDoc]);
+
+const mergedTournaments = useMemo(() => {
+  return tournaments.map(t => {
+    const u = userTournamentMap[t.tournamentId];
+
+    if (!u) return t;
+
+    return {
+      ...t,
+      balance: u.balance ?? t.balance,
+      joined: u.joined ?? t.joined,
+      rebuyCount: u.rebuyCount ?? t.rebuyCount,
+      rebuys: u.rebuys ?? t.rebuys,
+
+      performance: u.performance ?? t.performance,
+
+      // 🔥 ADD THESE (MUST MATCH BACKEND)
+      rankingScore: u.rankingScore ?? 0,
+      rebuyInjectedTotal: u.rebuyInjectedTotal ?? 0,
+      lastRebuyAt: u.lastRebuyAt ?? 0,
+      startingBalance:
+    u.startingBalance ?? t.startingBalance,
+
+initialBalance:
+    u.initialBalance ??
+    u.startingBalance ??
+    t.initialBalance ??
+    t.startingBalance ??
+    0,
+    };
+  });
+}, [tournaments, userTournamentMap]);
+
+const activeLeaderboardParticipants = useMemo(() => {
+  if (activeAccount.type === "demo") {
+    return leaderboardParticipants["demo"] ?? [];
+  }
+
+  if (activeAccount.type === "tournament") {
+    return leaderboardParticipants[activeAccount.tournamentId] ?? [];
+  }
+
+  return [];
+}, [leaderboardParticipants, activeAccount]);
 
   // ✅ ADD FUNCTION RIGHT HERE ⬇⬇⬇
 const switchAccount = useCallback((account: AccountType) => {
   if (account.type === "tournament") {
-    const t =
-  tournaments.find(x => x.tournamentId === account.tournamentId) ||
-  userDoc?.accounts?.tournaments?.[account.tournamentId];
+
+const t = mergedTournaments.find(
+  x => x.tournamentId === account.tournamentId
+);
 
     if (!t) return;
 
@@ -371,14 +445,14 @@ const switchAccount = useCallback((account: AccountType) => {
 
   setActiveTournament(null);
   setActiveAccount(account);
-}, [tournaments, userDoc?.accounts?.tournaments]);
+}, [mergedTournaments]);
 
 const [profile, setProfile] = useState<UserProfile | null>(null);
 const [profileLoaded, setProfileLoaded] = useState(false);
 const [profileSubmitted, setProfileSubmitted] = useState(false);
 
 const tournamentAccounts = useMemo(() => 
-  tournaments.map(t => ({
+  mergedTournaments.map(t => ({
      type: "tournament" as const,
     tournamentId: t.tournamentId,
     id: t.tournamentId,
@@ -392,8 +466,16 @@ const tournamentAccounts = useMemo(() =>
       currency: t.currency ?? t.symbol ?? "$", // ✅ SAFETY FALLBACK
     status: t.status ?? "upcoming",
     joined: t.joined,
-    performance: t.performance,
-  })), [tournaments, tournamentMeta, liveTournamentBalances]);
+   performance: {
+  pnl: t.performance?.pnl ?? 0,
+  roi: t.performance?.roi ?? 0,
+  wins: t.performance?.wins ?? 0,
+  losses: t.performance?.losses ?? 0,
+  trades: t.performance?.trades ?? 0,
+  winRate: t.performance?.winRate ?? 0,
+  rebuyInjectedTotal: t.performance?.rebuyInjectedTotal ?? 0,
+},
+  })), [mergedTournaments, tournamentMeta, liveTournamentBalances]);
 
 const joinedMap = useMemo(() => {
   const raw = userDoc?.accounts?.tournaments ?? {};
@@ -406,8 +488,157 @@ const joinedMap = useMemo(() => {
 
   return map;
 }, [userDoc?.accounts?.tournaments]);
+const PREVIEW_PARTICIPANTS: Participant[] = [
+  {
+    id: "p1",
+    username: "WolfTrader",
+    balance: 950,
+    avatar: "https://i.pravatar.cc/150?img=32",
+    countryCode: "US",
+    rankingScore: 1000,
+  },
+  {
+    id: "p2",
+    username: "PipHunter",
+    balance: 870,
+    avatar: "https://i.pravatar.cc/150?img=12",
+    countryCode: "GB",
+    rankingScore: 900,
+  },
+  {
+    id: "p3",
+    username: "GoldKing",
+    balance: 790,
+    avatar: "https://i.pravatar.cc/150?img=50",
+    countryCode: "FR",
+    rankingScore: 800,
+  },
+  {
+    id: "p4",
+    username: "FXPhantom",
+    balance: 720,
+    avatar: "https://i.pravatar.cc/150?img=22",
+    countryCode: "CM",
+    rankingScore: 700,
+  },
+];
+
+
 /* ---------------- HELPERS ---------------- */
 
+useEffect(() => {
+  tournamentsRef.current = mergedTournaments;
+}, [mergedTournaments]);
+
+useEffect(() => {
+  const unsub = onSnapshot(collection(db, "tournaments"), (snap) => {
+    const list: PlayerTournament[] = snap.docs.map((d) => {
+      const data = d.data();
+
+      return {
+  id: d.id,
+  tournamentId: d.id,
+
+  // core
+  name: data.name ?? "Tournament",
+  symbol: data.symbol ?? "$",
+  currency: data.currency ?? "$",
+
+  // timing
+  startTime: Number(data.startTime ?? 0),
+  endTime: Number(data.endTime ?? 0),
+
+  // financial
+  entryFee: Number(data.entryFee ?? 0),
+  rebuyFee: Number(data.rebuyFee ?? data.entryFee ?? 0),
+  prizePool: Number(data.prizePool ?? 0),
+
+  startingBalance: Number(data.startingBalance ?? 0),
+  initialBalance: Number(data.initialBalance ?? 0),
+
+  // UI content (🔥 THIS WAS MISSING)
+  description: data.description ?? "",
+  rules: data.rules ?? "",
+  onRegisterInfo: data.onRegisterInfo ?? "",
+
+  payoutStructure: data.payoutStructure ?? [],
+
+  // system
+  balance: 0,
+  joined: false,
+  status: "upcoming",
+
+  performance: {
+    pnl: 0,
+    roi: 0,
+    wins: 0,
+    losses: 0,
+    trades: 0,
+    winRate: 0,
+    rebuyInjectedTotal: 0,
+  },
+};
+    });
+
+    setTournaments(list);
+  });
+
+  return unsub;
+}, []);
+useEffect(() => {
+  if (tournaments.length === 0) return;
+
+  const unsubscribes: (() => void)[] = [];
+
+  tournaments.forEach((t) => {
+    const ref = collection(
+      db,
+      "tournaments",
+      t.tournamentId,
+      "participants"
+    );
+
+    const unsub = onSnapshot(ref, (snap) => {
+      const list: Participant[] = snap.docs.map((d) => {
+        const data = d.data();
+
+        return {
+          id: d.id,
+          username: data.username,
+          balance: data.balance ?? 0,
+          avatar: data.avatar,
+          countryCode: data.countryCode,
+          rankingScore: data.rankingScore ?? 0,
+          initialBalance: data.initialBalance ?? 0,
+        };
+      });
+
+      // 🔥 SORT (important for leaderboard UI)
+    list.sort((a, b) => {
+  const scoreA = b.rankingScore ?? 0;
+  const scoreB = a.rankingScore ?? 0;
+
+  const balanceA = b.balance ?? 0;
+  const balanceB = a.balance ?? 0;
+
+  // PRIMARY: rankingScore
+  if (scoreA !== scoreB) return scoreA - scoreB;
+
+  // SECONDARY: balance (IMPORTANT FIX)
+  return balanceA - balanceB;
+});  list.sort((a, b) => (b.rankingScore ?? 0) - (a.rankingScore ?? 0));
+
+      setLeaderboardParticipants((prev) => ({
+        ...prev,
+        [t.tournamentId]: list,
+      }));
+    });
+
+    unsubscribes.push(unsub);
+  });
+
+  return () => unsubscribes.forEach((u) => u());
+}, [tournaments]);
 
 useEffect(() => {
   const ref = doc(db, "settings", "app");
@@ -485,6 +716,7 @@ useEffect(() => {
   activeTournamentRef.current = activeTournament;
 }, [activeAccount, activeTournament]);
 
+
 /* 📄 User document listener */
 useEffect(() => {
   if (!authUser) {
@@ -521,58 +753,56 @@ useEffect(() => {
 
     const acc: Accounts = data.accounts ?? {};
     setAccounts(acc);
-    const raw = acc?.tournaments ?? {};
+  
 
-setUserTournamentRaw(raw);
+
 console.log(
   "TOURNAMENTS RAW:",
   JSON.stringify(acc.tournaments, null, 2)
 );
     // Build tournament list from user accounts, only include joined tournaments
 const rawTournaments = data?.accounts?.tournaments ?? {};
+const tournamentList = Object.entries(rawTournaments).map(
+  ([id, userData]: any) => {
+  const def = tournamentsRef.current.find(t => t.tournamentId === id);
+    return {
+      id,
+      tournamentId: id,
+      // 🟢 GLOBAL TOURNAMENT DATA (from Firestore /tournaments)
+      name: def?.name ?? "Tournament",
+      symbol: def?.symbol ?? "$",
+      currency: def?.currency ?? "$",
 
-setUserTournamentRaw(rawTournaments);
+      startTime: def?.startTime,
+      endTime: def?.endTime,
 
-// UI CACHE ONLY (NO BUSINESS LOGIC)
-const tournamentList: PlayerTournament[] = Object.entries(rawTournaments).map(
-  ([id, t]: any) => ({
-    tournamentId: id,
-    name: t.name ?? "Tournament",
-    symbol: t.symbol ?? "$",
-    currency: t.currency ?? "$",
+ // 🟡 USER-SPECIFIC DATA (from userDoc)
+      balance: Number(userData.balance ?? 0),
+      initialBalance: Number(userData.initialBalance ?? def?.initialBalance ?? 0),
 
-    balance: Number(t.balance ?? 0),
-    initialBalance: Number(t.initialBalance ?? 0),
+      joined: userData.joined ?? true,
+      status: def?.status ?? "upcoming",
 
-    joined: t.joined ?? true,
+      rebuyCount: userData.rebuyCount ?? 0,
+      rebuys: userData.rebuys ?? [],
 
-    // IMPORTANT: DO NOT TRUST THIS FULLY
-    // status will be computed later
-    status: "upcoming",
-
-    rebuyCount: t.rebuyCount ?? 0,
-    rebuys: t.rebuys ?? [],
-
-    performance: t.performance ?? {
-  pnl: 0,
-  roi: 0,
-  wins: 0,
-  losses: 0,
-  trades: 0,
-  winRate: 0,
-},
-
-    startTime: t.startTime ?? null,
-    endTime: t.endTime ?? null,
-  })
+      performance: userData.performance ?? {
+        pnl: 0,
+        roi: 0,
+        wins: 0,
+        losses: 0,
+        trades: 0,
+        winRate: 0,
+        rebuyInjectedTotal: 0,
+      },
+    };
+  }
 );
 
-setTournaments(tournamentList);
 
-console.log(
-  "🔥 TOURNAMENT LIST:",
-  JSON.stringify(tournamentList, null, 2)
-);
+if (__DEV__) {
+  console.log("TOURNAMENT LIST UPDATED");
+}
 
     // ✅ Reset active tournament if it was deleted
     if (activeAccountRef.current.type === "tournament") {
@@ -592,6 +822,29 @@ console.log(
 
   return unsub;
 }, [authUser]);
+useEffect(() => {
+  if (!authUser?.uid) return;
+
+  // CREATE DEMO LEADERBOARD SNAPSHOT
+  setLeaderboardParticipants(prev => {
+    if (prev.demo && prev.demo.length > 0) return prev;
+
+    return {
+      ...prev,
+      demo: [
+        {
+          id: authUser.uid,
+          username: profile?.username ?? "You",
+          balance: demoBalance,
+          rankingScore: 1000,
+          countryCode: profile?.countryCode ?? "CM",
+        },
+        ...PREVIEW_PARTICIPANTS,
+      ],
+    };
+  });
+}, [authUser?.uid, profile?.username, demoBalance]);
+
 useEffect(() => {
   setTournaments(prev => {
     if (prev.length === 0) return prev;
@@ -752,10 +1005,13 @@ useEffect(() => {
   authUser,
   userDoc,
   accounts,
+ 
   demoBalance,
   setDemoBalance,
-  userTournamentRaw,
-  tournaments,
+
+  tournaments: mergedTournaments,
+ activeLeaderboardParticipants,
+
   activeAccount,
   activeTournament,
   setActiveAccount: switchAccount,
@@ -780,9 +1036,12 @@ useEffect(() => {
   authUser,
   userDoc,
   accounts,
+  
   demoBalance,
-  userTournamentRaw,
-  tournaments,
+ 
+  mergedTournaments,
+activeLeaderboardParticipants,
+
   activeAccount,
   activeTournament,
   switchAccount,

@@ -120,6 +120,7 @@ async registerTournament(t, userId, tournamentId) {
     t.update(userRef, {
       "accounts.real.balance": admin.firestore.FieldValue.increment(-entryFee),
     });
+    
 
     t.set(treasuryRef, {
       balance: admin.firestore.FieldValue.increment(entryFee),
@@ -153,7 +154,16 @@ referrerId: user.referredBy || null,
 
     balance: startingBalance,
     rebuyCount: 0,
-rebuyCostTotal: 0,
+rebuyInjectedTotal: 0,
+performance: {
+  pnl: 0,
+  roi: 0,
+  wins: 0,
+  losses: 0,
+  trades: 0,
+  winRate: 0,
+  rebuyInjectedTotal: 0,
+},
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
 
@@ -276,6 +286,7 @@ async processRebuy(t, userId, tournamentId) {
     balance: admin.firestore.FieldValue.increment(initialBalance),
     rebuyCount: admin.firestore.FieldValue.increment(1),
       rebuyCostTotal: admin.firestore.FieldValue.increment(rebuyFee),
+    rebuyInjectedTotal: admin.firestore.FieldValue.increment(rebuyFee),
     lastRebuyAt: admin.firestore.FieldValue.serverTimestamp(),
 
     rebuys: admin.firestore.FieldValue.arrayUnion({
@@ -297,8 +308,11 @@ async processRebuy(t, userId, tournamentId) {
     [`accounts.tournaments.${tournamentId}.rebuys`]:
       admin.firestore.FieldValue.arrayUnion({
         amount: rebuyFee,
+  
         at: Date.now(),
-      }),
+      }),  
+          [`accounts.tournaments.${tournamentId}.rebuyInjectedTotal`]:
+  admin.firestore.FieldValue.increment(rebuyFee),
   });
 
   // transaction log

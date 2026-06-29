@@ -61,7 +61,7 @@ export default function AccountSwitcher({
    tournamentMeta,
 }: AccountSwitcherProps) {
 
-  const { tournamentAccounts } = useApp(); // context only for tournaments
+  const { tournamentAccounts, tournaments } = useApp(); // context only for tournaments
 
   // convert context tournaments to UI-friendly shape
 const switcherTournaments = tournamentAccounts.map(t => ({
@@ -143,9 +143,9 @@ const displayBalance = (() => {
   }
 
   // tournament
-  const t = tournamentAccounts.find(
-    (x) => x.tournamentId === activeAccount.tournamentId
-  );
+const t = tournamentAccounts.find(
+  (x) => x.tournamentId === activeAccount.tournamentId
+) || tournaments.find(t => t.id === activeAccount.tournamentId);
 
   return Number(t?.balance ?? 0);
 })();

@@ -4,6 +4,31 @@ const admin = require("firebase-admin");
 if (!admin.apps.length) {
   admin.initializeApp();
 }
+function buildParticipantMirror(userTournament, extra = {}) {
+  return {
+    balance: userTournament.balance,
+    initialBalance: userTournament.startingBalance,
+
+    rebuyCount: userTournament.rebuyCount || 0,
+    rebuyInjectedTotal: userTournament.rebuyInjectedTotal || 0,
+    rebuys: userTournament.rebuys || [],
+
+    performance: userTournament.performance || {
+      pnl: 0,
+      roi: 0,
+      wins: 0,
+      losses: 0,
+      trades: 0,
+      winRate: 0,
+      rebuyInjectedTotal: 0
+    },
+
+    ...extra
+  };
+}
+function computeRankingScore(balance, startingBalance, rebuyInjectedTotal) {
+  return balance - startingBalance - rebuyInjectedTotal;
+}
 
 /* =========================================================
    1. AUTH TRIGGER → CREATE USER PROFILE
@@ -196,10 +221,16 @@ exports.placeTournamentTrade = functions.https.onCall(async (data, context) => {
       lastTournamentSync: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    tx.update(participantRef, {
-      balance: balance - amount,
-    });
+   const userTournament =
+  userSnap.data()?.accounts?.tournaments?.[tournamentId] || {};
 
+tx.set(
+  participantRef,
+  buildParticipantMirror(userTournament, {
+    balance: balance - amount
+  }),
+  { merge: true }
+);
     const tradeRef = db.doc(`users/${uid}/openTrades/${tradeId}`);
 
     tx.set(tradeRef, {
@@ -254,7 +285,9 @@ const participantRef = db.doc(
 
 let balance = tournamentAccount.balance || 0;
 
-const initialBalance = tournamentAccount.initialBalance || balance;
+const startingBalance = tournamentAccount.startingBalance || 0;
+const rebuyInjectedTotal =
+  tournamentAccount.rebuyInjectedTotal || 0;
 
 const performance = tournamentAccount.performance || {
   pnl: 0,
@@ -263,6 +296,7 @@ const performance = tournamentAccount.performance || {
   losses: 0,
   trades: 0,
   winRate: 0,
+   rebuyInjectedTotal: 0,
 };
     const isWin = result === "GAIN";
     const payout = isWin ? trade.amount * 1.95 : 0;
@@ -274,11 +308,16 @@ const wins = performance.wins + (isWin ? 1 : 0);
 
 const losses = performance.losses + (isWin ? 0 : 1);
 
-const pnl = balance - initialBalance;
+const pnl = balance - startingBalance;
 
-const roi = initialBalance > 0 ? (pnl / initialBalance) * 100 : 0;
-
+const roi = startingBalance > 0 ? (pnl / startingBalance) * 100 : 0;
 const winRate = trades > 0 ? (wins / trades) * 100 : 0;
+
+ const rankingScore = computeRankingScore(
+  balance,
+  startingBalance,
+  rebuyInjectedTotal
+);
 
    tx.update(userRef, {
   [`accounts.tournaments.${tournamentId}.balance`]: balance,
@@ -290,21 +329,23 @@ const winRate = trades > 0 ? (wins / trades) * 100 : 0;
     losses,
     trades,
     winRate,
+      rebuyInjectedTotal,
   },
+  [`accounts.tournaments.${tournamentId}.rankingScore`]: rankingScore,
 });
 
 // 👇 ADD THIS HERE
-tx.update(participantRef, {
-  balance,
-  performance: {
-    pnl,
-    roi,
-    wins,
-    losses,
-    trades,
-    winRate,
-  },
-});
+const userTournament =
+  userSnap.data()?.accounts?.tournaments?.[tournamentId] || {};
+
+tx.set(
+  participantRef,
+  buildParticipantMirror(userTournament, {
+    balance,
+    rankingScore
+  }),
+  { merge: true }
+);
     tx.set(closedTradeRef, {
       ...trade,
       result,
@@ -314,6 +355,145 @@ tx.update(participantRef, {
 
     tx.delete(tradeRef);
   });
+
+  return { success: true };
+});
+exports.onParticipantCreate = functions.firestore
+  .document("tournaments/{tournamentId}/participants/{uid}")
+  .onCreate(async (snap, context) => {
+    const db = admin.firestore();
+
+    const { tournamentId, uid } = context.params;
+
+    const data = snap.data();
+
+    const startingBalance = data?.startingBalance || 1000;
+
+    const userRef = db.doc(`users/${uid}`);
+
+    await userRef.set(
+      {
+        [`accounts.tournaments.${tournamentId}`]: {
+          balance: startingBalance,
+          startingBalance,
+          performance: {
+            pnl: 0,
+            roi: 0,
+            wins: 0,
+            losses: 0,
+            trades: 0,
+            winRate: 0,
+          },
+          rebuyInjectedTotal: 0,
+          rankingScore: 0,
+        },
+      },
+      { merge: true }
+    );
+  });
+  exports.rebuyTournament = functions.https.onCall(async (data, context) => {
+  const db = admin.firestore();
+
+  const uid = context.auth?.uid;
+  if (!uid) throw new functions.https.HttpsError("unauthenticated");
+
+  const { tournamentId, amount } = data;
+
+  const userRef = db.doc(`users/${uid}`);
+  const participantRef = db.doc(`tournaments/${tournamentId}/participants/${uid}`);
+
+await db.runTransaction(async (tx) => {
+  const userSnap = await tx.get(userRef);
+
+  const tournamentRef = db.doc(`tournaments/${tournamentId}`);
+  const tournamentSnap = await tx.get(tournamentRef);
+
+  const tournamentData = tournamentSnap.data();
+
+  // ✅ ONLY LIVE TOURNAMENT
+  if (tournamentData?.status !== "Live") {
+    throw new functions.https.HttpsError(
+      "failed-precondition",
+      "TOURNAMENT_NOT_LIVE"
+    );
+  }
+
+  const userData = userSnap.data();
+
+  const tournamentAccount =
+    userData?.accounts?.tournaments?.[tournamentId] || {};
+
+  const currentBalance = tournamentAccount.balance || 0;
+  const rebuyInjectedTotal = tournamentAccount.rebuyInjectedTotal || 0;
+
+  // ================================
+  // 🛑 1. COOLDOWN CHECK (10s)
+  // ================================
+  const lastRebuyAt =
+    userData?.accounts?.tournaments?.[tournamentId]?.lastRebuyAt || 0;
+
+  const now = Date.now();
+
+  if (now - lastRebuyAt < 10000) {
+    throw new functions.https.HttpsError(
+      "resource-exhausted",
+      "REBUY_COOLDOWN_ACTIVE"
+    );
+  }
+
+  const newBalance = currentBalance + amount;
+  const newRebuyTotal = rebuyInjectedTotal + amount;
+
+const startingBalance = tournamentAccount.startingBalance || 0;
+
+const rankingScore = computeRankingScore(
+  newBalance,
+  startingBalance,
+  rebuyInjectedTotal
+);
+  // ================================
+  // ✅ UPDATE USER
+  // ================================
+  tx.update(userRef, {
+    [`accounts.tournaments.${tournamentId}.balance`]: newBalance,
+    [`accounts.tournaments.${tournamentId}.rebuyInjectedTotal`]: newRebuyTotal,
+    [`accounts.tournaments.${tournamentId}.rankingScore`]: rankingScore,
+    [`accounts.tournaments.${tournamentId}.lastRebuyAt`]: now,
+
+  });
+
+  // ================================
+  // ✅ UPDATE LEADERBOARD
+  // ================================
+ const updatedTournamentAccount =
+  userData?.accounts?.tournaments?.[tournamentId] || {};
+
+tx.set(participantRef, {
+  balance: newBalance,
+  initialBalance: updatedTournamentAccount.startingBalance || 0,
+
+  rebuyCount: updatedTournamentAccount.rebuyCount || 0,
+  rebuyInjectedTotal: newRebuyTotal,
+  rebuys: updatedTournamentAccount.rebuys || [],
+
+  performance: updatedTournamentAccount.performance || {
+    pnl: 0,
+    roi: 0,
+    wins: 0,
+    losses: 0,
+    trades: 0,
+    winRate: 0,
+    rebuyInjectedTotal: 0,
+  },
+
+  rankingScore,
+}, { merge: true });
+
+  // ================================
+  // 🔓 UNLOCK FLAG AFTER UPDATE
+  // ================================
+  
+});
 
   return { success: true };
 });

@@ -3,10 +3,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import ViewShot from "react-native-view-shot";
 
-
-import { db } from "@/lib/firebase";
-import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
-
 import {
   BackHandler,
   FlatList, Image, Modal, Pressable,
@@ -29,6 +25,7 @@ export type Participant = {
   avatar?: string;
   countryCode?: string;
   performance?: number;
+  rankingScore?: number;
 initialBalance?: number;
 };
 
@@ -156,16 +153,13 @@ const toISO2 = (country?: string) => {
 
 
 const LeaderboardBar = ({
-  activeAccount,
+  
   tournamentBalance, demoBalance
 }: LeaderboardBarProps) => {
 
 
-  const { authUser, profile, tournaments } = useApp();
-  const tournamentId =
-  activeAccount.type === "tournament"
-    ? activeAccount.tournamentId
-    : null;
+  const { authUser, profile, activeAccount,  tournaments } = useApp();
+ 
 
 const activeTourney =
   activeAccount.type === "tournament"
@@ -177,14 +171,15 @@ const { width, height } = useWindowDimensions();
 const isLandscape = width > height;
   
  const [showFull, setShowFull] = useState(false); 
-  const [liveParticipants, setLiveParticipants] = useState<Participant[]>([]);
+ 
 
-const [loadingLive, setLoadingLive] = useState(false);
 const PAGE_SIZE = 50;
 const [page, setPage] = useState(1);
 
 const [pagedParticipants, setPagedParticipants] = useState<Participant[]>([]);
 const [showSharePreview, setShowSharePreview] = useState(false);
+
+const { activeLeaderboardParticipants = {} } = useApp() as any;
 
 const shareLeaderboard = async () => {
   try {
@@ -217,115 +212,45 @@ const copyInviteLink = async () => {
 
 
 
-useEffect(() => {
-  if (activeAccount.type !== "demo") return;
-
-  setLoadingLive(true);
-
-  const q = query(
-    collection(db, "demoBalances"),
-    orderBy("balance", "desc")
-  );
-
-  const unsub = onSnapshot(q, (snap) => {
-    const participants: Participant[] = snap.docs.map((d) => {
-      const data = d.data() as Omit<Participant, "id">;
-      return {
-        id: d.id,
-        ...data,
-      };
-    });
-    setLiveParticipants(participants);
-    setLoadingLive(false);
-  });
-
-  return () => unsub();
-}, [activeAccount.type]);
-
-useEffect(() => {
-  if (!tournamentId) {
-    setLiveParticipants([]);
-    setLoadingLive(false);
-    return;
-  }
-
-  setLoadingLive(true);
-
-  const q = query(
-    collection(db, "tournaments", tournamentId, "participants")
-  );
-
-  const unsub = onSnapshot(q, (snap) => {
-    const participants: Participant[] = snap.docs.map((d) => {
-      const data = d.data() as any;
-
-const initialBalance =
-  data.initialBalance ?? activeTourney?.initialBalance ?? 0;
-
-const balance = data.balance ?? 0;
-
-// 🔥 IMPORTANT: real rebuy cost (must be stored properly in Firestore)
-const rebuyCostTotal = data.rebuyCostTotal ?? 0;
-
-// 🔥 CORE PERFORMANCE LOGIC
-const performance =
-  (balance - initialBalance) - rebuyCostTotal;
-
-      return {
-        id: d.id,
-        ...data,
-        performance,
-      };
-    });
-
-   
-    setLiveParticipants(participants);
-    setLoadingLive(false);
-  });
-
-  return () => unsub();
-}, [tournamentId, activeTourney?.initialBalance]);
-
-const isTournamentLive =
-  activeAccount.type === "tournament" && !!activeTourney?.tournamentId;
 
 
-const participants: Participant[] = activeAccount.type === "demo"
-  ? liveParticipants          // Fetch from demoAccounts collection
-  : isTournamentLive
-  ? liveParticipants          // Tournament live leaderboard
-  : PREVIEW_PARTICIPANTS;     // Fallback
+const participants: Participant[] =
+  activeLeaderboardParticipants?.length
+    ? activeLeaderboardParticipants
+    : PREVIEW_PARTICIPANTS;
 
 // ✅ Override current user's balance with AppContext first
-const displayParticipants = participants.map((p) => {
-  const isCurrent = currentUser && p.id === currentUser.uid;
+const displayParticipants = useMemo(() => {
+  return participants.map((p) => {
+    const isCurrent = currentUser && p.id === currentUser.uid;
 
-  if (!isCurrent) return p;
+    if (!isCurrent) return p;
 
-  if (activeAccount.type === "demo") {
-    return {
-  ...p,
-  balance: demoBalance ?? p.balance,
-  performance: p.performance,
-};
-  }
+    if (activeAccount.type === "demo") {
+      return {
+        ...p,
+        balance: demoBalance ?? p.balance,
+        performance: p.performance,
+      };
+    }
 
-  if (activeAccount.type === "tournament") {
-  return {
-  ...p,
-  balance: tournamentBalance ?? p.balance,
-  performance: p.performance,
-};
-  }
+    if (activeAccount.type === "tournament") {
+      return {
+        ...p,
+        balance: tournamentBalance ?? p.balance,
+        performance: p.performance,
+      };
+    }
 
-  return p;
-});
+    return p;
+  });
+}, [participants, currentUser, activeAccount.type, demoBalance, tournamentBalance]);
 
-const sortedParticipants = [...displayParticipants].sort((a, b) => {
-  const aScore = a.performance ?? 0;
-const bScore = b.performance ?? 0;
-  return bScore - aScore;
-});
+const sortedParticipants = useMemo(() => {
+  return [...displayParticipants].sort(
+    (a, b) => (b.performance ?? 0) - (a.performance ?? 0)
+  );
+}, [displayParticipants]);
 
 const rankIndex = sortedParticipants.findIndex(
   (p) => p.id === currentUser?.uid
@@ -333,6 +258,12 @@ const rankIndex = sortedParticipants.findIndex(
 
 const rank = rankIndex >= 0 ? rankIndex + 1 : 1;
 
+useEffect(() => {
+  console.log("Leaderboard active account:", activeAccount);
+}, [activeAccount]);
+useEffect(() => {
+  setPage(1);
+}, [activeAccount]);
 
  useEffect (() => {
   const backAction = () => {
@@ -385,11 +316,7 @@ return (
         layout={Layout.springify().damping(15).stiffness(100).mass(0.6)}
         contentContainerStyle={styles.row}
       >
-        {loadingLive && isTournamentLive && (
-          <Text style={{ color: "#9ca3af", fontSize: 12, marginRight: 10 }}>
-            Loading live leaderboard…
-          </Text>
-        )}
+      
 
     {chunkedParticipants.map((pair, columnIndex) => (
   <View key={columnIndex} style={{ marginRight: 10 }}>
@@ -538,7 +465,7 @@ return (
 >
   <Text style={{ color: "white", fontWeight: "bold" }}>
     Share/Invite 
-  </Text>
+  </Text>s
 </TouchableOpacity>
          <FlatList
   data={pagedParticipants.sort((a, b) => (b.balance ?? 0) - (a.balance ?? 0))}                   // only the players for current page

@@ -1,7 +1,7 @@
 // TournamentScreen.tsx
 import { Ionicons } from "@expo/vector-icons";
 
-import { useLocalSearchParams } from "expo-router";
+
 import type { User } from "firebase/auth";
 import CountryFlag from "react-native-country-flag";
 
@@ -10,12 +10,12 @@ import { getAuth } from "firebase/auth";
 import { useApp } from "./AppContext"; // <-- add this at the top
 
 
-import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
+import { collection, doc, getDoc, onSnapshot, } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
 import {
   Alert, FlatList,
   KeyboardAvoidingView,
-  LayoutAnimation, Modal, Platform, Pressable, ScrollView, StyleSheet,
+  Modal, Platform, Pressable, ScrollView, StyleSheet,
   Text, TouchableOpacity, UIManager, View
 } from "react-native";
 import { db } from "../firebaseConfig";
@@ -117,15 +117,16 @@ const NameWithFlag = ({
 
 export default function TournamentScreen({ currentUser }: TournamentScreenProps) {
   const [selectedTournament, setSelectedTournament] = useState<Tournament | null>(null);
-  const [leaderboard, setLeaderboard] = useState<LeaderboardUser[]>([]);
+
+ 
+
   const [now, setNow] = useState(new Date().getTime());
-  const [tournaments, setTournaments] = useState<Tournament[]>([]);
-    const { tournamentId } = useLocalSearchParams<{ tournamentId: string }>();
+ 
+  
   // live players list for the currently selected tournament (used for counts / participant preview)
 
 const [tournamentCounts, setTournamentCounts] = useState<Record<string, number>>({});
 const [tournamentRebuys, setTournamentRebuys] = useState<Record<string, number>>({});
-
 
   const [viewTab, setViewTab] = useState("info"); // "info" | "leaderboard"
   
@@ -138,10 +139,9 @@ type LoadingState = {
 const [loadingActions, setLoadingActions] = useState<
   Record<string, LoadingState>
 >({});
-const [participantMap] = useState<Record<string, any>>({});
-// If you already have a context like useApp() that provides tournamentAccounts:
-const { balances, joinedMap,  profile } = useApp(); // or replace with your actual context
 
+// If you already have a context like useApp() that provides tournamentAccounts:
+const { balances, joinedMap,tournamentAccounts, tournaments, profile } = useApp(); // or replace with your actual context
 
 
   const setLoadingFor = (
@@ -168,40 +168,7 @@ useEffect(() => {
 
 
 // ---------- TOURNAMENTS + DEEPLINK AUTO SELECT ----------
-useEffect(() => {
-  const q = query(
-    collection(db, "tournaments"),
-    orderBy("createdAt", "desc")
-  );
 
-  const unsub = onSnapshot(q, (snapshot) => {
-    const list = snapshot.docs.map((d) => ({
-      id: d.id,
-      ...(d.data() as Omit<Tournament, "id">),
-    })) as Tournament[];
-
-    setTournaments(list);
-
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-
-    // ✅ FIX: remove selectedTournament dependency issue
-    if (tournamentId) {
-      const match = list.find((t) => t.id === tournamentId);
-
-      if (match) {
-        setSelectedTournament((prev) => {
-          // prevent unnecessary state updates
-          if (prev?.id === match.id) return prev;
-          return match;
-        });
-
-        setViewTab("info");
-      }
-    }
-  });
-
-  return () => unsub();
-}, [tournamentId]); // ✅ ONLY tournamentId
 
 
 
@@ -220,27 +187,26 @@ useEffect(() => {
     );
 
     const unsub = onSnapshot(ref, (snap) => {
-     let rebuyCostTotal = 0;
+let rebuyCount = 0;
 
-      snap.docs.forEach((d) => {
 
-       const data = d.data() as any;
+snap.docs.forEach((d) => {
+  const data = d.data() as any;
 
-const rebuyCost =
-  data.rebuyCostTotal ?? 0;
-
-rebuyCostTotal += rebuyCost;
-      });
-
+  rebuyCount += Number(data.rebuyCount ?? 0);
+ 
+});
       setTournamentCounts(prev => ({
         ...prev,
         [t.id]: snap.size,
       }));
 
-      setTournamentRebuys(prev => ({
+   setTournamentRebuys(prev => ({
   ...prev,
-  [t.id]: rebuyCostTotal,
+  [t.id]: rebuyCount,
 }));
+
+
     });
 
     unsubs.push(unsub);
@@ -250,32 +216,19 @@ rebuyCostTotal += rebuyCost;
 }, [tournaments]);
 
 // ---------- GLOBAL LEADERBOARD ----------
-useEffect(() => {
-  if (!selectedTournament?.id) {
-    setLeaderboard([]);
-    return;
-  }
+const leaderboard = useMemo(() => {
+  if (!selectedTournament?.id) return [];
 
-  const ref = collection(
-    db,
-    "tournaments",
-    selectedTournament.id,
-    "participants"
-  );
-
-  const unsub = onSnapshot(ref, (snap) => {
-    const rows = snap.docs.map((doc) => ({
-      id: doc.id,
-      ...(doc.data() as any),
+  return tournamentAccounts
+    .filter(t => t.tournamentId === selectedTournament.id && t.joined)
+    .map(t => ({
+      id: t.id,
+      balance: t.balance,
+      initialBalance: t.initialBalance,
+      rebuyInjectedTotal: t.performance?.rebuyInjectedTotal ?? 0,
+      performance: t.performance,
     }));
-
-    
-
-    setLeaderboard(rows);
-  });
-
-  return () => unsub();
-}, [selectedTournament?.id]);
+}, [tournamentAccounts, selectedTournament?.id]);
 
 // ---------- REGISTER USER TO TOURNAMENT ----------
 const handleRegister = async (tournamentId: string) => {
@@ -298,10 +251,10 @@ const handleRegister = async (tournamentId: string) => {
   }
 
   const tour = tournaments.find((t) => t.id === tournamentId);
-  if (!tour) {
-    Alert.alert("Error", "Tournament not found.");
-    return;
-  }
+  if (!tour?.endTime) {
+  Alert.alert("Error", "Tournament timing missing.");
+  return;
+}
 
   if (Date.now() > tour.endTime) {
     Alert.alert("Closed", "This tournament has already ended.");
@@ -352,28 +305,58 @@ setTournamentCounts(prev => ({
   }
 };
 
+
 // ----------- REBUY ACTION (SECURE BACKEND VERSION) -----------
+
 const handleRebuy = async (tournamentId: string) => {
   if (loadingActions[tournamentId]?.rebuy) return;
 
-   // 🔥 ADD THIS PRE-CHECK HERE
-  const tour = tournaments.find(t => t.id === tournamentId);
-  
-  const myAccount = participantMap[currentUser?.uid || ""];
+  if (!currentUser?.uid) {
+    Alert.alert("Error", "You must be logged in.");
+    return;
+  }
 
-  if (tour && myAccount) {
-    const currentBalance = myAccount.balance ?? 0;
-    const initialBalance = tour.startingBalance ?? 0;
+  const tour = tournaments.find((t) => t.id === tournamentId);
+  if (!tour) {
+    Alert.alert("Error", "Tournament not found.");
+    return;
+  }
 
-    if (currentBalance >= initialBalance * 0.5) {
-      Alert.alert(
-        "Rebuy Locked",
-        "You can only rebuy if your balance drops below 50% of starting balance."
-      );
+  // ---------- PRE-CHECK (SOURCE OF TRUTH = USER DOC) ----------
+  try {
+    const userRef = doc(db, "users", currentUser.uid);
+    const userSnap = await getDoc(userRef);
+
+    if (!userSnap.exists()) {
+      Alert.alert("Error", "User data not found.");
       return;
     }
+
+    const userData = userSnap.data();
+const currentBalance = userData.balance ?? 0;
+
+const initialBalance = tour.initialBalance ?? 0;
+
+if (!initialBalance) {
+  Alert.alert("Error", "Invalid tournament setup.");
+  return;
+}
+
+if (currentBalance >= initialBalance * 0.5) {
+  Alert.alert(
+    "Rebuy Locked",
+    "You can only rebuy when your balance drops below 50% of starting balance."
+  );
+  return;
+}
+  } catch (err) {
+    console.log("REBUP PRECHECK ERROR:", err);
+    Alert.alert("Error", "Unable to verify balance.");
+    return;
   }
-  setLoadingActions(prev => ({
+
+  // ---------- LOADING STATE ----------
+  setLoadingActions((prev) => ({
     ...prev,
     [tournamentId]: {
       ...prev[tournamentId],
@@ -384,14 +367,13 @@ const handleRebuy = async (tournamentId: string) => {
 
   try {
     const auth = getAuth();
-const user = auth.currentUser;
-console.log("AUTH USER", user?.uid);
-console.log("PROP USER", currentUser?.uid);
-if (!user) {
-  throw new Error("You must be logged in.");
-}
+    const user = auth.currentUser;
 
-   const token = await user.getIdToken(true);
+    if (!user) {
+      throw new Error("You must be logged in.");
+    }
+
+    const token = await user.getIdToken(true);
 
     console.log("🔥 REBUY REQUEST START");
 
@@ -403,9 +385,7 @@ if (!user) {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({
-          tournamentId,
-        }),
+        body: JSON.stringify({ tournamentId }),
       }
     );
 
@@ -415,36 +395,27 @@ if (!user) {
     console.log("🔥 REBUY RESPONSE:", text);
 
     let result: any = {};
-
     try {
       result = JSON.parse(text);
     } catch {}
 
     if (!response.ok) {
-      throw new Error(
-        result?.error ||
-        result?.message ||
-        text ||
-        "Rebuy failed"
-      );
+      const errorMsg =
+        result?.error === "REBUY_NOT_ALLOWED"
+          ? "Rebuy not allowed yet (balance must drop below 50%)."
+          : result?.error === "Insufficient balance"
+          ? "Not enough wallet balance."
+          : result?.error || "Rebuy failed";
+
+      throw new Error(errorMsg);
     }
 
-    if (!response.ok) {
-  const errorMsg =
-    result?.error === "REBUY_NOT_ALLOWED"
-      ? "Rebuy not allowed yet (balance must drop below 50%)."
-      : result?.error === "Insufficient balance"
-      ? "Not enough wallet balance."
-      : result?.error || "Rebuy failed";
+    Alert.alert(
+      "Success 🎉",
+      "Rebuy successful, get back to competition!"
+    );
 
-  throw new Error(errorMsg);
-}
-
-Alert.alert("Success", "Rebuy successful, get back to competition!");
-
-   
-
-    setLoadingActions(prev => ({
+    setLoadingActions((prev) => ({
       ...prev,
       [tournamentId]: {
         ...prev[tournamentId],
@@ -455,12 +426,9 @@ Alert.alert("Success", "Rebuy successful, get back to competition!");
   } catch (error: any) {
     console.log("🔥 REBUY ERROR:", error);
 
-    Alert.alert(
-      "Rebuy Failed",
-      error?.message || "Unknown error"
-    );
+    Alert.alert("Rebuy Failed", error?.message || "Unknown error");
 
-    setLoadingActions(prev => ({
+    setLoadingActions((prev) => ({
       ...prev,
       [tournamentId]: {
         ...prev[tournamentId],
@@ -539,22 +507,23 @@ const sortedLeaderboard = useMemo(() => {
 
   copy.sort((a: any, b: any) => {
 
-  const startBalance = selectedTournament?.startingBalance ?? 0;
-const rebuyCost = selectedTournament?.id
-  ? (tournamentRebuys[selectedTournament.id] ?? 0)
-  : 0;
+ const startBalance = selectedTournament?.initialBalance ?? 0;
 
 const aScore =
-  (a.balance ?? 0) - startBalance - rebuyCost;
+  (a.balance ?? 0) -
+  startBalance -
+  (a.rebuyInjectedTotal ?? 0);
 
 const bScore =
-  (b.balance ?? 0) - startBalance - rebuyCost;
+  (b.balance ?? 0) -
+  startBalance -
+  (b.rebuyInjectedTotal ?? 0);
     return bScore - aScore;
   });
 
   return copy;
-}, [leaderboard, selectedTournament?.startingBalance, selectedTournament?.id,
-  tournamentRebuys]);
+}, [leaderboard, selectedTournament?.initialBalance]);
+
   
   // TOURNAMENT CARD
 const TournamentCard = ({ item }: { item: any }) => {
@@ -591,8 +560,14 @@ const TournamentCard = ({ item }: { item: any }) => {
 const allowRebuy =
   status === "ongoing" &&
   joinedMap[item.id];
-
+console.log("CARD ITEM:", {
+  id: item.id,
+  name: item.name,
+  initialBalance: item.initialBalance,
+  startingBalance: item.startingBalance,
+});
   return (
+  
     <TouchableOpacity
       activeOpacity={0.95}
       style={[
@@ -663,7 +638,7 @@ const allowRebuy =
         </Text>
 
         <Text style={styles.cardFeeText}>
-          💵 Start: {item.startingBalance ?? 0} $
+          💵 Start: {item.initialBalance ?? 0} $
         </Text>
       </View>
 
@@ -808,7 +783,14 @@ disabled={
      <Text style={styles.tableColBalance} numberOfLines={1}>
   {user.balance ?? 0}T
 </Text>
-
+<Text style={styles.tableColPerformance}>
+  {((user.balance ?? 0)
+    - (selectedTournament?.initialBalance ?? 0)
+    - (user.rebuyInjectedTotal ?? 0)) >= 0 ? "+" : ""}
+  {((user.balance ?? 0)
+    - (selectedTournament?.initialBalance ?? 0)
+    - (user.rebuyInjectedTotal ?? 0))}T
+</Text>
       {/* Tier */}
       <Text style={styles.tableColTier}>
         {getTierForRank(rank)}
@@ -836,6 +818,9 @@ disabled={
         <Text style={[styles.tableColBalance, styles.headerText]}>
           Balance
         </Text>
+        <Text style={[styles.tableColPerformance, styles.headerText]}>
+  Performance
+</Text>
         <Text style={[styles.tableColTier, styles.headerText]}>
           Level
         </Text>
@@ -873,7 +858,14 @@ disabled={
           <Text style={styles.tableColBalance}>
             {row.balance ?? 0}T
           </Text>
-
+<Text style={styles.tableColPerformance}>
+  {((row.balance ?? 0)
+    - (selectedTournament?.initialBalance ?? 0)
+    - (row.rebuyInjectedTotal ?? 0)) >= 0 ? "+" : ""}
+  {((row.balance ?? 0)
+    - (selectedTournament?.initialBalance ?? 0)
+    - (row.rebuyInjectedTotal ?? 0))}T
+</Text>
           <Text style={styles.tableColTier}>
             {getTierForRank(i + 1)}
           </Text>
@@ -1080,7 +1072,7 @@ disabled={
     <Text style={styles.sectionTitle}>🎁 On Registration</Text>
     <Text style={styles.infoText}>
       {selectedTournament.onRegisterInfo ||
-        `You get a starting demo balance of ${selectedTournament.startingBalance ?? 0} $ and leaderboard entry.`}
+        `You get a starting demo balance of ${selectedTournament.initialBalance ?? 0} $ and leaderboard entry.`}
     </Text>
 
     {selectedTournament.payoutStructure?.length ? (
@@ -1133,14 +1125,19 @@ disabled={
 ) : (
   // Leaderboard tab: single table with all users
   <ScrollView
-    style={{ flex: 1 }}
-    contentContainerStyle={{ paddingBottom:120 }}
-    showsVerticalScrollIndicator={false}
+  style={{ flex: 1 }}
+  contentContainerStyle={{ paddingBottom: 120 }}
+  showsVerticalScrollIndicator={false}
+>
+  <ScrollView
+    horizontal
+    showsHorizontalScrollIndicator={true}
   >
-    <View style={{ flexGrow: 1 }}>
+    <View style={{ minWidth: 750 }}>
       <LeaderboardTable list={sortedLeaderboard} />
     </View>
   </ScrollView>
+</ScrollView>
 )}
           </View>
         )}
@@ -1180,7 +1177,7 @@ modalContent: {
   backgroundColor: "#0e0f26",
   borderRadius: 18,
   width: "92%",
-  height: "90%",
+flex: 1, 
 
   paddingHorizontal: 16,
   alignSelf: "center",
@@ -1221,7 +1218,7 @@ tableRow: {   flexDirection: "row",  alignItems: "center",
   paddingVertical: 8,  borderBottomWidth: 1,  borderBottomColor: "#12121a",
 },
 
-tableColSmall: { flexShrink: 0, color: "#fff", fontWeight: "700" },
+
   tableCol: { flex: 1, color: "#fff" },
   pinnedRow: { backgroundColor: "#12142e", padding: 10, borderRadius: 10, borderTopWidth: 1,
  
@@ -1261,14 +1258,16 @@ cardPrizeText: { color: "#facc15", fontWeight: "bold", fontSize: 16,},
 cardFeeText: { color: "#60a5fa", fontWeight: "bold", fontSize: 15,},
 
 
-startingBalanceText: { color: "#22c55e", fontWeight: "700", fontSize: 14, marginTop: 4 },
-tableColName: {  flex: 2.5,  color: "#fff",},
+initialBalanceText: { color: "#22c55e", fontWeight: "700", fontSize: 14, marginTop: 4 },
+tableColName: {  width: 160,   color: "#fff",},
+tableColSmall: {width: 40,    color: "#fff", fontWeight: "700" },
+tableColBalance: {  width: 130,   color: "#38bdf8",  fontWeight: "700",},
+tableColPerformance: {  width: 140,   color: "#22c55e", fontWeight: "700", },
 
-tableColBalance: {  flex: 1.5,  color: "#38bdf8",  fontWeight: "700",},
+tableColTier: {  width: 160,   color: "#facc15",  fontWeight: "700",},
 
-tableColTier: {  flex: 1.4,  color: "#facc15",  fontWeight: "700",},
+tableColPrize: {  width: 140,   color: "#22c55e",  fontWeight: "800",},
 
-tableColPrize: {  flex: 1.3,  color: "#22c55e",  fontWeight: "800",},
 rankHeaderRow: {
   flexDirection: 'row',
   marginTop: 8,
