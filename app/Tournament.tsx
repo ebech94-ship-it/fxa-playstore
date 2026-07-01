@@ -141,7 +141,9 @@ const [loadingActions, setLoadingActions] = useState<
 >({});
 
 // If you already have a context like useApp() that provides tournamentAccounts:
-const { balances, joinedMap,tournamentAccounts, tournaments, profile } = useApp(); // or replace with your actual context
+const { balances, joinedMap, leaderboardParticipants, tournaments, 
+  profile, setOpenAccountSwitcher,
+  setSwitcherHintTournamentId } = useApp(); // or replace with your actual context
 
 
   const setLoadingFor = (
@@ -219,16 +221,8 @@ snap.docs.forEach((d) => {
 const leaderboard = useMemo(() => {
   if (!selectedTournament?.id) return [];
 
-  return tournamentAccounts
-    .filter(t => t.tournamentId === selectedTournament.id && t.joined)
-    .map(t => ({
-      id: t.id,
-      balance: t.balance,
-      initialBalance: t.initialBalance,
-      rebuyInjectedTotal: t.performance?.rebuyInjectedTotal ?? 0,
-      performance: t.performance,
-    }));
-}, [tournamentAccounts, selectedTournament?.id]);
+  return leaderboardParticipants[selectedTournament.id] ?? [];
+}, [leaderboardParticipants, selectedTournament?.id]);
 
 // ---------- REGISTER USER TO TOURNAMENT ----------
 const handleRegister = async (tournamentId: string) => {
@@ -288,7 +282,9 @@ console.log("REGISTER RESPONSE:", text);
     }
 Alert.alert(
   "Registration Successful 🎉",
-  "🎯 Switch to your Tournament Account in Account Switcher to start trading."
+  `You have successfully registered for "${tour.name}".\n\nWe 
+  are opening your Account Switcher so you can switch to your
+   Tournament Account to join the conpetition.`
 );
 
 setTournamentCounts(prev => ({
@@ -297,6 +293,9 @@ setTournamentCounts(prev => ({
 }));
     // 🔥 SIMPLE STATE UPDATE (CORRECT FOR YOUR STRUCTURE)
    // refresh UI count locally (optional optimistic update)
+// 🔥 AUTO OPEN SWITCHER
+setSwitcherHintTournamentId(tournamentId);
+setOpenAccountSwitcher(true);
 
   } catch (error: any) {
     Alert.alert("Error", error.message || "Registration failed.");
@@ -309,6 +308,8 @@ setTournamentCounts(prev => ({
 // ----------- REBUY ACTION (SECURE BACKEND VERSION) -----------
 
 const handleRebuy = async (tournamentId: string) => {
+  console.log("✅ STEP 1 - handleRebuy()", tournamentId);
+
   if (loadingActions[tournamentId]?.rebuy) return;
 
   if (!currentUser?.uid) {
@@ -317,6 +318,9 @@ const handleRebuy = async (tournamentId: string) => {
   }
 
   const tour = tournaments.find((t) => t.id === tournamentId);
+
+  console.log("✅ STEP 2 - Tournament:", tour);
+
   if (!tour) {
     Alert.alert("Error", "Tournament not found.");
     return;
@@ -327,30 +331,47 @@ const handleRebuy = async (tournamentId: string) => {
     const userRef = doc(db, "users", currentUser.uid);
     const userSnap = await getDoc(userRef);
 
+    console.log("✅ STEP 3 - User exists:", userSnap.exists());
+
     if (!userSnap.exists()) {
       Alert.alert("Error", "User data not found.");
       return;
     }
 
     const userData = userSnap.data();
-const currentBalance = userData.balance ?? 0;
 
-const initialBalance = tour.initialBalance ?? 0;
+    console.log("✅ STEP 4 - User data:", userData);
 
-if (!initialBalance) {
-  Alert.alert("Error", "Invalid tournament setup.");
-  return;
-}
+   const tournamentAccount =
+  userData.accounts?.tournaments?.[tournamentId] ?? {};
 
-if (currentBalance >= initialBalance * 0.5) {
-  Alert.alert(
-    "Rebuy Locked",
-    "You can only rebuy when your balance drops below 50% of starting balance."
-  );
-  return;
-}
+const currentBalance = Number(tournamentAccount.balance ?? 0);
+    // 🔥 IMPORTANT: use startingBalance, NOT initialBalance
+    const startingBalance = Number(tour.startingBalance ?? 0);
+
+    console.log("✅ STEP 5", {
+    
+  currentBalance,
+  startingBalance,
+  tournamentAccount,
+});
+
+    if (!startingBalance) {
+      Alert.alert("Error", "Invalid tournament setup.");
+      return;
+    }
+
+    if (currentBalance >= startingBalance * 0.5) {
+      Alert.alert(
+        "Rebuy Locked",
+        "You can only rebuy when your balance drops below 50% of starting balance."
+      );
+      return;
+    }
+
+    console.log("✅ STEP 6 - Precheck passed");
   } catch (err) {
-    console.log("REBUP PRECHECK ERROR:", err);
+    console.log("❌ REBUY PRECHECK ERROR:", err);
     Alert.alert("Error", "Unable to verify balance.");
     return;
   }
@@ -375,7 +396,7 @@ if (currentBalance >= initialBalance * 0.5) {
 
     const token = await user.getIdToken(true);
 
-    console.log("🔥 REBUY REQUEST START");
+    console.log("🔥 STEP 7 - REBUY REQUEST START");
 
     const response = await fetch(
       "https://forexapp2-backend.onrender.com/tournament/rebuy",
@@ -395,6 +416,7 @@ if (currentBalance >= initialBalance * 0.5) {
     console.log("🔥 REBUY RESPONSE:", text);
 
     let result: any = {};
+
     try {
       result = JSON.parse(text);
     } catch {}
@@ -438,7 +460,6 @@ if (currentBalance >= initialBalance * 0.5) {
     }));
   }
 };
-
 
   const formatDuration = (ms: number) => {
   const sec = Math.floor(ms / 1000);
@@ -507,7 +528,7 @@ const sortedLeaderboard = useMemo(() => {
 
   copy.sort((a: any, b: any) => {
 
- const startBalance = selectedTournament?.initialBalance ?? 0;
+ const startBalance = selectedTournament?.startingBalance ?? 0;
 
 const aScore =
   (a.balance ?? 0) -
@@ -522,7 +543,7 @@ const bScore =
   });
 
   return copy;
-}, [leaderboard, selectedTournament?.initialBalance]);
+}, [leaderboard, selectedTournament?.startingBalance]);
 
   
   // TOURNAMENT CARD
@@ -560,12 +581,7 @@ const TournamentCard = ({ item }: { item: any }) => {
 const allowRebuy =
   status === "ongoing" &&
   joinedMap[item.id];
-console.log("CARD ITEM:", {
-  id: item.id,
-  name: item.name,
-  initialBalance: item.initialBalance,
-  startingBalance: item.startingBalance,
-});
+
   return (
   
     <TouchableOpacity
@@ -638,7 +654,7 @@ console.log("CARD ITEM:", {
         </Text>
 
         <Text style={styles.cardFeeText}>
-          💵 Start: {item.initialBalance ?? 0} $
+          💵 Starting Balance: {item.startingBalance ?? 0} $
         </Text>
       </View>
 
@@ -742,7 +758,7 @@ disabled={
       textAlign: "center",
     }}
   >
-    Rebuy available when current balance{"\n"} falls below 50% of initialBalance!
+    Rebuy available when current balance{"\n"} falls below 50% of startingBalance!
   </Text>
 )}
     </TouchableOpacity>
@@ -785,10 +801,10 @@ disabled={
 </Text>
 <Text style={styles.tableColPerformance}>
   {((user.balance ?? 0)
-    - (selectedTournament?.initialBalance ?? 0)
+    - (selectedTournament?.startingBalance ?? 0)
     - (user.rebuyInjectedTotal ?? 0)) >= 0 ? "+" : ""}
   {((user.balance ?? 0)
-    - (selectedTournament?.initialBalance ?? 0)
+    - (selectedTournament?.startingBalance ?? 0)
     - (user.rebuyInjectedTotal ?? 0))}T
 </Text>
       {/* Tier */}
@@ -860,10 +876,10 @@ disabled={
           </Text>
 <Text style={styles.tableColPerformance}>
   {((row.balance ?? 0)
-    - (selectedTournament?.initialBalance ?? 0)
+    - (selectedTournament?.startingBalance ?? 0)
     - (row.rebuyInjectedTotal ?? 0)) >= 0 ? "+" : ""}
   {((row.balance ?? 0)
-    - (selectedTournament?.initialBalance ?? 0)
+    - (selectedTournament?.startingBalance ?? 0)
     - (row.rebuyInjectedTotal ?? 0))}T
 </Text>
           <Text style={styles.tableColTier}>
@@ -1048,41 +1064,47 @@ disabled={
 {/* Scrollable content */}
 {viewTab === "info" ? (
  <ScrollView
-  style={{ flex: 1 }}
+  
   contentContainerStyle={{
-    paddingBottom: 140,
-    paddingTop: 10,
+    paddingBottom: 100,
+    paddingTop: 6,
+    paddingHorizontal: 4,
   }}
   showsVerticalScrollIndicator={false}
-  keyboardShouldPersistTaps="handled"
-  nestedScrollEnabled={true}   // 🔥 KEY FIX (Android + nested layouts)
 >
+<View style={{ minWidth: 750, minHeight:760 }}>
     <Text style={styles.sectionTitle}>📖 Information</Text>
+    <View style={styles.infoBox}>
     <Text style={styles.infoText}>
       {selectedTournament.description ||
         "Each participant receives a starting balance. Grow it, finish top to win the prize pool."}
     </Text>
+   </View>
 
     <Text style={styles.sectionTitle}>🧾 Rules</Text>
+    <View style={styles.infoBox}>
     <Text style={styles.infoText}>
       {selectedTournament.rules ||
         "1) No malicious bots. 2) Trades placed count. 3) Fair-play enforced."}
     </Text>
+   </View>
 
     <Text style={styles.sectionTitle}>🎁 On Registration</Text>
+    <View style={styles.infoBox}>
     <Text style={styles.infoText}>
       {selectedTournament.onRegisterInfo ||
-        `You get a starting demo balance of ${selectedTournament.initialBalance ?? 0} $ and leaderboard entry.`}
+        `You get a starting demo balance of ${selectedTournament.startingBalance ?? 0} $ and leaderboard entry.`}
     </Text>
+    </View>
 
     {selectedTournament.payoutStructure?.length ? (
       <View>
         <Text style={styles.sectionTitle}>🏆 RANKINGS</Text>
         {/* Header row */}
     <View style={[styles.rankHeaderRow]}>
-      <Text style={[styles.rankHeaderCol, { flex: 1 }]}>Position</Text>
-      <Text style={[styles.rankHeaderCol, { flex: 2 }]}>Level</Text> {/* instead of "Tier", use Level */}
-      <Text style={[styles.rankHeaderCol, { flex: 1, textAlign: 'right' }]}>Prize</Text>
+      <Text style={[styles.rankHeaderCol, { flex: 1, textAlign: 'left'}]}>Position</Text>
+      <Text style={[styles.rankHeaderCol, { flex: 1, textAlign: 'left'  }]}>Level</Text> {/* instead of "Tier", use Level */}
+      <Text style={[styles.rankHeaderCol, { flex: 1, textAlign: 'center' }]}>Prize</Text>
     </View>
         {selectedTournament.payoutStructure.map((p: any) => (
           <View
@@ -1091,10 +1113,10 @@ disabled={
               flexDirection: "row",
               marginTop: 8,
               alignItems: "center",
-              justifyContent: "space-between",
+              
             }}
           >
-            <Text style={{ color: "#cbd5e1", flex: 1 }}>
+            <Text style={{ color: "#cbd5e1", textAlign: "left", flex: 1 }}>
               {p.rank === 1 ? "🥇" : p.rank === 2 ? "🥈" : p.rank === 3 ? "🥉" : `#${p.rank}`}
             </Text>
             <Text
@@ -1102,7 +1124,7 @@ disabled={
                 color: "#facc15",
                 fontWeight: "800",
                 flex: 1,
-                textAlign: "center",
+                textAlign: "left",
               }}
             >
               {getTierForRank(p.rank)}
@@ -1112,17 +1134,20 @@ disabled={
                 color: "#22c55e",
                 fontWeight: "900",
                 flex: 1,
-                textAlign: "right",
+                textAlign: "center",
               }}
             >
               {p.amount} $
             </Text>
           </View>
         ))}
+        
       </View>
     ) : null}
+    </View>
   </ScrollView>
 ) : (
+
   // Leaderboard tab: single table with all users
   <ScrollView
   style={{ flex: 1 }}
@@ -1133,7 +1158,7 @@ disabled={
     horizontal
     showsHorizontalScrollIndicator={true}
   >
-    <View style={{ minWidth: 750 }}>
+    <View style={{ minWidth: 750, minHeight:760 }}>
       <LeaderboardTable list={sortedLeaderboard} />
     </View>
   </ScrollView>
@@ -1176,8 +1201,8 @@ disabledBtn: { opacity: 0.45 },
 modalContent: {
   backgroundColor: "#0e0f26",
   borderRadius: 18,
-  width: "92%",
-flex: 1, 
+  width: "100%",
+  maxHeight: "100%",
 
   paddingHorizontal: 16,
   alignSelf: "center",
@@ -1204,6 +1229,14 @@ flex: 1,
   tabTextActive: { color: "#fff", fontWeight: "900" },
   sectionTitle: { fontSize: 16, fontWeight: "900", color: "#ff7ab6", marginTop: 12 },
   infoText: { color: "#d1d5db", marginTop: 8 },
+ infoBox: {
+  backgroundColor: "#12142e",
+  padding: 12,
+  borderRadius: 12,
+  marginTop: 8,
+  borderWidth: 1,
+  borderColor: "#2b2b3a",
+},
 
   buttonRow: { flexDirection: "row", marginTop: 12, gap: 8 },
   registerBtn: { flex: 1, backgroundColor: "#0b74ff", padding: 12, borderRadius: 10, alignItems: "center", marginRight: 6 },
@@ -1258,13 +1291,13 @@ cardPrizeText: { color: "#facc15", fontWeight: "bold", fontSize: 16,},
 cardFeeText: { color: "#60a5fa", fontWeight: "bold", fontSize: 15,},
 
 
-initialBalanceText: { color: "#22c55e", fontWeight: "700", fontSize: 14, marginTop: 4 },
+startingBalanceText: { color: "#22c55e", fontWeight: "700", fontSize: 14, marginTop: 4 },
 tableColName: {  width: 160,   color: "#fff",},
 tableColSmall: {width: 40,    color: "#fff", fontWeight: "700" },
 tableColBalance: {  width: 130,   color: "#38bdf8",  fontWeight: "700",},
 tableColPerformance: {  width: 140,   color: "#22c55e", fontWeight: "700", },
 
-tableColTier: {  width: 160,   color: "#facc15",  fontWeight: "700",},
+tableColTier: {  width: 170,   color: "#facc15",  fontWeight: "700",},
 
 tableColPrize: {  width: 140,   color: "#22c55e",  fontWeight: "800",},
 

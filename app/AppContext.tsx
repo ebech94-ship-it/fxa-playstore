@@ -34,7 +34,7 @@ export type PlayerTournament = {
 
   // core
   balance: number;
-  initialBalance: number;
+ 
 startingBalance?: number; 
   joined: boolean;
 
@@ -171,6 +171,12 @@ setDemoBalance: React.Dispatch<React.SetStateAction<number>>;
   setActiveAccount: (a: AccountType) => void;
   setActiveTournament: (t: PlayerTournament | null) => void;
 
+openAccountSwitcher: boolean;
+setOpenAccountSwitcher: (value: boolean) => void;
+
+switcherHintTournamentId: string | null;
+setSwitcherHintTournamentId: (value: string | null) => void;
+
    appReady: boolean;
 setAppReady: (value: boolean) => void;
 
@@ -194,18 +200,20 @@ setProfileSubmitted: React.Dispatch<React.SetStateAction<boolean>>;
   activeLeaderboardParticipants: Participant[];
  
   joinedMap: Record<string, boolean>;
-  leaderboardParticipants?: Record<string, Participant[]>;
+  leaderboardParticipants: Record<string, Participant[]>;
 
 };
 export type Participant = {
   id: string;
   username?: string;
   balance?: number;
+  startingBalance?: number;
   avatar?: string;
   countryCode?: string;
   performance?: number;
   rankingScore?: number;
-  initialBalance?: number;
+  rebuyInjectedTotal?: number;
+  rebuyCount?: number;
 };
 
 
@@ -219,8 +227,9 @@ export type TournamentAccount = {
   symbol: string;  // "$" | "T"
 
   balance: number;
-  initialBalance: number;
+  
   currency: string;
+  startingBalance?: number;
 
   status: "upcoming" | "ongoing" | "finished";
 
@@ -279,13 +288,22 @@ setAppReady: () => {},
   profileSubmitted: false,       // ✅ ADD
   setProfileSubmitted: () => {}, // ✅ ADD
 
+openAccountSwitcher: false,
+setOpenAccountSwitcher: () => {},
+
+switcherHintTournamentId: null,
+setSwitcherHintTournamentId: () => {},
+
   tournamentAccounts: [],
+  leaderboardParticipants: {},
   
   joinedMap: {},
    unreadCount: 0,             // ✅ default
   setUnreadCount: () => {},   // ✅ noop default
 });
 
+ 
+ 
 /* ---------------- PROVIDER ---------------- */ 
 
 export const AppProvider = ({ children }: { children: ReactNode }) => {
@@ -406,12 +424,6 @@ const mergedTournaments = useMemo(() => {
       startingBalance:
     u.startingBalance ?? t.startingBalance,
 
-initialBalance:
-    u.initialBalance ??
-    u.startingBalance ??
-    t.initialBalance ??
-    t.startingBalance ??
-    0,
     };
   });
 }, [tournaments, userTournamentMap]);
@@ -451,8 +463,14 @@ const [profile, setProfile] = useState<UserProfile | null>(null);
 const [profileLoaded, setProfileLoaded] = useState(false);
 const [profileSubmitted, setProfileSubmitted] = useState(false);
 
-const tournamentAccounts = useMemo(() => 
-  mergedTournaments.map(t => ({
+const [openAccountSwitcher, setOpenAccountSwitcher] = useState(false);
+const [switcherHintTournamentId, setSwitcherHintTournamentId] = useState<string | null>(null);
+
+
+const tournamentAccounts = useMemo(() =>
+  mergedTournaments
+    .filter(t => t.joined === true && t.status !== "finished")
+    .map(t => ({
      type: "tournament" as const,
     tournamentId: t.tournamentId,
     id: t.tournamentId,
@@ -462,7 +480,8 @@ const tournamentAccounts = useMemo(() =>
  balance:
   liveTournamentBalances[t.tournamentId] ??
   t.balance ??  0,
-    initialBalance: t.initialBalance,
+   
+    startingBalance: t.startingBalance ?? 0,
       currency: t.currency ?? t.symbol ?? "$", // ✅ SAFETY FALLBACK
     status: t.status ?? "upcoming",
     joined: t.joined,
@@ -488,40 +507,7 @@ const joinedMap = useMemo(() => {
 
   return map;
 }, [userDoc?.accounts?.tournaments]);
-const PREVIEW_PARTICIPANTS: Participant[] = [
-  {
-    id: "p1",
-    username: "WolfTrader",
-    balance: 950,
-    avatar: "https://i.pravatar.cc/150?img=32",
-    countryCode: "US",
-    rankingScore: 1000,
-  },
-  {
-    id: "p2",
-    username: "PipHunter",
-    balance: 870,
-    avatar: "https://i.pravatar.cc/150?img=12",
-    countryCode: "GB",
-    rankingScore: 900,
-  },
-  {
-    id: "p3",
-    username: "GoldKing",
-    balance: 790,
-    avatar: "https://i.pravatar.cc/150?img=50",
-    countryCode: "FR",
-    rankingScore: 800,
-  },
-  {
-    id: "p4",
-    username: "FXPhantom",
-    balance: 720,
-    avatar: "https://i.pravatar.cc/150?img=22",
-    countryCode: "CM",
-    rankingScore: 700,
-  },
-];
+
 
 
 /* ---------------- HELPERS ---------------- */
@@ -554,7 +540,7 @@ useEffect(() => {
   prizePool: Number(data.prizePool ?? 0),
 
   startingBalance: Number(data.startingBalance ?? 0),
-  initialBalance: Number(data.initialBalance ?? 0),
+  
 
   // UI content (🔥 THIS WAS MISSING)
   description: data.description ?? "",
@@ -609,7 +595,7 @@ useEffect(() => {
           avatar: data.avatar,
           countryCode: data.countryCode,
           rankingScore: data.rankingScore ?? 0,
-          initialBalance: data.initialBalance ?? 0,
+          startingBalance: data.startingBalance ?? 0,
         };
       });
 
@@ -778,7 +764,7 @@ const tournamentList = Object.entries(rawTournaments).map(
 
  // 🟡 USER-SPECIFIC DATA (from userDoc)
       balance: Number(userData.balance ?? 0),
-      initialBalance: Number(userData.initialBalance ?? def?.initialBalance ?? 0),
+      startingBalance: Number(userData.startingBalance ?? def?.startingBalance ?? 0),
 
       joined: userData.joined ?? true,
       status: def?.status ?? "upcoming",
@@ -822,28 +808,43 @@ if (__DEV__) {
 
   return unsub;
 }, [authUser]);
+
 useEffect(() => {
   if (!authUser?.uid) return;
 
-  // CREATE DEMO LEADERBOARD SNAPSHOT
+  const username = profile?.username ?? "You";
+  const countryCode = profile?.countryCode ?? "CM";
+
   setLeaderboardParticipants(prev => {
-    if (prev.demo && prev.demo.length > 0) return prev;
+    const existing = prev.demo ?? [];
+
+    const updatedUser: Participant = {
+      id: authUser.uid,
+      username,
+      balance: demoBalance,
+      rankingScore: demoBalance, // IMPORTANT: tie ranking to balance
+      countryCode,
+    };
+
+    // merge user into existing list (replace user)
+    const filtered = existing.filter(p => p.id !== authUser.uid);
+
+    const newList = [...filtered, updatedUser];
+
+    // SORT (THIS CREATES THE “JUMPING” EFFECT)
+    newList.sort((a, b) => (b.balance ?? 0) - (a.balance ?? 0));
 
     return {
       ...prev,
-      demo: [
-        {
-          id: authUser.uid,
-          username: profile?.username ?? "You",
-          balance: demoBalance,
-          rankingScore: 1000,
-          countryCode: profile?.countryCode ?? "CM",
-        },
-        ...PREVIEW_PARTICIPANTS,
-      ],
+      demo: newList,
     };
   });
-}, [authUser?.uid, profile?.username, demoBalance]);
+}, [
+  authUser?.uid,
+  profile?.username,
+  profile?.countryCode,
+  demoBalance
+]);
 
 useEffect(() => {
   setTournaments(prev => {
@@ -1020,6 +1021,12 @@ useEffect(() => {
   balances: balancesState,
   activeBalance,
   profile,
+  openAccountSwitcher,
+  setOpenAccountSwitcher,
+  switcherHintTournamentId,
+  setSwitcherHintTournamentId,
+
+
   profileLoaded,
   setProfile,
   profileVerified: profile?.verified === true,
@@ -1027,6 +1034,7 @@ useEffect(() => {
   setProfileSubmitted,
   tournamentAccounts,
   joinedMap,
+  leaderboardParticipants,
 }), [
   appReady,
   unreadCount,
@@ -1050,10 +1058,17 @@ activeLeaderboardParticipants,
   balancesState,
   activeBalance,
   profile,
+
+openAccountSwitcher,
+setOpenAccountSwitcher,
+  
+  switcherHintTournamentId,
+  setSwitcherHintTournamentId,
   profileLoaded,
   profileSubmitted,
   tournamentAccounts,
   joinedMap,
+  leaderboardParticipants,
 ]);
   return (
     <AppContext.Provider value={contextValue}>

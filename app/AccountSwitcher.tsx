@@ -1,7 +1,7 @@
 // components/AccountSwitcher.tsx
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useState } from "react";
+import { useState,useEffect } from "react";
 import type { AccountType, TournamentAccount } from "./AppContext"; // keep type imports separate if you want
 import { useApp } from "./AppContext";
 // AccountSwitcher.tsx
@@ -61,16 +61,18 @@ export default function AccountSwitcher({
    tournamentMeta,
 }: AccountSwitcherProps) {
 
-  const { tournamentAccounts, tournaments } = useApp(); // context only for tournaments
+  const { openAccountSwitcher, setOpenAccountSwitcher, tournamentAccounts, tournaments } = useApp(); // context only for tournaments
 
   // convert context tournaments to UI-friendly shape
-const switcherTournaments = tournamentAccounts.map(t => ({
-  id: t.tournamentId,
-  name: t.name,
-  status: formatTournamentStatus(t.status),
-  balance: Number(t.balance ?? 0),
-  currency: t.currency ?? t.symbol ?? "$",
-}));
+const switcherTournaments = tournamentAccounts
+  .filter(t => t.status !== "finished")
+  .map(t => ({
+    id: t.tournamentId,
+    name: t.name,
+    status: formatTournamentStatus(t.status),
+    balance: Number(t.balance ?? 0),
+    currency: t.currency ?? t.symbol ?? "$",
+  }));
 
 
   const [expanded, setExpanded] = useState(false);
@@ -80,6 +82,14 @@ const switcherTournaments = tournamentAccounts.map(t => ({
   const toggleExpand = () => setExpanded((v) => !v);
 
   /* ================= HELPERS ================= */
+useEffect(() => {
+  if (openAccountSwitcher) {
+    setExpanded(true);
+    setOpenAccountSwitcher(false);
+  }
+}, [openAccountSwitcher, setOpenAccountSwitcher]);
+
+
 
   const getColor = (account: AccountType) => {
     if (account.type === "real") return "#FFD700";
@@ -125,7 +135,7 @@ const isTournamentLowBalance = () => {
 
 if (!t) return false;
 
-  const starting = Number(t?.initialBalance ?? 0);
+  const starting = Number(t?.startingBalance ?? 0);
 
 
   if (!starting) return false;

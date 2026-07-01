@@ -12,40 +12,43 @@ import { useEffect, useRef } from "react";
 
 import "react-native-reanimated";
 
+import AccountSwitcher from "@/app/AccountSwitcher";
+import { Modal, View } from "react-native";
 import { AppProvider, useApp } from "./AppContext";
 
 /* ===============================
    AUTH GATE
    =============================== */
 function AuthGate() {
-  const { authUser, loading, appReady,  } = useApp();
+  const { authUser, loading, appReady } = useApp();
   const router = useRouter();
-  const hasRedirected = useRef(false);
 
   useEffect(() => {
-    if ( loading || !appReady) return;
-    if (hasRedirected.current) return;
-
-    hasRedirected.current = true;
+    if (loading || !appReady) return;
 
     if (authUser) {
       router.replace("/tradinglayout");
     } else {
       router.replace("/welcome");
     }
-  }, [authUser, loading, appReady, router, ]);
+  }, [authUser, loading, appReady, router]);
 
   return null;
 }
 
 /* ===============================
-   ROOT LAYOUT
+   INNER APP
    =============================== */
-export default function RootLayout() {
+function InnerApp() {
   const colorScheme = useColorScheme();
   const router = useRouter();
+
   const handledRef = useRef(false);
   const routerRef = useRef(router);
+
+  const { openAccountSwitcher,   setOpenAccountSwitcher,
+    balances,  activeAccount,  setActiveAccount,
+  tournamentAccounts  } = useApp();
 
   /* ===============================
      DEEP LINK HANDLING
@@ -77,22 +80,63 @@ export default function RootLayout() {
     return () => sub.remove();
   }, []);
 
+const handleSwitch = (account: any) => {
+  setActiveAccount(account);
+};
+const tournamentBalances = tournamentAccounts;
+
+  return (
+    <ThemeProvider
+      value={colorScheme === "dark" ? DarkTheme : DefaultTheme}
+    >
+      {/* AUTH REDIRECT */}
+      <AuthGate />
+
+      {/* ROUTES */}
+      <Stack screenOptions={{ headerShown: false }}>
+        <Stack.Screen name="index" />
+        <Stack.Screen name="splash" />
+        <Stack.Screen name="welcome" />
+        <Stack.Screen name="tradinglayout" />
+      </Stack>
+
+      {/* =========================
+         GLOBAL ACCOUNT SWITCHER MODAL
+         ========================= */}
+      <Modal
+        visible={openAccountSwitcher}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setOpenAccountSwitcher(false)}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(0,0,0,0.6)",
+            justifyContent: "center",
+          }}
+        >
+         <AccountSwitcher
+  balances={balances}
+  activeAccount={activeAccount}
+  tournamentBalances={tournamentBalances}
+  onSwitch={handleSwitch}
+/>
+        </View>
+      </Modal>
+
+      <StatusBar style="auto" />
+    </ThemeProvider>
+  );
+}
+
+/* ===============================
+   ROOT LAYOUT
+   =============================== */
+export default function RootLayout() {
   return (
     <AppProvider>
-      <ThemeProvider
-        value={colorScheme === "dark" ? DarkTheme : DefaultTheme}
-      >
-        <AuthGate />
-
-        <Stack screenOptions={{ headerShown: false }}>
-          <Stack.Screen name="index" />
-          <Stack.Screen name="splash" />
-          <Stack.Screen name="welcome" />
-          <Stack.Screen name="tradinglayout" />
-        </Stack>
-
-        <StatusBar style="auto" />
-      </ThemeProvider>
+      <InnerApp />
     </AppProvider>
   );
 }

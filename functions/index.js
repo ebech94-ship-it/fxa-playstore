@@ -7,7 +7,7 @@ if (!admin.apps.length) {
 function buildParticipantMirror(userTournament, extra = {}) {
   return {
     balance: userTournament.balance,
-    initialBalance: userTournament.startingBalance,
+    startingBalance: userTournament.startingBalance,
 
     rebuyCount: userTournament.rebuyCount || 0,
     rebuyInjectedTotal: userTournament.rebuyInjectedTotal || 0,
@@ -20,10 +20,12 @@ function buildParticipantMirror(userTournament, extra = {}) {
       losses: 0,
       trades: 0,
       winRate: 0,
-      rebuyInjectedTotal: 0
+      rebuyInjectedTotal: 0,
     },
 
-    ...extra
+    rankingScore: userTournament.rankingScore || 0,
+
+    ...extra,
   };
 }
 function computeRankingScore(balance, startingBalance, rebuyInjectedTotal) {
@@ -449,8 +451,18 @@ const startingBalance = tournamentAccount.startingBalance || 0;
 const rankingScore = computeRankingScore(
   newBalance,
   startingBalance,
-  rebuyInjectedTotal
+  newRebuyTotal
 );
+
+const newRebuyCount = (tournamentAccount.rebuyCount || 0) + 1;
+
+const newRebuys = [
+  ...(tournamentAccount.rebuys || []),
+  {
+    amount,
+    at: now,
+  },
+];
   // ================================
   // ✅ UPDATE USER
   // ================================
@@ -460,34 +472,23 @@ const rankingScore = computeRankingScore(
     [`accounts.tournaments.${tournamentId}.rankingScore`]: rankingScore,
     [`accounts.tournaments.${tournamentId}.lastRebuyAt`]: now,
 
+[`accounts.tournaments.${tournamentId}.rebuyCount`]: newRebuyCount,
+[`accounts.tournaments.${tournamentId}.rebuys`]: newRebuys,
   });
 
   // ================================
   // ✅ UPDATE LEADERBOARD
   // ================================
- const updatedTournamentAccount =
-  userData?.accounts?.tournaments?.[tournamentId] || {};
-
-tx.set(participantRef, {
-  balance: newBalance,
-  initialBalance: updatedTournamentAccount.startingBalance || 0,
-
-  rebuyCount: updatedTournamentAccount.rebuyCount || 0,
-  rebuyInjectedTotal: newRebuyTotal,
-  rebuys: updatedTournamentAccount.rebuys || [],
-
-  performance: updatedTournamentAccount.performance || {
-    pnl: 0,
-    roi: 0,
-    wins: 0,
-    losses: 0,
-    trades: 0,
-    winRate: 0,
-    rebuyInjectedTotal: 0,
-  },
-
-  rankingScore,
-}, { merge: true });
+tx.set(
+  participantRef,
+  buildParticipantMirror(tournamentAccount, {
+    balance: newBalance,
+    rebuyInjectedTotal: newRebuyTotal,
+    rankingScore,
+    lastRebuyAt: now,
+  }),
+  { merge: true }
+);
 
   // ================================
   // 🔓 UNLOCK FLAG AFTER UPDATE

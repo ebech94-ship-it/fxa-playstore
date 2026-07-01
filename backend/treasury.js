@@ -153,6 +153,7 @@ referrerId: user.referredBy || null,
     tournamentName: tournament.name || "Tournament",
 
     balance: startingBalance,
+    startingBalance: startingBalance,
     rebuyCount: 0,
 rebuyInjectedTotal: 0,
 performance: {
@@ -177,7 +178,7 @@ performance: {
 
       startingBalance,
       balance: startingBalance,
-      initialBalance: startingBalance,
+      
 
       prizePool: tournament.prizePool || 0,
 
@@ -249,9 +250,9 @@ async processRebuy(t, userId, tournamentId) {
   if (rebuyFee <= 0) throw new Error("Invalid rebuy fee");
 
   const currentBalance = Number(participant.balance || 0);
-  const initialBalance = Number(participant.initialBalance || tournament.startingBalance || 0);
+  const startingBalance = Number(participant.startingBalance || tournament.startingBalance || 0);
 
-  const rebuyUnlocked = currentBalance < initialBalance * 0.5;
+  const rebuyUnlocked = currentBalance < startingBalance * 0.5;
   if (!rebuyUnlocked) throw new Error("REBUY_NOT_ALLOWED");
 
   const now = Date.now();
@@ -260,6 +261,19 @@ async processRebuy(t, userId, tournamentId) {
 
   if (now > tournament.endTime) throw new Error("TOURNAMENT_ENDED");
   if (wallet < rebuyFee) throw new Error("Insufficient balance");
+
+  const newBalance = currentBalance + startingBalance;
+const newRebuyCount = (user.accounts?.tournaments?.[tournamentId]?.rebuyCount || 0) + 1;
+const newInjectedTotal =
+  (user.accounts?.tournaments?.[tournamentId]?.rebuyInjectedTotal || 0) + rebuyFee;
+
+const newRebuys = [
+  ...(user.accounts?.tournaments?.[tournamentId]?.rebuys || []),
+  {
+    amount: rebuyFee,
+    at: Date.now(),
+  },
+];
 
   // wallet deduction
   t.update(userRef, {
@@ -282,25 +296,25 @@ async processRebuy(t, userId, tournamentId) {
   }, { merge: true });
 
   // 🟡 PARTICIPANT CACHE (UI ONLY)
-  t.update(participantRef, {
-    balance: admin.firestore.FieldValue.increment(initialBalance),
-    rebuyCount: admin.firestore.FieldValue.increment(1),
-      rebuyCostTotal: admin.firestore.FieldValue.increment(rebuyFee),
-    rebuyInjectedTotal: admin.firestore.FieldValue.increment(rebuyFee),
-    lastRebuyAt: admin.firestore.FieldValue.serverTimestamp(),
+  t.set(participantRef, {
+  balance: newBalance,
+  startingBalance,
 
-    rebuys: admin.firestore.FieldValue.arrayUnion({
-      amount: rebuyFee,
-      at: Date.now(),
-    }),
+  rebuyCount: newRebuyCount,
+  rebuyCostTotal:
+    (user.rebuyCostTotal || 0) + rebuyFee,
+  rebuyInjectedTotal: newInjectedTotal,
 
-    updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-  });
+  rebuys: newRebuys,
+
+  lastRebuyAt: admin.firestore.FieldValue.serverTimestamp(),
+  updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+}, { merge: true });
 
   // 🧠 USER DOC = SOURCE OF TRUTH
   t.update(userRef, {
     [`accounts.tournaments.${tournamentId}.balance`]:
-      admin.firestore.FieldValue.increment(initialBalance),
+      admin.firestore.FieldValue.increment(startingBalance),
 
     [`accounts.tournaments.${tournamentId}.rebuyCount`]:
       admin.firestore.FieldValue.increment(1),

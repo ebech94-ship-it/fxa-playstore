@@ -1,5 +1,7 @@
 // LeaderboardBar.tsx — Fixed & clean version
 
+import { db } from "@/lib/firebase";
+import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
 import { useEffect, useMemo, useRef, useState } from "react";
 import ViewShot from "react-native-view-shot";
 
@@ -26,7 +28,7 @@ export type Participant = {
   countryCode?: string;
   performance?: number;
   rankingScore?: number;
-initialBalance?: number;
+startingBalance?: number;
 };
 
 export type LeaderboardBarProps = {
@@ -165,6 +167,8 @@ const activeTourney =
   activeAccount.type === "tournament"
     ? tournaments.find((t) => t.tournamentId === activeAccount.tournamentId)
     : null;
+const tournamentId = activeTourney?.tournamentId;
+
 
   const currentUser = authUser;
 const { width, height } = useWindowDimensions();
@@ -173,13 +177,14 @@ const isLandscape = width > height;
  const [showFull, setShowFull] = useState(false); 
  
 
-const PAGE_SIZE = 50;
-const [page, setPage] = useState(1);
 
-const [pagedParticipants, setPagedParticipants] = useState<Participant[]>([]);
+const [mode, setMode] = useState<"real" | "demo" | "tournament">("real");
+
+
 const [showSharePreview, setShowSharePreview] = useState(false);
+const [liveParticipants, setLiveParticipants] = useState<Participant[]>([]);
+const [loadingLive, setLoadingLive] = useState(false);
 
-const { activeLeaderboardParticipants = {} } = useApp() as any;
 
 const shareLeaderboard = async () => {
   try {
@@ -209,15 +214,10 @@ const copyInviteLink = async () => {
   await Share.share({ message: link });
 };
 
-
-
-
-
-
-const participants: Participant[] =
-  activeLeaderboardParticipants?.length
-    ? activeLeaderboardParticipants
-    : PREVIEW_PARTICIPANTS;
+const participants = useMemo(() => {
+  if (mode === "real") return PREVIEW_PARTICIPANTS;
+  return liveParticipants;
+}, [mode, liveParticipants]);
 
 // ✅ Override current user's balance with AppContext first
 const displayParticipants = useMemo(() => {
@@ -226,7 +226,7 @@ const displayParticipants = useMemo(() => {
 
     if (!isCurrent) return p;
 
-    if (activeAccount.type === "demo") {
+    if (isCurrent) {
       return {
         ...p,
         balance: demoBalance ?? p.balance,
@@ -246,24 +246,33 @@ const displayParticipants = useMemo(() => {
   });
 }, [participants, currentUser, activeAccount.type, demoBalance, tournamentBalance]);
 
-const sortedParticipants = useMemo(() => {
-  return [...displayParticipants].sort(
-    (a, b) => (b.performance ?? 0) - (a.performance ?? 0)
-  );
-}, [displayParticipants]);
+const sortedParticipants = [...participants].sort(
+  (a, b) => (b.balance ?? 0) - (a.balance ?? 0)
+);
 
 const rankIndex = sortedParticipants.findIndex(
   (p) => p.id === currentUser?.uid
 );
 
 const rank = rankIndex >= 0 ? rankIndex + 1 : 1;
+const initialTournamentBalance = activeTourney?.startingBalance ?? 0;
+
 
 useEffect(() => {
   console.log("Leaderboard active account:", activeAccount);
 }, [activeAccount]);
+
 useEffect(() => {
-  setPage(1);
-}, [activeAccount]);
+  if (activeAccount.type === "demo") setMode("demo");
+  else if (activeAccount.type === "tournament") setMode("tournament");
+  else setMode("real");
+}, [activeAccount.type]);
+
+useEffect(() => {
+  
+  setShowFull(false);
+  setLiveParticipants([]);
+}, [mode, tournamentId]);
 
  useEffect (() => {
   const backAction = () => {
@@ -280,11 +289,71 @@ useEffect(() => {
   );
 
   return () => backHandler.remove();
+
 }, [showFull]);
 
 useEffect(() => {
-  setPagedParticipants(displayParticipants.slice(0, page * PAGE_SIZE));
-}, [displayParticipants, page]);
+  setLiveParticipants([]);
+  setLoadingLive(true);
+
+  let unsub: (() => void) | undefined;
+
+  // 🟡 DEMO LEADERBOARD
+  if (mode === "demo") {
+    const q = query(
+      collection(db, "demoBalances"),
+      orderBy("balance", "desc")
+    );
+
+    unsub = onSnapshot(q, (snap) => {
+     const data = snap.docs.map((d) => {
+  const docData = d.data() as Omit<Participant, "id">;
+
+  return {
+    id: d.id,
+    ...docData,
+  };
+});
+
+      setLiveParticipants(data);
+      setLoadingLive(false);
+    });
+  }
+
+  // 🟣 TOURNAMENT LEADERBOARD
+  else if (mode === "tournament" && tournamentId) {
+    const q = query(
+      collection(db, "tournaments", tournamentId, "participants")
+    );
+
+    unsub = onSnapshot(q, (snap) => {
+  const data = snap.docs.map((d) => {
+    const dta = d.data() as any;
+
+    return {
+      id: d.id,
+      ...dta,
+      balance: dta.balance ?? 0,
+    };
+  });
+
+  requestAnimationFrame(() => {
+    setLiveParticipants(data);
+  });
+
+  setLoadingLive(false);
+});
+  }
+
+  // 🔵 REAL ACCOUNT (DEFAULT)
+  else {
+    setLiveParticipants([]); // or static leaderboard later
+    setLoadingLive(false);
+  }
+  return () => unsub?.();
+}, [mode, tournamentId, initialTournamentBalance]);
+
+
 
 const chunkSize = isLandscape ? 1 : 2; // 1 row in landscape, 2 rows in portrait
 
@@ -310,6 +379,11 @@ return (
     { height: isLandscape ? 70 : height * 0.2 }]}>
     {/* Wrapper for relative positioning of floating button */}
     <View style={{ position: "relative" }}>
+    {loadingLive && (
+  <Text style={{ color: "#fff", fontSize: 10, textAlign: "center" }}>
+    Loading leaderboard...
+  </Text>
+)}
       <Animated.ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -330,19 +404,21 @@ return (
       else if (index === 2) topColor = "#CD7F32";
 
       return (
-        <Animated.View
-          key={p.id}
-          style={[
-            styles.player,
-             { width: 120 },
-            isCurrent && styles.currentUser,
-            topColor && { borderColor: topColor, borderWidth: 2 },
-            { marginBottom: 6 } // space between the 2 rows
-          ]}
-          entering={SlideInRight.springify()}
-          exiting={FadeOut}
-          layout={Layout.springify()}
-        >
+  <Animated.View
+  key={p.id}
+  entering={SlideInRight.springify()
+    .damping(18)
+    .stiffness(160)}
+  exiting={FadeOut}
+  layout={Layout.springify()}
+  style={[
+    styles.player,
+    { width: 120 },
+    isCurrent && styles.currentUser,
+    topColor && { borderColor: topColor, borderWidth: 2 },
+    { marginBottom: 6 },
+  ]}
+>
           <Image
             source={{
               uri: isCurrent
@@ -468,11 +544,11 @@ return (
   </Text>s
 </TouchableOpacity>
          <FlatList
-  data={pagedParticipants.sort((a, b) => (b.balance ?? 0) - (a.balance ?? 0))}                   // only the players for current page
+data={sortedParticipants}                 // only the players for current page
   keyExtractor={(p) => p.id}
   numColumns={3}                           // keep grid-like layout
   columnWrapperStyle={{ justifyContent: "space-between", marginBottom: 10 }}
-  onEndReached={() => setPage((prev) => prev + 1)}    // load next page
+  
   onEndReachedThreshold={0.5}             // trigger when near bottom
   renderItem={({ item, index }) => (
     <View style={[styles.player, { width: 120, marginBottom: 6 }]}>
@@ -639,6 +715,7 @@ return (
 };
 
 export default LeaderboardBar;
+
 
 const styles = StyleSheet.create({
   container: {
