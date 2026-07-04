@@ -10,7 +10,7 @@ import { getAuth } from "firebase/auth";
 import { useApp } from "./AppContext"; // <-- add this at the top
 
 
-import { collection, doc, getDoc, onSnapshot, } from "firebase/firestore";
+import { collection, onSnapshot } from "firebase/firestore";
 import { useEffect, useMemo, useState } from "react";
 import {
   Alert, FlatList,
@@ -92,7 +92,10 @@ const getPrizeForRank = (
 
   return entry ? Number(entry.amount) : null;
 };
-
+const formatNum = (value?: number, decimals = 2) => {
+  if (value === null || value === undefined || isNaN(value)) return "0.00";
+  return Number(value).toFixed(decimals);
+};
 
 const NameWithFlag = ({
   username,
@@ -139,6 +142,7 @@ type LoadingState = {
 const [loadingActions, setLoadingActions] = useState<
   Record<string, LoadingState>
 >({});
+
 
 // If you already have a context like useApp() that provides tournamentAccounts:
 const { balances, joinedMap, leaderboardParticipants, tournaments, 
@@ -224,6 +228,7 @@ const leaderboard = useMemo(() => {
   return leaderboardParticipants[selectedTournament.id] ?? [];
 }, [leaderboardParticipants, selectedTournament?.id]);
 
+
 // ---------- REGISTER USER TO TOURNAMENT ----------
 const handleRegister = async (tournamentId: string) => {
   if (profile?.preview) {
@@ -305,78 +310,35 @@ setOpenAccountSwitcher(true);
 };
 
 
-// ----------- REBUY ACTION (SECURE BACKEND VERSION) -----------
-
+// ----------- REBUY ACTION (FINAL CLEAN VERSION) -----------
 const handleRebuy = async (tournamentId: string) => {
-  console.log("✅ STEP 1 - handleRebuy()", tournamentId);
+  console.log("🔥 REBUY BUTTON PRESSED", tournamentId);
 
   if (loadingActions[tournamentId]?.rebuy) return;
 
-  if (!currentUser?.uid) {
+  const auth = getAuth();
+  const user = auth.currentUser;
+
+  if (!user) {
     Alert.alert("Error", "You must be logged in.");
     return;
   }
 
   const tour = tournaments.find((t) => t.id === tournamentId);
 
-  console.log("✅ STEP 2 - Tournament:", tour);
-
   if (!tour) {
     Alert.alert("Error", "Tournament not found.");
     return;
   }
-
-  // ---------- PRE-CHECK (SOURCE OF TRUTH = USER DOC) ----------
-  try {
-    const userRef = doc(db, "users", currentUser.uid);
-    const userSnap = await getDoc(userRef);
-
-    console.log("✅ STEP 3 - User exists:", userSnap.exists());
-
-    if (!userSnap.exists()) {
-      Alert.alert("Error", "User data not found.");
-      return;
-    }
-
-    const userData = userSnap.data();
-
-    console.log("✅ STEP 4 - User data:", userData);
-
-   const tournamentAccount =
-  userData.accounts?.tournaments?.[tournamentId] ?? {};
-
-const currentBalance = Number(tournamentAccount.balance ?? 0);
-    // 🔥 IMPORTANT: use startingBalance, NOT initialBalance
-    const startingBalance = Number(tour.startingBalance ?? 0);
-
-    console.log("✅ STEP 5", {
-    
-  currentBalance,
-  startingBalance,
-  tournamentAccount,
-});
-
-    if (!startingBalance) {
-      Alert.alert("Error", "Invalid tournament setup.");
-      return;
-    }
-
-    if (currentBalance >= startingBalance * 0.5) {
-      Alert.alert(
-        "Rebuy Locked",
-        "You can only rebuy when your balance drops below 50% of starting balance."
-      );
-      return;
-    }
-
-    console.log("✅ STEP 6 - Precheck passed");
-  } catch (err) {
-    console.log("❌ REBUY PRECHECK ERROR:", err);
-    Alert.alert("Error", "Unable to verify balance.");
+if (tour.endTime == null) {
+  Alert.alert("Error", "Tournament timing missing.");
+  return;
+}
+  if (Date.now() > tour.endTime) {
+    Alert.alert("Closed", "This tournament has already ended.");
     return;
   }
 
-  // ---------- LOADING STATE ----------
   setLoadingActions((prev) => ({
     ...prev,
     [tournamentId]: {
@@ -387,16 +349,7 @@ const currentBalance = Number(tournamentAccount.balance ?? 0);
   }));
 
   try {
-    const auth = getAuth();
-    const user = auth.currentUser;
-
-    if (!user) {
-      throw new Error("You must be logged in.");
-    }
-
     const token = await user.getIdToken(true);
-
-    console.log("🔥 STEP 7 - REBUY REQUEST START");
 
     const response = await fetch(
       "https://forexapp2-backend.onrender.com/tournament/rebuy",
@@ -412,30 +365,21 @@ const currentBalance = Number(tournamentAccount.balance ?? 0);
 
     const text = await response.text();
 
-    console.log("🔥 REBUY STATUS:", response.status);
-    console.log("🔥 REBUY RESPONSE:", text);
-
     let result: any = {};
-
     try {
       result = JSON.parse(text);
     } catch {}
 
     if (!response.ok) {
-      const errorMsg =
-        result?.error === "REBUY_NOT_ALLOWED"
-          ? "Rebuy not allowed yet (balance must drop below 50%)."
-          : result?.error === "Insufficient balance"
-          ? "Not enough wallet balance."
-          : result?.error || "Rebuy failed";
-
-      throw new Error(errorMsg);
+      throw new Error(result?.error || "Rebuy failed");
     }
 
-    Alert.alert(
-      "Success 🎉",
-      "Rebuy successful, get back to competition!"
-    );
+    Alert.alert("Success 🎉", "Rebuy successful!");
+
+    setTournamentRebuys((prev) => ({
+      ...prev,
+      [tournamentId]: (prev[tournamentId] ?? 0) + 1,
+    }));
 
     setLoadingActions((prev) => ({
       ...prev,
@@ -445,10 +389,13 @@ const currentBalance = Number(tournamentAccount.balance ?? 0);
         rebuyDone: true,
       },
     }));
-  } catch (error: any) {
-    console.log("🔥 REBUY ERROR:", error);
+  } catch (err) {
+    console.error("REBUY ERROR:", err);
 
-    Alert.alert("Rebuy Failed", error?.message || "Unknown error");
+    Alert.alert(
+      "Rebuy Failed",
+      err instanceof Error ? err.message : "Unknown error"
+    );
 
     setLoadingActions((prev) => ({
       ...prev,
@@ -580,7 +527,7 @@ const TournamentCard = ({ item }: { item: any }) => {
 
 const allowRebuy =
   status === "ongoing" &&
-  joinedMap[item.id];
+  !!joinedMap[item.id];
 
   return (
   
@@ -638,7 +585,7 @@ const allowRebuy =
       {/* PRIZE INFO */}
       <View style={styles.cardPrizeRow}>
         <Text style={styles.cardPrizeText}>
-          🏆 Prize Pool: {item.prizePool ?? 0} $
+          🏆 Prize Pool: {formatNum(item.prizePool)} $
         </Text>
 
         <Text style={styles.cardPrizeText}>
@@ -797,15 +744,17 @@ disabled={
 
       {/* Balance */}
      <Text style={styles.tableColBalance} numberOfLines={1}>
-  {user.balance ?? 0}T
+  {formatNum(user.balance)}T
 </Text>
 <Text style={styles.tableColPerformance}>
   {((user.balance ?? 0)
     - (selectedTournament?.startingBalance ?? 0)
     - (user.rebuyInjectedTotal ?? 0)) >= 0 ? "+" : ""}
-  {((user.balance ?? 0)
-    - (selectedTournament?.startingBalance ?? 0)
-    - (user.rebuyInjectedTotal ?? 0))}T
+  {formatNum(
+  (user.balance ?? 0)
+  - (selectedTournament?.startingBalance ?? 0)
+  - (user.rebuyInjectedTotal ?? 0)
+)}T
 </Text>
       {/* Tier */}
       <Text style={styles.tableColTier}>
@@ -872,15 +821,17 @@ disabled={
           </View>
 
           <Text style={styles.tableColBalance}>
-            {row.balance ?? 0}T
+           {formatNum(row.balance)}T
           </Text>
 <Text style={styles.tableColPerformance}>
   {((row.balance ?? 0)
     - (selectedTournament?.startingBalance ?? 0)
     - (row.rebuyInjectedTotal ?? 0)) >= 0 ? "+" : ""}
-  {((row.balance ?? 0)
-    - (selectedTournament?.startingBalance ?? 0)
-    - (row.rebuyInjectedTotal ?? 0))}T
+{formatNum(
+  (row.balance ?? 0)
+  - (selectedTournament?.startingBalance ?? 0)
+  - (row.rebuyInjectedTotal ?? 0)
+)}T
 </Text>
           <Text style={styles.tableColTier}>
             {getTierForRank(i + 1)}
@@ -961,7 +912,7 @@ disabled={
       textShadowRadius: 10,
     }}
   >
-    {(balances?.real ?? 0).toLocaleString()}
+    {formatNum(balances?.real)}
   </Text>
 </Text>
 </View>

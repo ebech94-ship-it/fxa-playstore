@@ -184,6 +184,7 @@ res.json({
     res.status(500).json({ success: false, error: err.message });
   }
 });
+
 /* ---------------------------------------------------
    🎟 TOURNAMENT REGISTER ROUTE
 --------------------------------------------------- */

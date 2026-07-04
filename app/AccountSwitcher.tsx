@@ -6,17 +6,9 @@ import type { AccountType, TournamentAccount } from "./AppContext"; // keep type
 import { useApp } from "./AppContext";
 // AccountSwitcher.tsx
 
-import {
-  ScrollView,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import {  ScrollView,  StyleSheet,  Text,  TouchableOpacity,  View,} from "react-native";
 
 /* ================= TYPES ================= */
-
-
 
 type AccountSwitcherProps = {
   balances: {

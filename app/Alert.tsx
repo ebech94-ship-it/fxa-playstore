@@ -1,23 +1,12 @@
 import { useRouter } from "expo-router";
 import {
-  collection,
-  doc,
- 
-  orderBy,
-  query,
-  setDoc,
-  where,
+  collection, doc,
   getDocs,
+  orderBy, query, setDoc, where,
 } from "firebase/firestore";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  ActivityIndicator,
-  Animated,
-  Easing,
-  FlatList,
-  StyleSheet,
-  Text,
-  TouchableOpacity,
+  ActivityIndicator, Animated, Easing, FlatList, StyleSheet, Text, TouchableOpacity,
   View,
 } from "react-native";
 import { useApp } from "../app/AppContext";
@@ -31,57 +20,61 @@ export default function AlertScreen() {
 
   const { authUser, setUnreadCount } = useApp(); // context
 
-useEffect(() => {
+
+const loadAlerts = useCallback(async () => {
   if (!authUser) return;
 
-  const loadAlerts = async () => {
-    // 1️⃣ get alerts
-    const q = query(collection(db, "alerts"), orderBy("createdAt", "desc"));
-    const snap = await getDocs(q);
+  const q = query(collection(db, "alerts"), orderBy("createdAt", "desc"));
+  const snap = await getDocs(q);
 
-    const alertData = snap.docs.map((d) => {
-      const raw = d.data();
-      return {
-        id: d.id,
-        ...raw,
-        createdAt: raw.createdAt || { toDate: () => new Date() },
-      };
-    });
+  const alertData = snap.docs.map((d) => ({
+    id: d.id,
+    ...d.data(),
+    createdAt: d.data().createdAt || { toDate: () => new Date() },
+  }));
 
-    // 2️⃣ get alerts this user has read
-    const userQ = query(
-      collection(db, "userAlerts"),
-      where("userId", "==", authUser.uid)
-    );
+  const userQ = query(
+    collection(db, "userAlerts"),
+    where("userId", "==", authUser.uid)
+  );
 
-    const userSnap = await getDocs(userQ);
+  const userSnap = await getDocs(userQ);
 
-    const readIds = new Set<string>();
+  const readIds = new Set<string>();
 
-    userSnap.forEach((doc) => {
-      const data: any = doc.data();
-      if (data.read) {
-        readIds.add(data.alertId);
-      }
-    });
+  userSnap.forEach((doc) => {
+    const data: any = doc.data();
+    if (data.read && !data.deleted) {
+      readIds.add(data.alertId);
+    }
+  });
 
-    // 3️⃣ merge read status
-    const merged = alertData.map((a) => ({
-      ...a,
-      read: readIds.has(a.id),
-    }));
+  const merged = alertData.map((a) => ({
+    ...a,
+    read: readIds.has(a.id),
+  }));
 
-    setAlerts(merged);
+  setAlerts(merged);
 
-    // 4️⃣ set unread count
-    const unread = merged.filter((a) => !a.read).length;
-    setUnreadCount(unread);
+  const unread = merged.filter((a) => !a.read).length;
+  setUnreadCount(unread);
 
+  setLoading(false);
+}, [authUser, setUnreadCount]);
+
+
+useEffect(() => {
+  if (!authUser) {
+    setAlerts([]);
+    setUnreadCount(0);
     setLoading(false);
-  };
+    return;
+  }
 
   loadAlerts();
-}, [authUser, setUnreadCount]);
+}, [authUser, loadAlerts, setUnreadCount]);
+
+
 
 const markRead = async (id: string) => {
   if (!authUser) return;
@@ -107,6 +100,24 @@ const markRead = async (id: string) => {
   setUnreadCount((prev) => Math.max(prev - 1, 0));
 };
 
+const deleteAlert = async (id: string) => {
+  if (!authUser) return;
+
+  await setDoc(
+    doc(db, "userAlerts", `${authUser.uid}_${id}`),
+    {
+      userId: authUser.uid,
+      alertId: id,
+      deleted: true,
+      read: true,
+    },
+    { merge: true }
+  );
+
+  setAlerts((prev) => prev.filter((a) => a.id !== id));
+
+  setUnreadCount((prev) => Math.max(prev - 1, 0));
+};
   if (loading) return <ActivityIndicator size="large" color="#7cf" />;
 
   return (
@@ -115,15 +126,16 @@ const markRead = async (id: string) => {
         data={alerts}
         keyExtractor={(i) => i.id}
         renderItem={({ item }) => (
-          <AlertCard
-            item={item}
-            router={router}
-            expanded={expandedId === item.id}
-            onToggle={() =>
-              setExpandedId(expandedId === item.id ? null : item.id)
-            }
-            onRead={markRead}
-          />
+         <AlertCard
+  item={item}
+  router={router}
+  expanded={expandedId === item.id}
+  onToggle={() =>
+    setExpandedId(expandedId === item.id ? null : item.id)
+  }
+  onRead={markRead}
+  onDelete={deleteAlert}
+/>
         )}
         ListEmptyComponent={
           <View style={styles.emptyContainer}>
@@ -135,7 +147,7 @@ const markRead = async (id: string) => {
   );
 }
 
-const AlertCard = ({ item, router, expanded, onToggle, onRead }: any) => {
+const AlertCard = ({ item, router, expanded, onToggle, onRead, onDelete }: any) => {
   const glow = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
@@ -223,8 +235,18 @@ const AlertCard = ({ item, router, expanded, onToggle, onRead }: any) => {
             Tap to read
           </Text>
         )}
+     <TouchableOpacity
+  onPress={() => onDelete(item.id)}
+  style={{ marginTop: 10 }}
+>
+  <Text style={{ color: "red", fontSize: 13 }}>
+    Delete
+  </Text>
+</TouchableOpacity>
       </TouchableOpacity>
+     
     </View>
+    
   );
 };
 

@@ -6,28 +6,18 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import ViewShot from "react-native-view-shot";
 
 import {
-  BackHandler,
-  FlatList, Image, Modal, Pressable,
-  Share,
-  StyleSheet, Text,
-  TouchableOpacity,
-  View,
-  useWindowDimensions
+  BackHandler, FlatList, Image, Modal, Pressable, Share, StyleSheet, Text,
+  TouchableOpacity, View, useWindowDimensions
 } from "react-native";
 import CountryFlag from "react-native-country-flag";
 import Animated, { FadeOut, Layout, SlideInRight } from "react-native-reanimated";
 import { AccountType, useApp } from "./AppContext";
 
 
-
 export type Participant = {
-  id: string;
-  username?: string;
-  balance?: number;
-  avatar?: string;
-  countryCode?: string;
-  performance?: number;
-  rankingScore?: number;
+  id: string;  username?: string;  balance?: number;
+  avatar?: string;  countryCode?: string;
+  performance?: number;  rankingScore?: number;
 startingBalance?: number;
 };
 
@@ -159,8 +149,7 @@ const LeaderboardBar = ({
   tournamentBalance, demoBalance
 }: LeaderboardBarProps) => {
 
-
-  const { authUser, profile, activeAccount,  tournaments } = useApp();
+const {  authUser,  profile,  activeAccount,  tournaments,  tournamentAccounts,} = useApp();
  
 
 const activeTourney =
@@ -169,7 +158,14 @@ const activeTourney =
     : null;
 const tournamentId = activeTourney?.tournamentId;
 
-
+const liveTournamentBalance =
+  activeAccount.type === "tournament"
+    ? (
+        tournamentAccounts.find(
+          t => t.tournamentId === activeAccount.tournamentId
+        )?.balance ?? 0
+      )
+    : 0;
   const currentUser = authUser;
 const { width, height } = useWindowDimensions();
 const isLandscape = width > height;
@@ -226,27 +222,14 @@ const displayParticipants = useMemo(() => {
 
     if (!isCurrent) return p;
 
-    if (isCurrent) {
-      return {
-        ...p,
-        balance: demoBalance ?? p.balance,
-        performance: p.performance,
-      };
-    }
-
-    if (activeAccount.type === "tournament") {
-      return {
-        ...p,
-        balance: tournamentBalance ?? p.balance,
-        performance: p.performance,
-      };
-    }
-
-    return p;
+   return {
+      ...p,
+      balance: p.balance ?? 0, // still Firestore source of truth
+    };
   });
-}, [participants, currentUser, activeAccount.type, demoBalance, tournamentBalance]);
+}, [participants, currentUser]);
 
-const sortedParticipants = [...participants].sort(
+const sortedParticipants = [...displayParticipants].sort(
   (a, b) => (b.balance ?? 0) - (a.balance ?? 0)
 );
 
@@ -255,7 +238,7 @@ const rankIndex = sortedParticipants.findIndex(
 );
 
 const rank = rankIndex >= 0 ? rankIndex + 1 : 1;
-const initialTournamentBalance = activeTourney?.startingBalance ?? 0;
+const startingTournamentBalance = activeTourney?.startingBalance ?? 0;
 
 
 useEffect(() => {
@@ -323,36 +306,43 @@ useEffect(() => {
   // 🟣 TOURNAMENT LEADERBOARD
   else if (mode === "tournament" && tournamentId) {
     const q = query(
-      collection(db, "tournaments", tournamentId, "participants")
+      collection(db, "tournaments", tournamentId, "participants"),
+        orderBy("balance", "desc")
     );
 
     unsub = onSnapshot(q, (snap) => {
   const data = snap.docs.map((d) => {
-    const dta = d.data() as any;
+  const dta = d.data() as any;
 
-    return {
-      id: d.id,
-      ...dta,
-      balance: dta.balance ?? 0,
-    };
-  });
+  return {
+    id: d.id,
+    ...dta,
+    balance: dta.balance ?? 0,
+  };
+});
 
-  requestAnimationFrame(() => {
-    setLiveParticipants(data);
-  });
+
+
+requestAnimationFrame(() => {
+  setLiveParticipants(data);
+});
 
   setLoadingLive(false);
 });
   }
 
-  // 🔵 REAL ACCOUNT (DEFAULT)
+  // 🔵 REAL ACCOUNT (DEFAULT) 
   else {
     setLiveParticipants([]); // or static leaderboard later
     setLoadingLive(false);
   }
   return () => unsub?.();
-}, [mode, tournamentId, initialTournamentBalance]);
-
+}, [
+  mode,
+  tournamentId,
+  startingTournamentBalance,
+ 
+])
 
 
 const chunkSize = isLandscape ? 1 : 2; // 1 row in landscape, 2 rows in portrait
@@ -441,7 +431,7 @@ return (
             />
            <Text style={styles.balance}>
   {`$${((activeAccount.type === "tournament" && isCurrent
-      ? tournamentBalance ?? p.balance ?? 0
+      ? liveTournamentBalance
       : p.balance ?? 0
     ).toFixed(1))}`}
 </Text>
