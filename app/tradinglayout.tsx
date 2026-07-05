@@ -10,7 +10,7 @@ import type { ChartViewHandle } from "./ChartView";
 
 import {
   doc,
-  getDoc,
+
   increment,
   onSnapshot,
   serverTimestamp,
@@ -162,7 +162,7 @@ const expiryPanResponder = useRef(
  
 
   const [profitPercent] = useState<number>(PAYOUT);
-  const { unreadCount } = useApp();
+  const { unreadCount, participantBalances } = useApp();
 
 
 const handleKeyPress = (key: string) => {
@@ -324,11 +324,10 @@ const handleTrade = async (type: "buy" | "sell") => {
 
 const tournamentId = activeAccount.tournamentId;
 
-const userDocRef = doc(db, "users", uid);
-const userSnap = await getDoc(userDocRef);
+
 
 const serverBalance =
-  userSnap.data()?.accounts?.tournaments?.[tournamentId]?.balance ?? 0;
+  participantBalances[tournamentId] ?? 0;
 
 if (serverBalance < stake) {
   alert("Not enough tournament balance");
@@ -352,10 +351,6 @@ if (serverBalance < stake) {
   return;
 }
   try {
- 
-  
-
-
 
   } catch (err) {
     console.log("❌ Tournament trade error:", err);
@@ -451,7 +446,7 @@ useEffect(() => {
       const stillOpen: Trade[] = [];
       const newlyClosed: ClosedTrade[] = [];
 
-      prev.forEach((t) => {
+      prev.forEach(async (t) => {
         const updatedTrade = {
           ...t,
           currentPrice: livePrice,
@@ -481,17 +476,17 @@ useEffect(() => {
         };
 
         // 🔥 SINGLE tournament Cloud Function call (WIN + LOSS handled here)
-        if (
-          t.account.type === "tournament" &&
-          t.account.tournamentId
-        ) {
-        
-   settleTournamentTrade({
-  tournamentId: t.account.tournamentId,
-  tradeId: t.id,
-  result: isWin ? "GAIN" : "LOSS",
-});
-        }
+     if (
+  t.account.type === "tournament" &&
+  t.account.tournamentId
+) {
+  await settleTournamentTrade({
+    tournamentId: t.account.tournamentId,
+    tradeId: t.id,
+    result: isWin ? "GAIN" : "LOSS",
+  });
+
+}
 
         // 💰 DEMO balance update
         if (isWin && t.account.type === "demo") {
@@ -1003,7 +998,7 @@ const styles = StyleSheet.create({
   actionButton: { padding: 12,  marginVertical: 4,  borderRadius: 8,  bottom: 20,  alignItems: "center", },
   actionText: { color: "white", fontWeight: "bold" },
   
-  overlay: { position: "absolute", top: 50, left: "10%", width: "80%", height: "80%", backgroundColor: "#333",
+  overlay: { position: "absolute", top: 80, left: "10%", width: "80%", height: "80%", backgroundColor: "#333",
  borderRadius: 8,  zIndex: 100,  padding: 10, },
   closeButton: { position: "absolute", top: 10, right: 10, zIndex: 10 },
   pageContent: { flex: 1, marginTop: 0 },

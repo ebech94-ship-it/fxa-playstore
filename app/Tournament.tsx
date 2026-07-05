@@ -144,9 +144,8 @@ const [loadingActions, setLoadingActions] = useState<
 
 
 // If you already have a context like useApp() that provides tournamentAccounts:
-const { balances, joinedMap, leaderboardParticipants, tournaments, 
-  profile, setOpenAccountSwitcher,
-  setSwitcherHintTournamentId } = useApp(); // or replace with your actual context
+const { balances, joinedMap, leaderboardParticipants, tournaments,  profile, setOpenAccountSwitcher,
+  setSwitcherHintTournamentId, participantBalances,  } = useApp();                               // or replace with your actual context
 
 const getTotalRebuys = (tournamentId: string) => {
   const list = leaderboardParticipants[tournamentId] ?? [];
@@ -508,17 +507,19 @@ const TournamentCard = ({ item }: { item: any }) => {
 
   const rebuyFee = item.rebuyFee ?? item.entryFee ?? 0;
 
-const participant = leaderboardParticipants[item.id]?.find(
-  (p: any) => p.id === currentUser?.uid
-);
+const tournamentState =
+ tournaments.find(t => t.tournamentId === item.tournamentId);
+const userBalance =
+  participantBalances[item.id] ??
+  tournamentState?.balance ??
+  0;
 
-const userBalance = Number(participant?.balance ?? 0);
-const startBalance = Number(
-  participant?.startingBalance ?? item.startingBalance ?? 0
-);
+const startBalance =
+  tournamentState?.startingBalance ??
+  item.startingBalance ??
+  0;
 
 const canRebuyByBalance =
-  participant &&
   userBalance < startBalance * 0.5;
 
 const allowRebuy =

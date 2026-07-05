@@ -288,7 +288,7 @@ const performance = participant.performance || {
     const isWin = result === "GAIN";
     const payout = isWin ? trade.amount * 1.95 : 0;
 
-    if (isWin) balance += payout;
+    balance = balance + (isWin ? payout : 0);
     const trades = performance.trades + 1;
 
 const wins = performance.wins + (isWin ? 1 : 0);
@@ -320,6 +320,8 @@ tx.update(participantRef, {
   rankingScore,
   updatedAt: admin.firestore.FieldValue.serverTimestamp(),
 });
+
+
     tx.set(closedTradeRef, {
       ...trade,
       result,

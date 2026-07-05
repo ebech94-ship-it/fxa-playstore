@@ -202,6 +202,7 @@ setProfileSubmitted: React.Dispatch<React.SetStateAction<boolean>>;
   joinedMap: Record<string, boolean>;
   leaderboardParticipants: Record<string, Participant[]>;
   
+participantBalances: Record<string, number>;  
 
 };
 export type Participant = {
@@ -301,6 +302,7 @@ setSwitcherHintTournamentId: () => {},
   joinedMap: {},
    unreadCount: 0,             // ✅ default
   setUnreadCount: () => {},   // ✅ noop default
+  participantBalances: {},
 });
 
  
@@ -357,15 +359,13 @@ const activeBalance = useMemo(() => {
     return userDoc?.accounts?.real?.balance ?? 0;
   }
 
+
   if (activeAccount.type === "tournament") {
     const id = activeAccount.tournamentId;
 
-    return (
-      
+    return participantDocs[id]?.balance ??
       participantBalances[id] ??
-      activeTournament?.balance ??
-      0
-    );
+      0;
   }
 
   return 0;
@@ -375,7 +375,7 @@ const activeBalance = useMemo(() => {
   userDoc,
   demoBalance,
   participantBalances,
-  activeTournament,
+  participantDocs,
 ]);
 
 const balancesState = useMemo(
@@ -469,7 +469,7 @@ const tournamentAccounts = useMemo(() =>
         symbol: t.symbol ?? tournamentMeta[t.tournamentId]?.symbol ?? "$",
 
         // 🔥 SOURCE OF TRUTH
-        balance: p?.balance ?? 0,
+        balance: participantBalances[t.tournamentId] ?? p?.balance ?? 0,
         startingBalance: p?.startingBalance ?? t.startingBalance ?? 0,
 
         currency: t.currency ?? t.symbol ?? "$",
@@ -480,14 +480,16 @@ const tournamentAccounts = useMemo(() =>
         performance: p?.performance ?? t.performance,
       };
     }),
-  [mergedTournaments, participantDocs, tournamentMeta]
+  [mergedTournaments, participantDocs, tournamentMeta, participantBalances]
 );
+
 useEffect(() => {
-  if (!authUser?.uid || tournamentAccounts.length === 0) return;
+  if (!authUser?.uid || tournaments.length === 0) return;
 
   const unsubs: (() => void)[] = [];
 
-  tournamentAccounts.forEach((t) => {
+  // 🔥 IMPORTANT: use BASE tournaments ONLY (not tournamentAccounts)
+  tournaments.forEach((t) => {
     const ref = doc(
       db,
       "tournaments",
@@ -501,22 +503,37 @@ useEffect(() => {
 
       const data = snap.data();
 
-      setParticipantBalances((prev) => ({
-        ...prev,
-        [t.tournamentId]: data.balance ?? 0,
-      }));
+      setParticipantBalances((prev) => {
+        const current = prev[t.tournamentId];
+        const next = data.balance ?? 0;
 
-      setParticipantDocs((prev) => ({
-        ...prev,
-        [t.tournamentId]: data,
-      }));
+        // 🔥 prevent unnecessary rerenders
+        if (current === next) return prev;
+
+        return {
+          ...prev,
+          [t.tournamentId]: next,
+        };
+      });
+
+      setParticipantDocs((prev) => {
+        const current = prev[t.tournamentId];
+
+        // 🔥 shallow compare safeguard
+        if (JSON.stringify(current) === JSON.stringify(data)) return prev;
+
+        return {
+          ...prev,
+          [t.tournamentId]: data,
+        };
+      });
     });
 
     unsubs.push(unsub);
   });
 
   return () => unsubs.forEach((u) => u());
-}, [authUser?.uid, tournamentAccounts]);
+}, [authUser?.uid, tournaments]);
 
 const userTournamentState = useMemo(() => {
   return tournaments.map(t => {
@@ -526,12 +543,12 @@ const userTournamentState = useMemo(() => {
       tournament: t,
       participant: p ?? null,
       joined: !!p,
-      balance: p?.balance ?? 0,
+      balance: participantBalances[t.tournamentId] ?? p?.balance ?? 0,
       startingBalance: p?.startingBalance ?? t.startingBalance ?? 0,
       performance: p?.performance ?? t.performance,
     };
   });
-}, [tournaments, participantDocs]);
+}, [tournaments, participantDocs, participantBalances]);
 
 const switchAccount = useCallback((account: AccountType) => {
   if (account.type === "tournament") {
@@ -701,20 +718,8 @@ useEffect(() => {
   return unsub;
 }, []);
 
-useEffect(() => {
-  setActiveTournament(prev => {
-    if (!prev) return prev;
 
-    const p = participantDocs[prev.tournamentId];
-    if (!p) return prev;
 
-    return {
-      ...prev,
-      balance: p.balance ?? prev.balance,
-      performance: p.performance ?? prev.performance,
-    };
-  });
-}, [participantDocs]);
 
   /* 🔐 Auth listener */
   useEffect(() => {
@@ -1051,8 +1056,10 @@ useEffect(() => {
   profileSubmitted,
   setProfileSubmitted,
   tournamentAccounts,
+
   joinedMap,
   leaderboardParticipants,
+  participantBalances,
 }), [
   appReady,
   unreadCount,
@@ -1087,6 +1094,8 @@ setOpenAccountSwitcher,
   tournamentAccounts,
   joinedMap,
   leaderboardParticipants,
+
+  participantBalances,
 ]);
   return (
     <AppContext.Provider value={contextValue}>
