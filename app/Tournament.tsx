@@ -129,7 +129,6 @@ export default function TournamentScreen({ currentUser }: TournamentScreenProps)
   // live players list for the currently selected tournament (used for counts / participant preview)
 
 const [tournamentCounts, setTournamentCounts] = useState<Record<string, number>>({});
-const [tournamentRebuys, setTournamentRebuys] = useState<Record<string, number>>({});
 
   const [viewTab, setViewTab] = useState("info"); // "info" | "leaderboard"
   
@@ -149,7 +148,12 @@ const { balances, joinedMap, leaderboardParticipants, tournaments,
   profile, setOpenAccountSwitcher,
   setSwitcherHintTournamentId } = useApp(); // or replace with your actual context
 
-
+const getTotalRebuys = (tournamentId: string) => {
+  const list = leaderboardParticipants[tournamentId] ?? [];
+  return list.reduce((sum: number, p: any) => {
+    return sum + (p.rebuyCount || 0);
+  }, 0);
+};
   const setLoadingFor = (
   tournamentId: string,
   action: "register" | "rebuy",
@@ -193,25 +197,12 @@ useEffect(() => {
     );
 
     const unsub = onSnapshot(ref, (snap) => {
-let rebuyCount = 0;
 
 
-snap.docs.forEach((d) => {
-  const data = d.data() as any;
-
-  rebuyCount += Number(data.rebuyCount ?? 0);
- 
-});
       setTournamentCounts(prev => ({
         ...prev,
         [t.id]: snap.size,
       }));
-
-   setTournamentRebuys(prev => ({
-  ...prev,
-  [t.id]: rebuyCount,
-}));
-
 
     });
 
@@ -296,9 +287,7 @@ setTournamentCounts(prev => ({
   ...prev,
   [tournamentId]: (prev[tournamentId] ?? 0) + 1,
 }));
-    // 🔥 SIMPLE STATE UPDATE (CORRECT FOR YOUR STRUCTURE)
-   // refresh UI count locally (optional optimistic update)
-// 🔥 AUTO OPEN SWITCHER
+
 setSwitcherHintTournamentId(tournamentId);
 setOpenAccountSwitcher(true);
 
@@ -375,12 +364,6 @@ if (tour.endTime == null) {
     }
 
     Alert.alert("Success 🎉", "Rebuy successful!");
-
-    setTournamentRebuys((prev) => ({
-      ...prev,
-      [tournamentId]: (prev[tournamentId] ?? 0) + 1,
-    }));
-
     setLoadingActions((prev) => ({
       ...prev,
       [tournamentId]: {
@@ -525,9 +508,23 @@ const TournamentCard = ({ item }: { item: any }) => {
 
   const rebuyFee = item.rebuyFee ?? item.entryFee ?? 0;
 
+const participant = leaderboardParticipants[item.id]?.find(
+  (p: any) => p.id === currentUser?.uid
+);
+
+const userBalance = Number(participant?.balance ?? 0);
+const startBalance = Number(
+  participant?.startingBalance ?? item.startingBalance ?? 0
+);
+
+const canRebuyByBalance =
+  participant &&
+  userBalance < startBalance * 0.5;
+
 const allowRebuy =
   status === "ongoing" &&
-  !!joinedMap[item.id];
+  !!joinedMap[item.id] &&
+  canRebuyByBalance;
 
   return (
   
@@ -632,7 +629,7 @@ const allowRebuy =
     </Text>
 
     <Text style={styles.cardDetail}>
-      ♻️ {tournamentRebuys[item.id] ?? 0} Rebuys
+      ♻️ ♻️ {getTotalRebuys(item.id)} Rebuys
     </Text>
   </View>
  </View>
@@ -990,7 +987,7 @@ disabled={
 </Text>
 
             <Text style={styles.modalInfo}>
-              ♻️ Rebuys: {tournamentRebuys[selectedTournament.id] ?? 0}
+             ♻️ Rebuys: {getTotalRebuys(selectedTournament.id)}
             </Text>
 
             {/* Tab switch */}

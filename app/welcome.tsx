@@ -20,6 +20,7 @@ import {
   GoogleAuthProvider,
   linkWithCredential,
   RecaptchaVerifier,
+
   signInWithCredential,
   signInWithEmailAndPassword,
   signInWithPhoneNumber
@@ -76,7 +77,6 @@ const [showPicker, setShowPicker] = useState(false);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
  
-const [storedInviteRef, setStoredInviteRef] = useState<string | null>(null);
 
   // 🔗 Google → Email linking
 const [showSetPassword, setShowSetPassword] = useState(false);
@@ -124,6 +124,8 @@ const [verifyLoading, setVerifyLoading] = useState(false);
 const [referrerName, setReferrerName] = useState<string | null>(null);
 
 const [otp, setOtp] = useState("");
+const [otpFailed, setOtpFailed] = useState(false);
+
 const googleHandledRef = useRef(false);
    // 🔑 WEB + MOBILE OTP
   const recaptchaRef = useRef<RecaptchaVerifier | null>(null);
@@ -245,9 +247,14 @@ const sendOTP = async () => {
     alert("OTP sent to your phone");
 
   } catch (e) {
-    console.error(e);
-    alert("Failed to send OTP");
-  } finally {
+  console.error(e);
+
+  setOtpFailed(true);
+  setConfirmationResult(null);
+
+  // optional: don't block user
+  alert("OTP failed, you can continue without verification");
+} finally {
     setOtpLoading(false);
   }
 };
@@ -267,11 +274,11 @@ const verifyOTP = async () => {
     // OPTIONAL: save referral for phone users (IMPORTANT FIX)
     const user = auth.currentUser;
 
-    if (user && storedInviteRef) {
+    if (user && inviteRef) {
       await setDoc(
         doc(db, "users", user.uid),
         {
-          referredBy: storedInviteRef,
+          referredBy: inviteRef,
         },
         { merge: true }
       );
@@ -342,7 +349,7 @@ useEffect(() => {
 
     if (ref) {
       setInviteRef(ref);
-      setStoredInviteRef(ref); // ✅ ADD THIS
+     // ✅ ADD THIS
     }
   };
 
@@ -375,11 +382,11 @@ const run = async () => {
       accessToken ?? undefined
     );
 
-    const userCred = await signInWithCredential(auth, credential);
+   const { user } = await signInWithCredential(auth, credential);
 
-    const uid = userCred.user.uid;
+const uid = user.uid;
 
-    const ref = inviteRef || storedInviteRef;// ✅ FIX HERE
+const ref = inviteRef;// ✅ FIX HERE
 
     if (ref) {
       await setDoc(
@@ -452,11 +459,11 @@ await createUserWithEmailAndPassword(
 const user = auth.currentUser;
 const uid = user?.uid;
 
-if (uid && storedInviteRef) {
+if (uid && inviteRef) {
   await setDoc(
     doc(db, "users", uid),
     {
-      referredBy: storedInviteRef,
+      referredBy: inviteRef,
     },
     { merge: true }
   );
@@ -856,7 +863,7 @@ onPress={() => accepted && !loading && request && promptAsync()}
     />
 
     {/* Phone Row */}
-    <View style={{ flexDirection: "row", alignItems: "center" }}>
+    <View style={{ flexDirection: "row", alignItems: "center", gap:8}}>
       {/* COUNTRY CODE BUTTON */}
       <TouchableOpacity
         onPress={() => setShowPicker(true)}
@@ -896,7 +903,12 @@ onPress={() => accepted && !loading && request && promptAsync()}
 <TouchableOpacity
   style={[
     styles.button,
-    { opacity: otpLoading ? 0.5 : 1 }
+    {
+      width: 100,   // 👈 FIX SIZE
+      paddingVertical: 10,
+      marginLeft: 6,
+      opacity: otpLoading ? 0.5 : 1
+    }
   ]}
   onPress={sendOTP}
   disabled={otpLoading}
@@ -905,47 +917,58 @@ onPress={() => accepted && !loading && request && promptAsync()}
     {otpLoading ? "Sending OTP..." : "Send OTP"}
   </Text>
 </TouchableOpacity>
+
     </View>
 
    
    {/* STEP 2 — OTP VERIFY */}
  {/* STEP 2 — VERIFY OTP */}
-{confirmationResult && (
+{/* STEP 2 — OTP SECTION */}
+{(confirmationResult || otpFailed) && (
   <>
-    <TextInput
-      style={styles.input}
-      placeholder="Enter 6-digit OTP"
-      placeholderTextColor="#aaa"
-      keyboardType="number-pad"
-      value={otp}
-      onChangeText={setOtp}
-    />
+    {confirmationResult && (
+      <>
+        <TextInput
+          style={styles.input}
+          placeholder="Enter 6-digit OTP"
+          keyboardType="number-pad"
+          value={otp}
+          onChangeText={setOtp}
+        />
 
-    <TouchableOpacity
-      style={[
-        styles.button,
-        { opacity: verifyLoading ? 0.5 : 1 }
-      ]}
-      onPress={verifyOTP}
-      disabled={verifyLoading}
-    >
-      <Text style={styles.buttonText}>
-        {verifyLoading ? "Verifying..." : "Verify & Continue"}
-      </Text>
-    </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.button, { opacity: verifyLoading ? 0.5 : 1 }]}
+          onPress={verifyOTP}
+          disabled={verifyLoading}
+        >
+          <Text style={styles.buttonText}>
+            {verifyLoading ? "Verifying..." : "Verify & Continue"}
+          </Text>
+        </TouchableOpacity>
+      </>
+    )}
 
-    {/* OPTIONAL RESET */}
-    <TouchableOpacity
-      style={styles.link}
-      onPress={() => {
-        setConfirmationResult(null);
-        setOtp("");
-      }}
-    >
-      <Text style={styles.linkText}>
-        Change phone number
-      </Text>
-    </TouchableOpacity>
+    {/* 🔥 FALLBACK ALWAYS VISIBLE WHEN OTP FAILS */}
+    {otpFailed && (
+      <TouchableOpacity
+        style={[styles.button, { backgroundColor: "#0f4698ff", marginTop: 10 }]}
+        onPress={async () => {
+          const tempUid = `${phone}_${Date.now()}`;
+
+          await setDoc(doc(db, "users", tempUid), {
+            phone: `+${callingCode}${phone}`,
+            name,
+            verified: false,
+            createdAt: serverTimestamp(),
+          });
+
+          await AsyncStorage.setItem("isLoggedIn", "true");
+          router.replace("/tradinglayout");
+        }}
+      >
+        <Text style={styles.buttonText}>Continue without OTP</Text>
+      </TouchableOpacity>
+    )}
   </>
 )}
 

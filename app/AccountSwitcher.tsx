@@ -1,12 +1,12 @@
 // components/AccountSwitcher.tsx
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useState,useEffect } from "react";
+import { useEffect, useState } from "react";
 import type { AccountType, TournamentAccount } from "./AppContext"; // keep type imports separate if you want
 import { useApp } from "./AppContext";
 // AccountSwitcher.tsx
 
-import {  ScrollView,  StyleSheet,  Text,  TouchableOpacity,  View,} from "react-native";
+import { ScrollView, StyleSheet, Text, TouchableOpacity, View, } from "react-native";
 
 /* ================= TYPES ================= */
 
@@ -53,7 +53,7 @@ export default function AccountSwitcher({
    tournamentMeta,
 }: AccountSwitcherProps) {
 
-  const { openAccountSwitcher, setOpenAccountSwitcher, tournamentAccounts, tournaments } = useApp(); // context only for tournaments
+  const { openAccountSwitcher, setOpenAccountSwitcher, tournamentAccounts } = useApp(); // context only for tournaments
 
   // convert context tournaments to UI-friendly shape
 const switcherTournaments = tournamentAccounts
@@ -147,8 +147,7 @@ const displayBalance = (() => {
   // tournament
 const t = tournamentAccounts.find(
   (x) => x.tournamentId === activeAccount.tournamentId
-) || tournaments.find(t => t.id === activeAccount.tournamentId);
-
+);
   return Number(t?.balance ?? 0);
 })();
 

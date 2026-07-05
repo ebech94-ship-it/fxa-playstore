@@ -201,6 +201,7 @@ setProfileSubmitted: React.Dispatch<React.SetStateAction<boolean>>;
  
   joinedMap: Record<string, boolean>;
   leaderboardParticipants: Record<string, Participant[]>;
+  
 
 };
 export type Participant = {
@@ -334,7 +335,9 @@ const [appSettings, setAppSettings] = useState<AppSettings>({
 });
 const [userDoc, setUserDoc] = useState<FirestoreUserDoc | null>(null);
 
-const [liveTournamentBalances, setLiveTournamentBalances] = useState<Record<string, number>>({});
+const [participantBalances, setParticipantBalances] = useState<Record<string, number>>({});
+const [participantDocs, setParticipantDocs] = useState<Record<string, any>>({});
+
 const [tournamentMeta, setTournamentMeta] = useState<
   Record<string, { name: string; symbol: string }>
 >({});
@@ -343,6 +346,7 @@ const [leaderboardParticipants, setLeaderboardParticipants] = useState<
 >({});
 
 const [demoBalance, setDemoBalance] = useState<number>(1000);
+
 
 const activeBalance = useMemo(() => {
   if (activeAccount.type === "demo") {
@@ -357,8 +361,8 @@ const activeBalance = useMemo(() => {
     const id = activeAccount.tournamentId;
 
     return (
-      userDoc?.accounts?.tournaments?.[id]?.balance ??
-      liveTournamentBalances[id] ??
+      
+      participantBalances[id] ??
       activeTournament?.balance ??
       0
     );
@@ -370,7 +374,7 @@ const activeBalance = useMemo(() => {
   accounts,
   userDoc,
   demoBalance,
-  liveTournamentBalances,
+  participantBalances,
   activeTournament,
 ]);
 
@@ -379,7 +383,7 @@ const balancesState = useMemo(
     demo: demoBalance,
     real: userDoc?.accounts?.real?.balance ?? 0,
     tournament: activeTournament
-      ? liveTournamentBalances[activeTournament.tournamentId] ??
+      ? participantBalances[activeTournament.tournamentId] ??
         activeTournament.balance
       : 0,
   }),
@@ -387,7 +391,7 @@ const balancesState = useMemo(
     demoBalance,
     userDoc?.accounts?.real?.balance,
     activeTournament,
-    liveTournamentBalances,
+    participantBalances,
   ]
 );
 
@@ -397,36 +401,36 @@ const balancesState = useMemo(
 const [unreadCount, setUnreadCount] = useState(0);
 
 const tournamentsRef = useRef<PlayerTournament[]>([]);
+  // ✅ ADD FUNCTION RIGHT HERE ⬇⬇⬇
 
-const userTournamentMap = useMemo(() => {
-  return userDoc?.accounts?.tournaments ?? {};
-}, [userDoc]);
 
 const mergedTournaments = useMemo(() => {
-  return tournaments.map(t => {
-    const u = userTournamentMap[t.tournamentId];
+  return tournaments.map((t) => {
+    const p = participantDocs[t.tournamentId];
 
-    if (!u) return t;
+    if (!p) return t;
 
     return {
       ...t,
-      balance: u.balance ?? t.balance,
-      joined: u.joined ?? t.joined,
-      rebuyCount: u.rebuyCount ?? t.rebuyCount,
-      rebuys: u.rebuys ?? t.rebuys,
 
-      performance: u.performance ?? t.performance,
+      balance: p.balance ?? t.balance,
+      startingBalance: p.startingBalance ?? t.startingBalance,
 
-      // 🔥 ADD THESE (MUST MATCH BACKEND)
-      rankingScore: u.rankingScore ?? 0,
-      rebuyInjectedTotal: u.rebuyInjectedTotal ?? 0,
-      lastRebuyAt: u.lastRebuyAt ?? 0,
-      startingBalance:
-    u.startingBalance ?? t.startingBalance,
+      rebuyCount: p.rebuyCount ?? 0,
+      rebuys: p.rebuys ?? [],
 
+      rankingScore: p.rankingScore ?? 0,
+      rebuyInjectedTotal: p.rebuyInjectedTotal ?? 0,
+      lastRebuyAt: p.lastRebuyAt ?? 0,
+
+      performance: p.performance ?? t.performance,
+
+      joined: true,
     };
   });
-}, [tournaments, userTournamentMap]);
+}, [tournaments, participantDocs]);
+
+
 
 const activeLeaderboardParticipants = useMemo(() => {
   if (activeAccount.type === "demo") {
@@ -440,24 +444,7 @@ const activeLeaderboardParticipants = useMemo(() => {
   return [];
 }, [leaderboardParticipants, activeAccount]);
 
-  // ✅ ADD FUNCTION RIGHT HERE ⬇⬇⬇
-const switchAccount = useCallback((account: AccountType) => {
-  if (account.type === "tournament") {
 
-const t = mergedTournaments.find(
-  x => x.tournamentId === account.tournamentId
-);
-
-    if (!t) return;
-
-    setActiveTournament(t);
-    setActiveAccount(account);
-    return;
-  }
-
-  setActiveTournament(null);
-  setActiveAccount(account);
-}, [mergedTournaments]);
 
 const [profile, setProfile] = useState<UserProfile | null>(null);
 const [profileLoaded, setProfileLoaded] = useState(false);
@@ -466,47 +453,119 @@ const [profileSubmitted, setProfileSubmitted] = useState(false);
 const [openAccountSwitcher, setOpenAccountSwitcher] = useState(false);
 const [switcherHintTournamentId, setSwitcherHintTournamentId] = useState<string | null>(null);
 
-
 const tournamentAccounts = useMemo(() =>
   mergedTournaments
-    .filter(t => t.joined === true && t.status !== "finished")
-    .map(t => ({
-     type: "tournament" as const,
-    tournamentId: t.tournamentId,
-    id: t.tournamentId,
-    name: t.name ?? tournamentMeta[t.tournamentId]?.name ?? "Tournament",
-    symbol:  t.symbol ??
-  tournamentMeta[t.tournamentId]?.symbol ?? "$",
- balance:
-  liveTournamentBalances[t.tournamentId] ??
-  t.balance ??  0,
-   
-    startingBalance: t.startingBalance ?? 0,
-      currency: t.currency ?? t.symbol ?? "$", // ✅ SAFETY FALLBACK
-    status: t.status ?? "upcoming",
-    joined: t.joined,
-   performance: {
-  pnl: t.performance?.pnl ?? 0,
-  roi: t.performance?.roi ?? 0,
-  wins: t.performance?.wins ?? 0,
-  losses: t.performance?.losses ?? 0,
-  trades: t.performance?.trades ?? 0,
-  winRate: t.performance?.winRate ?? 0,
-  rebuyInjectedTotal: t.performance?.rebuyInjectedTotal ?? 0,
-},
-  })), [mergedTournaments, tournamentMeta, liveTournamentBalances]);
+
+   .filter(t => t.status !== "finished")
+    .map(t => {
+      const p = participantDocs[t.tournamentId];
+
+      return {
+        type: "tournament" as const,
+        tournamentId: t.tournamentId,
+        id: t.tournamentId,
+
+        name: t.name ?? tournamentMeta[t.tournamentId]?.name ?? "Tournament",
+        symbol: t.symbol ?? tournamentMeta[t.tournamentId]?.symbol ?? "$",
+
+        // 🔥 SOURCE OF TRUTH
+        balance: p?.balance ?? 0,
+        startingBalance: p?.startingBalance ?? t.startingBalance ?? 0,
+
+        currency: t.currency ?? t.symbol ?? "$",
+        status: t.status ?? "upcoming",
+
+        joined: true,
+
+        performance: p?.performance ?? t.performance,
+      };
+    }),
+  [mergedTournaments, participantDocs, tournamentMeta]
+);
+useEffect(() => {
+  if (!authUser?.uid || tournamentAccounts.length === 0) return;
+
+  const unsubs: (() => void)[] = [];
+
+  tournamentAccounts.forEach((t) => {
+    const ref = doc(
+      db,
+      "tournaments",
+      t.tournamentId,
+      "participants",
+      authUser.uid
+    );
+
+    const unsub = onSnapshot(ref, (snap) => {
+      if (!snap.exists()) return;
+
+      const data = snap.data();
+
+      setParticipantBalances((prev) => ({
+        ...prev,
+        [t.tournamentId]: data.balance ?? 0,
+      }));
+
+      setParticipantDocs((prev) => ({
+        ...prev,
+        [t.tournamentId]: data,
+      }));
+    });
+
+    unsubs.push(unsub);
+  });
+
+  return () => unsubs.forEach((u) => u());
+}, [authUser?.uid, tournamentAccounts]);
+
+const userTournamentState = useMemo(() => {
+  return tournaments.map(t => {
+    const p = participantDocs[t.tournamentId];
+
+    return {
+      tournament: t,
+      participant: p ?? null,
+      joined: !!p,
+      balance: p?.balance ?? 0,
+      startingBalance: p?.startingBalance ?? t.startingBalance ?? 0,
+      performance: p?.performance ?? t.performance,
+    };
+  });
+}, [tournaments, participantDocs]);
+
+const switchAccount = useCallback((account: AccountType) => {
+  if (account.type === "tournament") {
+    const match = userTournamentState.find(
+      x => x.tournament.tournamentId === account.tournamentId
+    );
+
+    if (!match) return;
+
+    setActiveTournament({
+  ...match.tournament,
+  balance: match.balance,
+  startingBalance: match.startingBalance,
+  performance: match.performance,
+  joined: true,
+});
+
+    setActiveAccount(account);
+    return;
+  }
+
+  setActiveTournament(null);
+  setActiveAccount(account);
+}, [userTournamentState]);
 
 const joinedMap = useMemo(() => {
-  const raw = userDoc?.accounts?.tournaments ?? {};
-
   const map: Record<string, boolean> = {};
 
-  Object.keys(raw).forEach((id) => {
-    map[id] = true;
+  userTournamentState.forEach(x => {
+    map[x.tournament.tournamentId] = x.joined;
   });
 
   return map;
-}, [userDoc?.accounts?.tournaments]);
+}, [userTournamentState]);
 
 
 
@@ -642,7 +701,20 @@ useEffect(() => {
   return unsub;
 }, []);
 
+useEffect(() => {
+  setActiveTournament(prev => {
+    if (!prev) return prev;
 
+    const p = participantDocs[prev.tournamentId];
+    if (!p) return prev;
+
+    return {
+      ...prev,
+      balance: p.balance ?? prev.balance,
+      performance: p.performance ?? prev.performance,
+    };
+  });
+}, [participantDocs]);
 
   /* 🔐 Auth listener */
   useEffect(() => {
@@ -746,62 +818,8 @@ console.log(
   "TOURNAMENTS RAW:",
   JSON.stringify(acc.tournaments, null, 2)
 );
-    // Build tournament list from user accounts, only include joined tournaments
-const rawTournaments = data?.accounts?.tournaments ?? {};
-const tournamentList = Object.entries(rawTournaments).map(
-  ([id, userData]: any) => {
-  const def = tournamentsRef.current.find(t => t.tournamentId === id);
-    return {
-      id,
-      tournamentId: id,
-      // 🟢 GLOBAL TOURNAMENT DATA (from Firestore /tournaments)
-      name: def?.name ?? "Tournament",
-      symbol: def?.symbol ?? "$",
-      currency: def?.currency ?? "$",
-
-      startTime: def?.startTime,
-      endTime: def?.endTime,
-
- // 🟡 USER-SPECIFIC DATA (from userDoc)
-      balance: Number(userData.balance ?? 0),
-      startingBalance: Number(userData.startingBalance ?? def?.startingBalance ?? 0),
-
-      joined: userData.joined ?? true,
-      status: def?.status ?? "upcoming",
-
-      rebuyCount: userData.rebuyCount ?? 0,
-      rebuys: userData.rebuys ?? [],
-
-      performance: userData.performance ?? {
-        pnl: 0,
-        roi: 0,
-        wins: 0,
-        losses: 0,
-        trades: 0,
-        winRate: 0,
-        rebuyInjectedTotal: 0,
-      },
-    };
-  }
-);
-
-
-if (__DEV__) {
-  console.log("TOURNAMENT LIST UPDATED");
-}
-
-    // ✅ Reset active tournament if it was deleted
-    if (activeAccountRef.current.type === "tournament") {
-      const activeTournamentId = activeAccountRef.current.tournamentId;
-      const stillExists = tournamentList.find(
-        (t) => t.tournamentId === activeTournamentId
-      );
-
-      if (!stillExists) {
-        setActiveAccount({ type: "demo" });
-        setActiveTournament(null);
-      }
-    }
+    
+  
 
     setLoading(false);
   });
@@ -874,7 +892,7 @@ useEffect(() => {
   // Remove balances and meta for deleted tournaments
   const validIds = tournaments.map(t => t.tournamentId);
 
-  setLiveTournamentBalances(prev => {
+  setParticipantBalances(prev => {
     const updated: Record<string, number> = {};
     Object.entries(prev).forEach(([id, bal]) => {
       if (validIds.includes(id)) updated[id] = bal;

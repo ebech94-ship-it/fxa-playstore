@@ -4,30 +4,7 @@ const admin = require("firebase-admin");
 if (!admin.apps.length) {
   admin.initializeApp();
 }
-function buildParticipantMirror(userTournament, extra = {}) {
-  return {
-    balance: userTournament.balance,
-    startingBalance: userTournament.startingBalance,
 
-    rebuyCount: userTournament.rebuyCount || 0,
-    rebuyInjectedTotal: userTournament.rebuyInjectedTotal || 0,
-    rebuys: userTournament.rebuys || [],
-
-    performance: userTournament.performance || {
-      pnl: 0,
-      roi: 0,
-      wins: 0,
-      losses: 0,
-      trades: 0,
-      winRate: 0,
-      rebuyInjectedTotal: 0,
-    },
-
-    rankingScore: userTournament.rankingScore || 0,
-
-    ...extra,
-  };
-}
 function computeRankingScore(balance, startingBalance, rebuyInjectedTotal) {
   return balance - startingBalance - rebuyInjectedTotal;
 }
@@ -181,7 +158,7 @@ exports.onTournamentJoin = functions.firestore
   });
 
 /* =========================================================
-   4. PLACE TRADE
+   4. PLACE TRADE (FIXED CLEAN VERSION)
    ========================================================= */
 exports.placeTournamentTrade = functions.https.onCall(async (data, context) => {
   const db = admin.firestore();
@@ -197,42 +174,52 @@ exports.placeTournamentTrade = functions.https.onCall(async (data, context) => {
     throw new functions.https.HttpsError("invalid-argument", "Invalid trade");
   }
 
-  const userRef = db.doc(`users/${uid}`);
   const participantRef = db.doc(
     `tournaments/${tournamentId}/participants/${uid}`
   );
 
   await db.runTransaction(async (tx) => {
-    const userSnap = await tx.get(userRef);
+
     const participantSnap = await tx.get(participantRef);
 
     if (!participantSnap.exists) {
       throw new functions.https.HttpsError("failed-precondition", "NOT_JOINED");
     }
 
-    const userData = userSnap.data() || {};
-    const balance =
-      userData.accounts?.tournaments?.[tournamentId]?.balance || 0;
+    const participant = participantSnap.data();
+    const balance = participant.balance || 0;
 
     if (balance < amount) {
       throw new functions.https.HttpsError("resource-exhausted", "NO_FUNDS");
     }
 
-    tx.update(userRef, {
-      [`accounts.tournaments.${tournamentId}.balance`]: balance - amount,
-      lastTournamentSync: admin.firestore.FieldValue.serverTimestamp(),
+    const newBalance = balance - amount;
+
+    const performance = participant.performance || {
+      pnl: 0,
+      roi: 0,
+      wins: 0,
+      losses: 0,
+      trades: 0,
+      winRate: 0,
+    };
+
+    const startingBalance = participant.startingBalance || 0;
+    const rebuyInjectedTotal = participant.rebuyInjectedTotal || 0;
+
+    const rankingScore = computeRankingScore(
+      newBalance,
+      startingBalance,
+      rebuyInjectedTotal
+    );
+
+    tx.update(participantRef, {
+      balance: newBalance,
+      performance,
+      rankingScore,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-   const userTournament =
-  userSnap.data()?.accounts?.tournaments?.[tournamentId] || {};
-
-tx.set(
-  participantRef,
-  buildParticipantMirror(userTournament, {
-    balance: balance - amount
-  }),
-  { merge: true }
-);
     const tradeRef = db.doc(`users/${uid}/openTrades/${tradeId}`);
 
     tx.set(tradeRef, {
@@ -247,7 +234,6 @@ tx.set(
 
   return { success: true };
 });
-
 /* =========================================================
    5. SETTLE TRADE
    ========================================================= */
@@ -265,7 +251,6 @@ exports.settleTournamentTrade = functions.https.onCall(async (data, context) => 
     throw new functions.https.HttpsError("invalid-argument", "Missing trade data");
   }
 
-  const userRef = db.doc(`users/${uid}`);
   const tradeRef = db.doc(`users/${uid}/openTrades/${tradeId}`);
   const closedTradeRef = db.doc(`users/${uid}/closedTrades/${tradeId}`);
 const participantRef = db.doc(
@@ -273,7 +258,7 @@ const participantRef = db.doc(
 );
 
   await db.runTransaction(async (tx) => {
-    const userSnap = await tx.get(userRef);
+   
     const tradeSnap = await tx.get(tradeRef);
 
     if (!tradeSnap.exists) {
@@ -282,23 +267,23 @@ const participantRef = db.doc(
 
     const trade = tradeSnap.data();
 
-   const tournamentAccount =
-  userSnap.data()?.accounts?.tournaments?.[tournamentId] || {};
+   const participantSnap = await tx.get(participantRef);
+const participant = participantSnap.data();
 
-let balance = tournamentAccount.balance || 0;
+let balance = participant.balance || 0;
 
-const startingBalance = tournamentAccount.startingBalance || 0;
+const startingBalance = participant.startingBalance || 0;
+
 const rebuyInjectedTotal =
-  tournamentAccount.rebuyInjectedTotal || 0;
+  participant.rebuyInjectedTotal || 0;
 
-const performance = tournamentAccount.performance || {
+const performance = participant.performance || {
   pnl: 0,
   roi: 0,
   wins: 0,
   losses: 0,
   trades: 0,
   winRate: 0,
-   rebuyInjectedTotal: 0,
 };
     const isWin = result === "GAIN";
     const payout = isWin ? trade.amount * 1.95 : 0;
@@ -321,33 +306,20 @@ const winRate = trades > 0 ? (wins / trades) * 100 : 0;
   rebuyInjectedTotal
 );
 
-   tx.update(userRef, {
-  [`accounts.tournaments.${tournamentId}.balance`]: balance,
-
-  [`accounts.tournaments.${tournamentId}.performance`]: {
+// 👇 ADD THIS HERE
+tx.update(participantRef, {
+  balance,
+  performance: {
     pnl,
     roi,
     wins,
     losses,
     trades,
     winRate,
-      rebuyInjectedTotal,
   },
-  [`accounts.tournaments.${tournamentId}.rankingScore`]: rankingScore,
+  rankingScore,
+  updatedAt: admin.firestore.FieldValue.serverTimestamp(),
 });
-
-// 👇 ADD THIS HERE
-const userTournament =
-  userSnap.data()?.accounts?.tournaments?.[tournamentId] || {};
-
-tx.set(
-  participantRef,
-  buildParticipantMirror(userTournament, {
-    balance,
-    rankingScore
-  }),
-  { merge: true }
-);
     tx.set(closedTradeRef, {
       ...trade,
       result,
@@ -360,37 +332,3 @@ tx.set(
 
   return { success: true };
 });
-exports.onParticipantCreate = functions.firestore
-  .document("tournaments/{tournamentId}/participants/{uid}")
-  .onCreate(async (snap, context) => {
-    const db = admin.firestore();
-
-    const { tournamentId, uid } = context.params;
-
-    const data = snap.data();
-
-    const startingBalance = data?.startingBalance || 1000;
-
-    const userRef = db.doc(`users/${uid}`);
-
-    await userRef.set(
-      {
-        [`accounts.tournaments.${tournamentId}`]: {
-          balance: startingBalance,
-          startingBalance,
-          performance: {
-            pnl: 0,
-            roi: 0,
-            wins: 0,
-            losses: 0,
-            trades: 0,
-            winRate: 0,
-          },
-          rebuyInjectedTotal: 0,
-          rankingScore: 0,
-        },
-      },
-      { merge: true }
-    );
-  });
-  
