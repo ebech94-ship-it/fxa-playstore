@@ -288,6 +288,32 @@ app.post("/admin/process-tournament-payout", authenticate, requireAdmin, async (
     });
   }
 });
+app.post("/admin/pay-participant", authenticate, requireAdmin, async (req, res) => {
+  try {
+    const { tournamentId, participantId } = req.body;
+
+    if (!tournamentId || !participantId) {
+      return res.status(400).json({
+        error: "Missing tournamentId or participantId",
+      });
+    }
+
+    await treasury.payParticipant(tournamentId, participantId);
+
+    res.json({
+      success: true,
+      message: "Participant paid successfully",
+    });
+
+  } catch (err) {
+    console.error("Participant payout error:", err);
+
+    res.status(400).json({
+      success: false,
+      error: err.message,
+    });
+  }
+});
 
 // ----------------------
 // ADMIN — ALL TOURNAMENT COFFERS (TABLE VIEW)

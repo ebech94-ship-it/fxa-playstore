@@ -501,12 +501,11 @@ async processTournamentPayout(tournamentId) {
 
         t.update(partRef, {
           paidOut: true,
+           payoutStatus: "paid",
           payoutAmount: w.amount,
-          payoutAt: admin.firestore.FieldValue.toISOString(),
+          payoutAt: admin.firestore.FieldValue.serverTimestamp(),
         });
-t.update(partRef, {
-  performance: admin.firestore.FieldValue.serverTimestamp(),
-});
+
         distributed += w.amount;
 
         payoutLogs.push({
@@ -515,7 +514,7 @@ t.update(partRef, {
           amount: w.amount,
           type: "tournament_payout",
           status: "PAID",
-          createdAt: admin.firestore.FieldValue.toISOString(),
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
         });
       }
 
@@ -555,5 +554,95 @@ t.update(partRef, {
     console.error("Payout failed:", error.message);
     throw error;
   }
-}
+},
+
+ async payParticipant(tournamentId, participantId) {
+  const tournamentRef = db.collection("tournaments").doc(tournamentId);
+  const participantRef = tournamentRef.collection("participants").doc(participantId);
+  const userRef = db.collection("users").doc(participantId);
+  const treasuryRef = db.collection("treasury").doc("main");
+
+  const tournamentSnap = await tournamentRef.get();
+  if (!tournamentSnap.exists) throw new Error("Tournament not found");
+
+  const tournament = tournamentSnap.data();
+
+  if (tournament.paidOut) throw new Error("Tournament already fully paid");
+  if (!Array.isArray(tournament.payoutStructure)) {
+    throw new Error("Invalid payout structure");
+  }
+
+  const participantSnap = await participantRef.get();
+  if (!participantSnap.exists) throw new Error("Participant not found");
+
+  const participant = participantSnap.data();
+
+  if (participant.paidOut) {
+    throw new Error("Participant already paid");
+  }
+
+  // 1️⃣ Get leaderboard sorted EXACTLY like bulk payout
+  const leaderboardSnap = await tournamentRef
+    .collection("participants")
+    .orderBy("performance.pnl", "desc")
+    .get();
+
+  const leaderboard = leaderboardSnap.docs.map((d) => ({
+    id: d.id,
+    data: d.data(),
+  }));
+
+  // 2️⃣ Find rank
+  const rank = leaderboard.findIndex((p) => p.id === participantId) + 1;
+
+  if (rank <= 0) throw new Error("Participant not ranked");
+
+  // 3️⃣ Get payout
+  const payout = tournament.payoutStructure.find(
+    (p) => p.rank === rank
+  );
+
+  if (!payout || payout.amount <= 0) {
+    throw new Error("No payout for this rank");
+  }
+
+  const amount = Number(payout.amount);
+
+  // 4️⃣ Run transaction
+  await db.runTransaction(async (t) => {
+    const userSnap = await t.get(userRef);
+    if (!userSnap.exists) throw new Error("User not found");
+
+    // credit user wallet
+    t.update(userRef, {
+      "accounts.real.balance": admin.firestore.FieldValue.increment(amount),
+    });
+
+    // mark participant paid
+    t.update(participantRef, {
+      paidOut: true,
+      payoutStatus: "paid",
+      payoutAmount: amount,
+      payoutAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    // reduce treasury
+    t.update(treasuryRef, {
+      balance: admin.firestore.FieldValue.increment(-amount),
+      lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    // log transaction
+    t.set(db.collection("transactions").doc(), {
+      userId: participantId,
+      tournamentId,
+      amount,
+      type: "tournament_payout",
+      status: "completed",
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+  });
+
+  console.log(`💰 Paid participant ${participantId} → rank ${rank}`);
+},
 };
