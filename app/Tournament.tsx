@@ -129,7 +129,7 @@ export default function TournamentScreen({ currentUser }: TournamentScreenProps)
   // live players list for the currently selected tournament (used for counts / participant preview)
 
 const [tournamentCounts, setTournamentCounts] = useState<Record<string, number>>({});
-
+const [tournamentRebuyCounts, setTournamentRebuyCounts] = useState<Record<string, number>>({});
   const [viewTab, setViewTab] = useState("info"); // "info" | "leaderboard"
   
 type LoadingState = {
@@ -147,12 +147,6 @@ const [loadingActions, setLoadingActions] = useState<
 const { balances, joinedMap, leaderboardParticipants, tournaments,  profile, setOpenAccountSwitcher,
   setSwitcherHintTournamentId, participantBalances,  } = useApp();                               // or replace with your actual context
 
-const getTotalRebuys = (tournamentId: string) => {
-  const list = leaderboardParticipants[tournamentId] ?? [];
-  return list.reduce((sum: number, p: any) => {
-    return sum + (p.rebuyCount || 0);
-  }, 0);
-};
   const setLoadingFor = (
   tournamentId: string,
   action: "register" | "rebuy",
@@ -196,14 +190,21 @@ useEffect(() => {
     );
 
     const unsub = onSnapshot(ref, (snap) => {
+  const totalRebuys = snap.docs.reduce(
+    (sum, d) => sum + (d.data().rebuyCount ?? 0),
+    0
+  );
 
+  setTournamentCounts(prev => ({
+    ...prev,
+    [t.id]: snap.size,
+  }));
 
-      setTournamentCounts(prev => ({
-        ...prev,
-        [t.id]: snap.size,
-      }));
-
-    });
+  setTournamentRebuyCounts(prev => ({
+    ...prev,
+    [t.id]: totalRebuys,
+  }));
+});
 
     unsubs.push(unsub);
   });
@@ -630,7 +631,7 @@ const allowRebuy =
     </Text>
 
     <Text style={styles.cardDetail}>
-      ♻️ ♻️ {getTotalRebuys(item.id)} Rebuys
+      ♻️ {tournamentRebuyCounts[item.id] ?? 0} Rebuys
     </Text>
   </View>
  </View>
@@ -988,7 +989,7 @@ disabled={
 </Text>
 
             <Text style={styles.modalInfo}>
-             ♻️ Rebuys: {getTotalRebuys(selectedTournament.id)}
+             ♻️ Rebuys: {tournamentRebuyCounts[selectedTournament.id] ?? 0}
             </Text>
 
             {/* Tab switch */}

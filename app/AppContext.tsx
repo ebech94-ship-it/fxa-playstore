@@ -338,7 +338,9 @@ const [appSettings, setAppSettings] = useState<AppSettings>({
 const [userDoc, setUserDoc] = useState<FirestoreUserDoc | null>(null);
 
 const [participantBalances, setParticipantBalances] = useState<Record<string, number>>({});
-const [participantDocs, setParticipantDocs] = useState<Record<string, any>>({});
+const [participantDocs, setParticipantDocs] = useState<
+  Record<string, Record<string, any>>
+>({});
 
 const [tournamentMeta, setTournamentMeta] = useState<
   Record<string, { name: string; symbol: string }>
@@ -516,17 +518,13 @@ useEffect(() => {
         };
       });
 
-      setParticipantDocs((prev) => {
-        const current = prev[t.tournamentId];
-
-        // 🔥 shallow compare safeguard
-        if (JSON.stringify(current) === JSON.stringify(data)) return prev;
-
-        return {
-          ...prev,
-          [t.tournamentId]: data,
-        };
-      });
+   setParticipantDocs((prev) => ({
+  ...prev,
+  [t.tournamentId]: {
+    ...(prev[t.tournamentId] ?? {}),
+    [authUser.uid]: data,
+  },
+}));
     });
 
     unsubs.push(unsub);
