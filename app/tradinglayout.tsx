@@ -998,7 +998,7 @@ const styles = StyleSheet.create({
   actionButton: { padding: 12,  marginVertical: 4,  borderRadius: 8,  bottom: 20,  alignItems: "center", },
   actionText: { color: "white", fontWeight: "bold" },
   
-  overlay: { position: "absolute", top: 80, left: "10%", width: "80%", height: "80%", backgroundColor: "#333",
+  overlay: { position: "absolute", top: 85, left: "10%", width: "65%", height: "80%", backgroundColor: "#333",
  borderRadius: 8,  zIndex: 100,  padding: 10, },
   closeButton: { position: "absolute", top: 10, right: 10, zIndex: 10 },
   pageContent: { flex: 1, marginTop: 0 },
