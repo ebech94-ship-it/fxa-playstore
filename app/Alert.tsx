@@ -1,8 +1,9 @@
 import { useRouter } from "expo-router";
 import {
   collection, doc,
-  getDocs,
-  orderBy, query, setDoc, where,
+
+  onSnapshot,
+  orderBy, query, setDoc, updateDoc
 } from "firebase/firestore";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -12,8 +13,18 @@ import {
 import { useApp } from "../app/AppContext";
 import { db } from "../firebaseConfig";
 
+type Alert = {
+  id: string;
+  message?: string;
+  type?: string;
+  tournamentId?: string;
+  read?: boolean;
+  createdAt?: any;
+};
+
 export default function AlertScreen() {
-  const [alerts, setAlerts] = useState<any[]>([]);
+  const [alerts, setAlerts] = useState<Alert[]>([]);
+
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const router = useRouter();
@@ -21,47 +32,38 @@ export default function AlertScreen() {
   const { authUser, setUnreadCount } = useApp(); // context
 
 
-const loadAlerts = useCallback(async () => {
+const loadAlerts = useCallback(() => {
   if (!authUser) return;
 
-  const q = query(collection(db, "alerts"), orderBy("createdAt", "desc"));
-  const snap = await getDocs(q);
-
-  const alertData = snap.docs.map((d) => ({
-    id: d.id,
-    ...d.data(),
-    createdAt: d.data().createdAt || { toDate: () => new Date() },
-  }));
-
-  const userQ = query(
-    collection(db, "userAlerts"),
-    where("userId", "==", authUser.uid)
+  const q = query(
+    collection(db, "alerts"),
+    orderBy("createdAt", "desc")
   );
 
-  const userSnap = await getDocs(userQ);
+ const unsub = onSnapshot(q, (snap) => {
+  const alertData: Alert[] = snap.docs.map((d) => ({
+  id: d.id,
+  ...(d.data() as Omit<Alert, "id">),
+  createdAt: d.data().createdAt?.toDate?.() || new Date(),
+}));
 
-  const readIds = new Set<string>();
+  setAlerts(alertData);
 
-  userSnap.forEach((doc) => {
-    const data: any = doc.data();
-    if (data.read && !data.deleted) {
-      readIds.add(data.alertId);
-    }
-  });
-
-  const merged = alertData.map((a) => ({
-    ...a,
-    read: readIds.has(a.id),
-  }));
-
-  setAlerts(merged);
-
-  const unread = merged.filter((a) => !a.read).length;
+  const unread = alertData.filter((a) => !a.read).length;
   setUnreadCount(unread);
 
   setLoading(false);
-}, [authUser, setUnreadCount]);
+});
 
+  return unsub;
+}, [authUser, setUnreadCount]);;
+
+useEffect(() => {
+  if (!authUser) return;
+
+  const unsub = loadAlerts();
+  return () => unsub?.();
+}, [authUser, loadAlerts]);
 
 useEffect(() => {
   if (!authUser) {
@@ -75,28 +77,17 @@ useEffect(() => {
 }, [authUser, loadAlerts, setUnreadCount]);
 
 
-
 const markRead = async (id: string) => {
   if (!authUser) return;
 
-  // 1️⃣ Add entry to userAlerts
- await setDoc(
-  doc(db, "userAlerts", `${authUser.uid}_${id}`),
-  {
-    userId: authUser.uid,
-    alertId: id,
+  await updateDoc(doc(db, "alerts", id), {
     read: true,
-    deleted: false,
-  },
-  { merge: true }
-);
+  });
 
-  // 2️⃣ Update local state immediately
   setAlerts((prev) =>
     prev.map((a) => (a.id === id ? { ...a, read: true } : a))
   );
 
-  // 3️⃣ Adjust unread count instantly for UI
   setUnreadCount((prev) => Math.max(prev - 1, 0));
 };
 
@@ -210,7 +201,15 @@ const AlertCard = ({ item, router, expanded, onToggle, onRead, onDelete }: any) 
   };
 
   return (
-    <View style={styles.card}>
+    <View
+  style={[
+    styles.card,
+    {
+      backgroundColor:
+        item.type === "tournament" ? "#331c4fff" : "#1c1c1c",
+    },
+  ]}
+>
      <TouchableOpacity onPress={handlePress}>
         <View style={styles.header}>
           <Text style={[styles.title, { color: typeColor[item.type] || "#7cf" }]}>

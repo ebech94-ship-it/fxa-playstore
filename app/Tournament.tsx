@@ -1022,7 +1022,7 @@ disabled={
   }}
   showsVerticalScrollIndicator={false}
 >
-<View style={{ minWidth: 750, minHeight:760 }}>
+<View style={{   width: "100%", minHeight:700 }}>
     <Text style={styles.sectionTitle}>📖 Information</Text>
     <View style={styles.infoBox}>
     <Text style={styles.infoText}>
@@ -1108,7 +1108,7 @@ disabled={
     horizontal
     showsHorizontalScrollIndicator={true}
   >
-    <View style={{ minWidth: 750, minHeight:760 }}>
+    <View style={{   width: "100%", minHeight:700 }}>
       <LeaderboardTable list={sortedLeaderboard} />
     </View>
   </ScrollView>
@@ -1151,13 +1151,16 @@ disabledBtn: { opacity: 0.45 },
 modalContent: {
   backgroundColor: "#0e0f26",
   borderRadius: 18,
-  width: "100%",
-  maxHeight: "100%",
+
+  width: "95%",
+  maxWidth: 900,
+
+  maxHeight: "92%",
 
   paddingHorizontal: 16,
   alignSelf: "center",
 
-  overflow: "hidden", // 🔥 critical fix for scroll containment
+  overflow: "hidden",
 },
   closeButton: {
   alignSelf: "flex-end",

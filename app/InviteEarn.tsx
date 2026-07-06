@@ -148,7 +148,26 @@ ${landingLink}`,
   referralCount={referralCount}
   referralPoints={referralPoints}
 />
+
       )}
+      {/* HOW REFERRALS WORK */}
+<View style={styles.infoCard}>
+  <Text style={styles.infoTitle}>💡 How referrals work</Text>
+
+  <Text style={styles.infoText}>
+    Share your invite link with friends. A referral becomes valid only when your friend:
+  </Text>
+
+  <Text style={styles.infoText}>
+    • Downloads Forex Arena using your invite link{"\n"}
+    • Creates an account{"\n"}
+    • Joins their first tournament
+  </Text>
+
+  <Text style={styles.infoText}>
+    Once these steps are completed, your referral will count and you will receive your referral rewards automatically.
+  </Text>
+</View>
 
       {/* REWARDS */}
       {activeTab === "rewards" && (
@@ -194,4 +213,25 @@ const styles = StyleSheet.create({
     fontSize: 16,
     textAlign: "center",
   },
+  infoCard: {
+  backgroundColor: "#101425",
+  borderRadius: 12,
+  padding: 14,
+  marginTop: 16,
+  borderWidth: 1,
+  borderColor: "#1f2a44",
+},
+
+infoTitle: {
+  color: "#8c52ff",
+  fontSize: 14,
+  fontWeight: "700",
+  marginBottom: 8,
+},
+
+infoText: {
+  color: "#cfd6ff",
+  fontSize: 13,
+  lineHeight: 18,
+},
 });

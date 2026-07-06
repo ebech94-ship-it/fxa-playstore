@@ -2,24 +2,27 @@
 import { Linking, ScrollView, StyleSheet, Text, TouchableOpacity } from "react-native";
 
 export default function AboutScreen() {
-  const email = "ebech94@gmail.com";
-  const website = "https://forexarena.vercel.app/"; // optional
+  const email = "ebech@republic.beauty";
+  const website = "https://www.republic.beauty"; // optional
 
   const handleEmailPress = () => {
     Linking.openURL(`mailto:${email}`);
   };
 
-  const handleWebsitePress = () => {
-    Linking.openURL(website);
-  };
+  const handleWebsitePress = async () => {
+  const supported = await Linking.canOpenURL(website);
+
+  if (supported) {
+    await Linking.openURL(website);
+  }
+};
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <Text style={styles.title}>About FX Arena</Text>
 
       <Text style={styles.text}>
-        FX Arena is developed by <Text style={styles.bold}>GodSpeed (GS) Technologies</Text>, powered by{" "}
-        <Text style={styles.bold}>BECHEM Lab</Text>.
+        FX Arena is developed and maintained by <Text style={styles.bold}>GodSpeed (GS) Technologies</Text>⭐⭐⭐⭐⭐.
       </Text>
 
       <Text style={styles.text}>
@@ -29,8 +32,9 @@ export default function AboutScreen() {
       </Text>
 
       <Text style={styles.text}>
-        The app uses <Text style={styles.bold}>synthetic markets only</Text>. No real financial markets are
-        accessed, and <Text style={styles.bold}>no real-money trading</Text> is conducted within the app.
+        FX Arena is a  <Text style={styles.bold}>skill-based trading simulation platform</Text>. All market activity within the app is simulated using synthetic market 
+        data for educational and competitive purposes.
+        The app does not execute trades on live financial markets and should not be considered  <Text style={styles.bold}>a brokerage or investment service</Text>.
       </Text>
 
       <Text style={styles.text}>
@@ -41,8 +45,8 @@ export default function AboutScreen() {
       </Text>
 
       <Text style={styles.text}>
-        Our mission is to provide a fun, educational, and competitive trading experience that helps users
-        understand when to buy, when to sell, and how to manage emotions under pressure.
+        Our mission is to provide fair, engaging and educational trading simulated experience that helps users
+        build market knowledge, improve decision-making, and develop disciplined trading habits.
       </Text>
 
       <Text style={styles.title}>Contact & Support</Text>
@@ -54,6 +58,13 @@ export default function AboutScreen() {
       <TouchableOpacity onPress={handleWebsitePress}>
         <Text style={styles.link}>{website}</Text>
       </TouchableOpacity>
+      
+      <Text style={styles.text}>
+Version 1.0.0
+</Text>
+<Text style={styles.text}>
+© 2026 GodSpeed (GS) Technologies. All rights reserved.
+</Text>
     </ScrollView>
   );
 }

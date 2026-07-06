@@ -461,10 +461,11 @@ app.post("/support/send", authenticate, async (req, res) => {
         username: resolvedUsername,
 
         status: "open",
-        createdAt: admin.firestore.FieldValue.server(),
+createdAt: admin.firestore.FieldValue.serverTimestamp(),
+
 
         lastMessage: message,
-        lastMessageAt: admin.firestore.FieldValue.toISOString(),
+        lastMessageAt: admin.firestore.FieldValue.serverTimestamp(),
       });
     } else {
       threadRef = db.collection("supportThreads").doc(threadId);
