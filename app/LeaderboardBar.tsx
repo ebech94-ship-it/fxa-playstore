@@ -458,8 +458,8 @@ return (
       style={{
   position: "absolute",
   right: 6,
-  top: "35%",   // centers it vertically
-  height: 32,   // slim horizontal button
+  top: "10%",   // centers it vertically
+  height: 50,   // slim horizontal button
   justifyContent: "center",
   alignItems: "center",
   paddingHorizontal: 10,
@@ -469,6 +469,7 @@ return (
   shadowOpacity: 0.25,
   shadowRadius: 3,
   shadowOffset: { width: 0, height: 2 },
+  zIndex: 65,
 }}
       >
         <Text style={{ color: "#fff", fontSize: 10, fontWeight: "700" }}> All</Text>
@@ -487,7 +488,7 @@ return (
           style={{
             flex: 1,
             backgroundColor:"rgba(15,23,39,0.95)",
-            padding: 5,
+            padding: 10,
             justifyContent: "center",
           }}
         >
@@ -495,21 +496,21 @@ return (
   onPress={() => setShowFull(false)}
   style={{
     position: "absolute",
-    top: 20,        // some distance from top
-    right: 20,      // some distance from right edge
+    top: 30,        // some distance from top
+    right: 30,      // some distance from right edge
     padding: 8,     // bigger touch area
     borderRadius: 8,
-    backgroundColor: "rgba(248,113,113,0.2)", // subtle background for visibility
+    backgroundColor: "rgba(22, 156, 189, 1)", // subtle background for visibility
     zIndex: 10,
   }}
 >
-  <Text style={{ color: "#f87171", fontSize: 16, fontWeight: "700" }}>✖</Text>
+  <Text style={{ color: "#f87171", fontSize: 20, fontWeight: "700" }}>✖</Text>
 </Pressable>
 <TouchableOpacity
   onPress={() => setShowSharePreview(true)}
   style={{
     backgroundColor: "#5A4BE7",
-    padding: 10,
+    padding: 30,
     borderRadius: 8,
     marginBottom: 10,
     alignSelf: "center",

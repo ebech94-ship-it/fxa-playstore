@@ -853,26 +853,31 @@ if (!profileLoaded) {
   </View>
 
   {/* Balance Info */}
-  <View style={{ flex: 1 }}>
-    <Text
-      style={{
-        color: "#FFC107",
-        fontSize: 25,
-        fontWeight: "900",
-        letterSpacing: 0.8,
-        marginBottom: 4,
-      }}
-    >
+  <View style={{ flex: 1, minWidth: 0 }}>
+   <Text
+  numberOfLines={1}
+  adjustsFontSizeToFit
+  style={{
+    color: "#FFC107",
+    fontSize: 22,
+    fontWeight: "900",
+    letterSpacing: 0.8,
+    marginBottom: 4,
+  }}
+>
       ACCOUNT BALANCE
     </Text>
 
     <Text
-      style={{
-        color: "#9fec03ff",
-        fontSize: 32,
-        fontWeight: "900",
-      }}
-    >
+  numberOfLines={1}
+  adjustsFontSizeToFit
+  style={{
+    color: "#9fec03ff",
+    fontSize: 28,
+    fontWeight: "900",
+    flexShrink: 1,
+  }}
+>
       <Text
         style={{
           color: "#530c94ff",

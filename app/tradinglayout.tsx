@@ -982,7 +982,7 @@ const styles = StyleSheet.create({
   chartContainer: { width: "70%", height: "100%",  justifyContent: "flex-start", paddingBottom: 50, },
 
   rightPanel: { overflow: "visible",
-  position: "relative", zIndex: 10, width: "20%", backgroundColor: "#2c2c2c", padding: 10, top:15,
+  position: "relative", zIndex: 10, width: "20%", backgroundColor: "#2c2c2c", padding: 10, top: 18,
    justifyContent: "space-around", },
  panelSection: { marginVertical: 1 }, label: { color: "#ccc", marginBottom: 2, fontSize: 14, bottom: 2 },
   input: {  backgroundColor: "rgba(255,255,255,0.1)", borderColor: "#666",  borderWidth: 1,  borderRadius: 6, 

@@ -116,7 +116,16 @@ const NameWithFlag = ({
   );
 };
 
+const USD_TO_XAF = 600;
 
+const toXAF = (usd?: number) => {
+  if (!usd || isNaN(usd)) return 0;
+  return usd * USD_TO_XAF;
+};
+
+const formatXAF = (value: number) => {
+  return value.toLocaleString("en-US");
+};
 
 export default function TournamentScreen({ currentUser }: TournamentScreenProps) {
   const [selectedTournament, setSelectedTournament] = useState<Tournament | null>(null);
@@ -582,27 +591,62 @@ const allowRebuy =
       </View>
 
       {/* PRIZE INFO */}
-      <View style={styles.cardPrizeRow}>
-        <Text style={styles.cardPrizeText}>
-          🏆 Prize Pool: {formatNum(item.prizePool)} $
-        </Text>
+     {/* PRIZE / FEES WITH DIVIDER CONVERSION */}
+<View style={styles.cardPrizeRow}>
 
-        <Text style={styles.cardPrizeText}>
-          🏅 Winners: {item.payoutStructure?.length ?? 0}
-        </Text>
+  {/* PRIZE POOL */}
+  <View style={styles.moneyRow}>
+    <Text style={styles.leftPrizePoolText}>
+  🏆 Prize Pool: {formatNum(item.prizePool)} $
+</Text>
 
-        <Text style={styles.cardFeeText}>
-          🎟 Entry Fee: {item.entryFee ?? 0} $
-        </Text>
+    <View style={styles.dividerLine} />
 
-        <Text style={styles.cardFeeText}>
-          ♻️ Rebuy: {rebuyFee} $
-        </Text>
+    <Text style={styles.rightMoneyText}>
+      ≈ {formatXAF(toXAF(item.prizePool))} XAF
+    </Text>
+  </View>
 
-        <Text style={styles.cardFeeText}>
-          💵 Starting Balance: {item.startingBalance ?? 0} $
-        </Text>
-      </View>
+  {/* ENTRY FEE */}
+  <View style={styles.moneyRow}>
+    <Text style={styles.leftMoneyText}>
+      🎟 Entry Fee: {item.entryFee ?? 0} $
+    </Text>
+
+    <View style={styles.dividerLine} />
+
+    <Text style={styles.rightMoneyText}>
+      ≈ {formatXAF(toXAF(item.entryFee))} XAF
+    </Text>
+  </View>
+
+  {/* REBUY FEE */}
+  <View style={styles.moneyRow}>
+    <Text style={styles.leftMoneyText}>
+      ♻️ Rebuy Fee: {rebuyFee} $
+    </Text>
+
+    <View style={styles.dividerLine} />
+
+    <Text style={styles.rightMoneyText}>
+      ≈ {formatXAF(toXAF(rebuyFee))} XAF
+    </Text>
+  </View>
+
+  {/* STARTING BALANCE */}
+  <View style={styles.moneyRow}>
+    <Text style={styles.leftMoneyText}>
+      💵 Start Balance: {item.startingBalance ?? 0} $
+    </Text>
+
+    <View style={styles.dividerLine} />
+
+    <Text style={styles.rightMoneyText}>
+      ≈ {formatXAF(toXAF(item.startingBalance))} XAF
+    </Text>
+  </View>
+
+</View>
 
       {/* LIVE STATS */}
       <View style={styles.cardStatsRow}>
@@ -862,19 +906,26 @@ disabled={
     alignSelf: "center",
     flexDirection: "row",
     alignItems: "center",
+
+    flexWrap: "wrap",          // 🔥 allows portrait shrink
+
     backgroundColor: "#0f172a",
     borderWidth: 1,
     borderColor: "rgba(34,197,94,0.25)",
-    paddingHorizontal: 25,
-    paddingVertical: 15,
+
+    paddingHorizontal: 18,
+    paddingVertical: 10,       // 🔥 reduced height
+
     borderRadius: 999,
     marginTop: 8,
     marginBottom: 14,
+
+    maxWidth: "95%",           // 🔥 prevents overflow outside modal
   }}
 >
   <Ionicons
     name="wallet-outline"
-    size={25}
+    size={20}
     color="#22c55e"
     style={{ marginRight: 6 }}
   />
@@ -882,7 +933,8 @@ disabled={
   <Text
     style={{
       color: "#94a3b8",
-      fontSize: 15,
+       fontSize: 13,
+    flexShrink: 1,
       marginRight: 4,
     }}
   >
@@ -894,7 +946,8 @@ disabled={
     style={{
       color: "#3b82f6",
       fontWeight: "800",
-      fontSize: 14,
+     fontSize: 13,
+flexShrink: 1,
       letterSpacing: 1,
     }}
   >
@@ -902,10 +955,13 @@ disabled={
   </Text>
 
   <Text
-    style={{
+    numberOfLines={1}
+  adjustsFontSizeToFit
+  style={{
       color: "#fbbf24",
       fontWeight: "900",
-      fontSize: 20,
+      fontSize: 18,
+flexShrink: 1,
       textShadowColor: "rgba(251,191,36,0.7)",
       textShadowOffset: { width: 0, height: 0 },
       textShadowRadius: 10,
@@ -947,9 +1003,9 @@ disabled={
     onPress={() => setSelectedTournament(null)} // tap outside closes modal
   >
     <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === "ios" ? "padding" : "height"} // avoid keyboard overlapping inputs
-    >
+  style={{ flex: 1, justifyContent: "center", alignItems: "center" }}
+  behavior={Platform.OS === "ios" ? "padding" : "height"}
+>
       <Pressable
         style={styles.modalContent}
         onPress={(e) => e.stopPropagation()} // prevent taps inside modal from closing
@@ -1022,7 +1078,7 @@ disabled={
   }}
   showsVerticalScrollIndicator={false}
 >
-<View style={{   width: "100%", minHeight:700 }}>
+<View style={{ width: "100%", paddingBottom: 40 }}>
     <Text style={styles.sectionTitle}>📖 Information</Text>
     <View style={styles.infoBox}>
     <Text style={styles.infoText}>
@@ -1108,7 +1164,7 @@ disabled={
     horizontal
     showsHorizontalScrollIndicator={true}
   >
-    <View style={{   width: "100%", minHeight:700 }}>
+      <View style={{ minWidth: 700 }}>
       <LeaderboardTable list={sortedLeaderboard} />
     </View>
   </ScrollView>
@@ -1155,6 +1211,7 @@ modalContent: {
   width: "95%",
   maxWidth: 900,
 
+height: "90%",
   maxHeight: "92%",
 
   paddingHorizontal: 16,
@@ -1284,5 +1341,43 @@ cardDate: {
   fontSize: 12,
   marginTop: 2,
 },
+leftPrizePoolText: {
+  color: "#fde047",
+  fontWeight: "900",
+  fontSize: 15,
 
+  textShadowColor: "#facc15",
+  textShadowOffset: { width: 0, height: 0 },
+  textShadowRadius: 14,
+
+  flex: 1,
+},
+moneyRow: {
+  flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "space-between",
+  marginTop: 6,
+},
+
+leftMoneyText: {
+  color: "#60a5fa",
+  fontWeight: "800",
+  fontSize: 14,
+  flex: 1,
+},
+
+rightMoneyText: {
+  color: "#fbbf24",
+  fontWeight: "900",
+  fontSize: 13,
+  textAlign: "right",
+  flex: 1,
+},
+
+dividerLine: {
+  width: 1,
+  height: "70%",
+  backgroundColor: "rgba(255,255,255,0.12)",
+  marginHorizontal: 8,
+},
 });

@@ -155,7 +155,7 @@ const t = tournamentAccounts.find(
 // console.log("switcherTournaments count =", switcherTournaments.length);
 
   return (
-    <View style={styles.container}>
+    <View style={styles.container} pointerEvents="box-none">
       {/* ACTIVE ACCOUNT */}
       <TouchableOpacity onPress={toggleExpand} style={styles.iconRow}>
         <MaterialCommunityIcons name="bank" size={32} color="#fff" />
@@ -233,7 +233,8 @@ const t = tournamentAccounts.find(
   {activeAccount.type === "real" ? "✓ " : ""}
   Real Account
 </Text>
-             <Text style={[styles.balance, { color: "#facc15" }]}>
+             <Text  numberOfLines={1}  ellipsizeMode="tail"
+  style={[styles.activeBalance, { color: "#facc15" }]}>
   ${balances.real.toFixed(2)}
 </Text>
                {/* 🎯 TRADING LOCKED BADGE */}
@@ -293,8 +294,8 @@ const t = tournamentAccounts.find(
           isActive && styles.activeCard,
         ]}
       >
-        <Text style={{ fontSize: 12 }}>
-          <Text
+       <Text numberOfLines={1} style={{ fontSize: 12 }}>
+          <Text numberOfLines={1}
             style={[
               { fontWeight: "600" },
               isActive && isTournamentLowBalance()
@@ -357,20 +358,21 @@ const t = tournamentAccounts.find(
 /* ================= STYLES ================= */
 
 const styles = StyleSheet.create({
-  container: {
+ container: {
   position: "absolute",
-  top: 10,
-  right: 10,
-  width: 240,   // 👈 FIXED WIDTH (match panel feel)
+  top: 5, // 👈 push away from other floating buttons
+  right: 1,
+  width: 220, // 👈 smaller fixed width
+  maxWidth: "45%", // 👈 prevents screen takeover
   alignItems: "flex-end",
-  zIndex: 20,
+  zIndex: 50,
 },
-  iconRow: { flexDirection: "row", alignItems: "center",  backgroundColor: "#1f2937",
+  iconRow: { flexDirection: "column", alignItems: "center",  backgroundColor: "#1f2937",
     paddingHorizontal: 16, paddingVertical: 10, borderRadius: 25,},
   activeBalance: { marginLeft: 10, fontSize: 16, fontWeight: "800", letterSpacing: 0.5, textShadowColor: "rgba(255, 215, 0, 0.9)",
 textShadowOffset: { width: 0, height: 0 },
 textShadowRadius: 8, },
-  dropdown: { marginTop: 8, width: 240, maxHeight: 350, backgroundColor: "#111827",
+  dropdown: { marginTop: 8, width: 220, maxWidth: "100%", maxHeight: 350, backgroundColor: "#111827",
     borderRadius: 12,  padding: 10, },
   card: { borderWidth: 1, borderColor: "#374151", borderRadius: 10, padding: 10,
     marginBottom: 8, },
