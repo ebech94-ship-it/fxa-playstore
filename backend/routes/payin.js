@@ -223,6 +223,9 @@ router.post("/webhook", async (req, res) => {
 
     const { status, transaction_id, amount } =
       payload.data.data.attributes;
+      console.log("========== WEBHOOK ATTRIBUTES ==========");
+console.log(JSON.stringify(payload.data.data.attributes, null, 2));
+console.log("=======================================");
 
     console.log("🔥 WEBHOOK:", { transaction_id, status });
 
@@ -231,7 +234,7 @@ router.post("/webhook", async (req, res) => {
       .where("transactionId", "==", transaction_id)
       .limit(1)
       .get();
-
+console.log("Firestore docs found:", snapshot.size);
     if (snapshot.empty) {
       console.log("❌ Transaction not found");
 
@@ -343,14 +346,14 @@ router.post("/webhook", async (req, res) => {
       if (ledgerData) {
         await db.collection("ledger").add({
           ...ledgerData,
-          createdAt: admin.firestore.FieldValue.server(),
+         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         });
       }
 
       if (treasuryData) {
         await db.collection("treasury_ledger").add({
           ...treasuryData,
-          createdAt: admin.firestore.FieldValue.server(),
+          createdAt: admin.firestore.FieldValue.serverTimestamp(),
         });
       }
 
@@ -378,7 +381,7 @@ router.post("/webhook", async (req, res) => {
         status: "failed",
         rawPayload: payload,
         signatureValid: true,
-        receivedAt: admin.firestore.FieldValue.server(),
+        receivedAt: admin.firestore.FieldValue.serverTimestamp(),
       });
 
       console.log("❌ PAYMENT FAILED");

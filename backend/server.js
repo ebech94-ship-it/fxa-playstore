@@ -476,13 +476,13 @@ createdAt: admin.firestore.FieldValue.serverTimestamp(),
       sender: "user",
       text: message,
       read: false,
-      createdAt: admin.firestore.FieldValue.server(),
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
     // 🔄 Update thread metadata
     await threadRef.update({
       lastMessage: message,
-      lastMessageAt: admin.firestore.FieldValue.server(),
+      lastMessageAt: admin.firestore.FieldValue.serverTimestamp(),
       status: "open",
     });
 
@@ -582,7 +582,7 @@ app.post("/admin/delete-user", authenticate, requireAdmin, async (req, res) => {
 
   await db.collection("users").doc(userId).update({
     deleted: true,
-    deletedAt: admin.firestore.FieldValue.server(),
+    deletedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
 
   res.json({ success: true });

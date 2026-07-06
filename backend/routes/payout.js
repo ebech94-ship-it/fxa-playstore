@@ -454,7 +454,7 @@ const beforeBalance = user?.accounts?.real?.balance || 0;
       // ----------------------
       t.update(payoutRef, {
         status: newStatus,
-        lastUpdated: admin.firestore.FieldValue.server(),
+        lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
         processedStatuses: admin.firestore.FieldValue.arrayUnion(processedKey),
       });
 
@@ -500,7 +500,7 @@ const beforeBalance = user?.accounts?.real?.balance || 0;
             reason: `Payout ${newStatus}`,
             transactionId,
             status: "completed",
-            createdAt: admin.firestore.FieldValue.server(),
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
           });
         }
       }

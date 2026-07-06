@@ -363,7 +363,7 @@ const styles = StyleSheet.create({
   top: 5, // 👈 push away from other floating buttons
   right: 1,
   width: 220, // 👈 smaller fixed width
-  maxWidth: "45%", // 👈 prevents screen takeover
+  maxWidth: "23%", // 👈 prevents screen takeover
   alignItems: "flex-end",
   zIndex: 50,
 },

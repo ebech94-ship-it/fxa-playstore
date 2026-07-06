@@ -55,7 +55,7 @@ async processWithdrawal(userId, amount, momoNumber) {
       amount: numericAmount,
       type: "withdrawal",
       status: "pending",
-      createdAt: admin.firestore.FieldValue.server(),
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
     t.set(payoutRef, {
@@ -64,7 +64,7 @@ async processWithdrawal(userId, amount, momoNumber) {
       momoNumber,
       status: "pending",
       transactionId: transactionRef.id,
-      createdAt: admin.firestore.FieldValue.server(),
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
   });
 

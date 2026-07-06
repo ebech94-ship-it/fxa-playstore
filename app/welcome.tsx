@@ -751,7 +751,7 @@ onPress={() => accepted && !loading && request && promptAsync()}
 >
   <Text style={styles.buttonText}>👀 Preview Mode</Text>
   <Text style={{ color: "#5f79eeff", fontSize: 12, marginTop: 4 }}>
-  No signup required · View-only access
+  No signup required! 
 </Text>
 </TouchableOpacity>
 
