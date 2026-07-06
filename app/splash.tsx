@@ -23,7 +23,7 @@ const slideAnim = useRef(new Animated.Value(10)).current;
       useNativeDriver: false,
     }).start(async () => {
       await ExpoSplashScreen.hideAsync();
-      setAppReady(true);
+      
     });
   }, [progress, setAppReady]);
 

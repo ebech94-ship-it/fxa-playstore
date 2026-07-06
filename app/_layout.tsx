@@ -20,18 +20,20 @@ import { AppProvider, useApp } from "./AppContext";
    AUTH GATE
    =============================== */
 function AuthGate() {
-  const { authUser, loading, appReady } = useApp();
+  const { authUser, loading } = useApp();
   const router = useRouter();
+  const lastRoute = useRef<string | null>(null);
 
   useEffect(() => {
-    if (loading || !appReady) return;
+  if (loading) return;
 
-    if (authUser) {
-      router.replace("/tradinglayout");
-    } else {
-      router.replace("/welcome");
-    }
-  }, [authUser, loading, appReady, router]);
+  const target = authUser ? "/tradinglayout" : "/welcome";
+
+  if (lastRoute.current === target) return;
+
+  lastRoute.current = target;
+  router.replace(target);
+}, [authUser, loading, router]);
 
   return null;
 }
@@ -95,7 +97,7 @@ const tournamentBalances = tournamentAccounts;
       {/* ROUTES */}
       <Stack screenOptions={{ headerShown: false }}>
         <Stack.Screen name="index" />
-        <Stack.Screen name="splash" />
+        
         <Stack.Screen name="welcome" />
         <Stack.Screen name="tradinglayout" />
       </Stack>

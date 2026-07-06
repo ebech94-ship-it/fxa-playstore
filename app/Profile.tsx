@@ -4,6 +4,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { useApp } from "@/app/AppContext";
 import * as ImagePicker from "expo-image-picker";
 import { useRouter } from "expo-router";
+
 import { deleteUser, getAuth } from "firebase/auth";
 import {
   collection,
@@ -437,10 +438,8 @@ const handleLogout = async () => {
     const auth = getAuth();
     await auth.signOut();
 
-    Alert.alert("Logged Out", "You have been signed out successfully.");
-
-    // Redirect to Welcome screen
-    router.replace("./Welcome"); // or "/Login" depending on your file name
+   router.dismissAll();
+router.replace("/welcome");
   } catch (err) {
     console.error("Logout error:", err);
     Alert.alert("Error", "Failed to log out.");
