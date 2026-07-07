@@ -6,7 +6,7 @@ import type { AccountType, TournamentAccount } from "./AppContext"; // keep type
 import { useApp } from "./AppContext";
 // AccountSwitcher.tsx
 
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View, } from "react-native";
+import { Dimensions, ScrollView, StyleSheet, Text, TouchableOpacity, View, } from "react-native";
 
 /* ================= TYPES ================= */
 
@@ -354,25 +354,50 @@ const t = tournamentAccounts.find(
     </View>
   );
 }
+const { width: SCREEN_WIDTH } = Dimensions.get("window");
+
+const SWITCHER_WIDTH = Math.min(
+  SCREEN_WIDTH * 0.75,
+  280
+);
 
 /* ================= STYLES ================= */
 
 const styles = StyleSheet.create({
- container: {
-  position: "absolute",
-  top: 5, // 👈 push away from other floating buttons
-  right: 1,
-  width: 220, // 👈 smaller fixed width
-  maxWidth: "23%", // 👈 prevents screen takeover
-  alignItems: "flex-end",
-  zIndex: 50,
+container:{
+    position:"absolute",
+
+    top:8,
+    right:8,
+
+    width: SWITCHER_WIDTH,
+
+    zIndex:100,
+
+    alignItems:"flex-end",
 },
-  iconRow: { flexDirection: "column", alignItems: "center",  backgroundColor: "#1f2937",
-    paddingHorizontal: 16, paddingVertical: 10, borderRadius: 25,},
+ iconRow:{
+    width:"100%",
+ flexDirection:"row",
+    backgroundColor:"#1f2937",
+
+    borderRadius:18,
+
+    paddingHorizontal:12,
+    paddingVertical:12,
+
+    alignItems:"center",
+
+    borderWidth:1,
+    borderColor:"#334155",
+},
   activeBalance: { marginLeft: 10, fontSize: 16, fontWeight: "800", letterSpacing: 0.5, textShadowColor: "rgba(255, 215, 0, 0.9)",
 textShadowOffset: { width: 0, height: 0 },
 textShadowRadius: 8, },
-  dropdown: { marginTop: 8, width: 220, maxWidth: "100%", maxHeight: 350, backgroundColor: "#111827",
+  dropdown: {  marginTop:8,
+ width: SWITCHER_WIDTH * 0.85,
+ maxWidth:"100%",
+ maxHeight:350, backgroundColor: "#111827",
     borderRadius: 12,  padding: 10, },
   card: { borderWidth: 1, borderColor: "#374151", borderRadius: 10, padding: 10,
     marginBottom: 8, },

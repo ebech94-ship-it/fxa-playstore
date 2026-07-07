@@ -779,10 +779,11 @@ demoBalance={demoBalance}
       {/* NO MORE switcher here */}
 
       {/* Trade Size */}
-      <View style={styles.inputRow}>
-        <Text style={styles.label}>Trade Size</Text>
-       <TouchableOpacity
-  style={styles.input}
+      <View style={[styles.inputRow, { marginTop: 120 }]}>
+  <Text style={styles.label}>Trade Size</Text>
+
+  <TouchableOpacity
+    style={styles.input}
   onPress={() => setShowAmountPad(true)}
 >
   <Text style={{ color: "#fff", fontSize: 14 }}>
@@ -798,7 +799,7 @@ demoBalance={demoBalance}
       </View>
 
       {/* Expiration */}
-      <View style={styles.inputRow}>
+      <View style={[styles.inputRow, { marginBottom: 80 }]}>
         <Text style={styles.label}>Expiration</Text>
        <TouchableOpacity
   style={styles.expiryButton}
@@ -824,14 +825,14 @@ demoBalance={demoBalance}
           style={[styles.actionButton, { backgroundColor: "green" }]}
           onPress={() => handleTrade("buy")}
         >
-          <Text style={styles.actionText}>▲ Buy</Text>
+          <Text style={styles.actionText}>▲ BUY</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={[styles.actionButton, { backgroundColor: "red" }]}
           onPress={() => handleTrade("sell")}
         >
-          <Text style={styles.actionText}>▼ Sell</Text>
+          <Text style={styles.actionText}>▼ SELL</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -982,24 +983,28 @@ const styles = StyleSheet.create({
   chartContainer: { width: "70%", height: "100%",  justifyContent: "flex-start", paddingBottom: 50, },
 
   rightPanel: { overflow: "visible",
-  position: "relative", zIndex: 10, width: "20%", backgroundColor: "#2c2c2c", padding: 10, top: 18,
+  position: "relative", zIndex: 10, 
+  width: "20%", backgroundColor: "#2c2c2c",
+   padding: 10, top: 5,
    justifyContent: "space-around", },
- panelSection: { marginVertical: 1 }, label: { color: "#ccc", marginBottom: 2, fontSize: 14, bottom: 2 },
-  input: {  backgroundColor: "rgba(255,255,255,0.1)", borderColor: "#666",  borderWidth: 1,  borderRadius: 6, 
+   
+ panelSection: { marginVertical: 1 },
+  label: { color: "#ccc", marginBottom: 2, fontSize: 14, bottom: 2 },
+  input: {  backgroundColor: "rgba(255,255,255,0.1)",  borderColor: "#666",  borderWidth: 1,  borderRadius: 6, 
    padding: 5, color: "#fff", fontSize: 14, },
   inputRow: { marginVertical: 6 },
   expiryButton: { paddingVertical: 6, paddingHorizontal: 12, backgroundColor: "rgba(255,255,255,0.1)", borderRadius: 3,
-   marginRight: 6, },
+   marginRight: 6,  },
   expButtonActive: { backgroundColor: "blue" },
   expButtonText: { color: "#fff", fontSize: 14 },
   profitBox: { backgroundColor: "rgba(255,255,0,0.1)",  borderColor: "gold", borderWidth: 1, borderRadius: 8,
- padding: 8,  marginBottom: 0, alignItems: "center",  bottom: 9, },
+ padding: 8,  marginBottom: 5, alignItems: "center",  bottom: 40, },
   profitText: { color: "darkgoldenrod", fontWeight: "bold", fontSize: 16 },
-  actionButton: { padding: 12,  marginVertical: 4,  borderRadius: 8,  bottom: 20,  alignItems: "center", },
-  actionText: { color: "white", fontWeight: "bold" },
+  actionButton: { padding: 30,  marginVertical: 8,  borderRadius: 30,  bottom: 20,  alignItems: "center"  },
+  actionText: { color: "white", fontWeight: "bold",  fontSize: 18},
   
-  overlay: { position: "absolute", top: 85, left: "10%", width: "65%", height: "80%", backgroundColor: "#333",
- borderRadius: 8,  zIndex: 100,  padding: 10, },
+  overlay: { position: "absolute", top: 85, left: "10%", width: "75%", height: "80%", backgroundColor: "#333",
+ borderRadius: 4,  zIndex: 100,  padding: 5, },
   closeButton: { position: "absolute", top: 10, right: 10, zIndex: 10 },
   pageContent: { flex: 1, marginTop: 0 },
   profitGlowBlue: { shadowColor: "#00aaff", shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.9, shadowRadius: 20,
@@ -1009,7 +1014,8 @@ profitGlowRed: { shadowColor: "#ff2222",  shadowOffset: { width: 0, height: 0 },
   // New switcher container: fixed height so AccountSwitcher doesn't jump.
   switcherContainer: { width: "100%", minHeight: 120,
     maxHeight: 160,  marginBottom: 12,
-    justifyContent: "center", flexDirection: "row", },
+    justifyContent: "center", flexDirection: "column", },
+
   badge: {  position: "absolute",  top: -5, right: -5, backgroundColor: "red", borderRadius: 10,
   paddingHorizontal: 6, paddingVertical: 2, zIndex: 100,},
 badgeText: {  color: "#fff", fontSize: 10, fontWeight: "bold",},
@@ -1038,19 +1044,16 @@ expiryKey: {  width: "30%",  padding: 10,  marginVertical: 5,
 
 expiryKeyText: {  color: "#fff",  fontSize: 14,},
 payoutBox: {
-  marginTop: 2,
-  paddingVertical: 2,
-  paddingHorizontal: 6,
-  borderRadius: 4,
-  backgroundColor: "rgba(255, 215, 0, 0.08)",
-  borderWidth: 1,
-  borderColor: "gold",
-  alignSelf: "flex-start", // 👈 keeps it small, not full width
+  marginTop: 12,
+  backgroundColor: "rgba(255,255,0,0.1)", 
+   borderColor: "gold", borderWidth: 1, borderRadius: 8,
+ padding: 8,  marginBottom: 0, alignItems: "center",
+   bottom: 1, // 👈 keeps it small, not full width
 },
 
-payoutLabel: {  color: "#ccc",  fontSize: 7,},
+payoutLabel: {  color: "#ccc",  fontSize: 14,},
 
-payoutValue: {  color: "gold",  fontSize: 11,  fontWeight: "bold",
+payoutValue: {  color: "gold",  fontSize: 14,  fontWeight: "bold",
 },
 
 });

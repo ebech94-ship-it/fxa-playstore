@@ -27,12 +27,18 @@ async function getPayoutToken() {
     }),
   });
 
-  const data = await response.json();
+  if (!response.ok) {
+  const errorText = await response.text();
+  console.error("❌ Payout auth failed:", errorText);
+  throw new Error("Payout auth failed");
+}
 
-  if (!data.token) {
-    console.error("❌ Payout auth failed");
-    throw new Error("Failed to get payout token");
-  }
+const data = await response.json();
+
+if (!data.token) {
+  console.error("❌ No payout token received");
+  throw new Error("Failed to get payout token");
+}
 
   payoutToken = data.token;
   tokenExpiry = Date.now() + 55 * 60 * 1000;

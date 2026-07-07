@@ -1019,159 +1019,239 @@ flexShrink: 1,
           <Ionicons name="close" size={26} color="#fff" />
         </Pressable>
 
-        {selectedTournament && (
-     <View style={{ flex: 1, minHeight: 0 }}>   
-            <Text style={styles.modalTitle}>
-              {selectedTournament.title || selectedTournament.name || "Tournament"}
-            </Text>
+      {selectedTournament && (
+<View style={{ flex: 1, minHeight: 0 }}>
 
-            <View style={styles.modalMetaRow}>
-              <Text style={styles.modalPrize}>
-                🏆 Prize Pool: {selectedTournament.prizePool ?? 0} $
-              </Text>
-             <Text style={styles.modalInfo}>
-  ⏰ {
-    now < selectedTournament.startTime
-      ? `Starts in ${formatCountdown(selectedTournament.startTime - now)}`
-      : now <= selectedTournament.endTime
-      ? `Ends in ${formatCountdown(selectedTournament.endTime - now)}`
-      : "Finished"
-  }
-</Text>
-            </View>
-
-            <Text style={styles.modalInfo}>
-  👥 {tournamentCounts[selectedTournament.id] ?? 0} participants
-</Text>
-
-            <Text style={styles.modalInfo}>
-             ♻️ Rebuys: {tournamentRebuyCounts[selectedTournament.id] ?? 0}
-            </Text>
-
-            {/* Tab switch */}
-            <View style={styles.tabRow}>
-              <TouchableOpacity
-                style={[styles.tabBtn, viewTab === "info" && styles.tabActive]}
-                onPress={() => setViewTab("info")}
-              >
-                <Text style={viewTab === "info" ? styles.tabTextActive : styles.tabText}>
-                  Info
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.tabBtn, viewTab === "leaderboard" && styles.tabActive]}
-                onPress={() => setViewTab("leaderboard")}
-              >
-                <Text style={viewTab === "leaderboard" ? styles.tabTextActive : styles.tabText}>
-                  Leaderboard
-                </Text>
-              </TouchableOpacity>
-            </View>
-{/* Scrollable content */}
-{viewTab === "info" ? (
- <ScrollView
-  
-  contentContainerStyle={{
-    paddingBottom: 100,
-    paddingTop: 6,
-    paddingHorizontal: 4,
-  }}
-  showsVerticalScrollIndicator={false}
->
-<View style={{ width: "100%", paddingBottom: 40 }}>
-    <Text style={styles.sectionTitle}>📖 Information</Text>
-    <View style={styles.infoBox}>
-    <Text style={styles.infoText}>
-      {selectedTournament.description ||
-        "Each participant receives a starting balance. Grow it, finish top to win the prize pool."}
-    </Text>
-   </View>
-
-    <Text style={styles.sectionTitle}>🧾 Rules</Text>
-    <View style={styles.infoBox}>
-    <Text style={styles.infoText}>
-      {selectedTournament.rules ||
-        "1) No malicious bots. 2) Trades placed count. 3) Fair-play enforced."}
-    </Text>
-   </View>
-
-    <Text style={styles.sectionTitle}>🎁 On Registration</Text>
-    <View style={styles.infoBox}>
-    <Text style={styles.infoText}>
-      {selectedTournament.onRegisterInfo ||
-        `You get a starting demo balance of ${selectedTournament.startingBalance ?? 0} $ and leaderboard entry.`}
-    </Text>
-    </View>
-
-    {selectedTournament.payoutStructure?.length ? (
-      <View>
-        <Text style={styles.sectionTitle}>🏆 RANKINGS</Text>
-        {/* Header row */}
-    <View style={[styles.rankHeaderRow]}>
-      <Text style={[styles.rankHeaderCol, { flex: 1, textAlign: 'left'}]}>Position</Text>
-      <Text style={[styles.rankHeaderCol, { flex: 1, textAlign: 'left'  }]}>Level</Text> {/* instead of "Tier", use Level */}
-      <Text style={[styles.rankHeaderCol, { flex: 1, textAlign: 'center' }]}>Prize</Text>
-    </View>
-        {selectedTournament.payoutStructure.map((p: any) => (
-          <View
-            key={p.rank}
-            style={{
-              flexDirection: "row",
-              marginTop: 8,
-              alignItems: "center",
-              
-            }}
-          >
-            <Text style={{ color: "#cbd5e1", textAlign: "left", flex: 1 }}>
-              {p.rank === 1 ? "🥇" : p.rank === 2 ? "🥈" : p.rank === 3 ? "🥉" : `#${p.rank}`}
-            </Text>
-            <Text
-              style={{
-                color: "#facc15",
-                fontWeight: "800",
-                flex: 1,
-                textAlign: "left",
-              }}
-            >
-              {getTierForRank(p.rank)}
-            </Text>
-            <Text
-              style={{
-                color: "#22c55e",
-                fontWeight: "900",
-                flex: 1,
-                textAlign: "center",
-              }}
-            >
-              {p.amount} $
-            </Text>
-          </View>
-        ))}
-        
-      </View>
-    ) : null}
-    </View>
-  </ScrollView>
-) : (
-
-  // Leaderboard tab: single table with all users
-  <ScrollView
-  style={{ flex: 1 }}
-  contentContainerStyle={{ paddingBottom: 120 }}
-  showsVerticalScrollIndicator={false}
->
-  <ScrollView
-    horizontal
-    showsHorizontalScrollIndicator={true}
+  {/* HEADER */}
+  <View
+    style={{
+      paddingBottom: 12,
+      borderBottomWidth: 1,
+      borderBottomColor: "#22263d",
+    }}
   >
-      <View style={{ minWidth: 700 }}>
-      <LeaderboardTable list={sortedLeaderboard} />
-    </View>
-  </ScrollView>
-</ScrollView>
-)}
-          </View>
+    <Text style={styles.modalTitle}>
+      {selectedTournament.title ||
+        selectedTournament.name ||
+        "Tournament"}
+    </Text>
+
+    <Text style={styles.modalPrize}>
+      🏆 Prize Pool: {selectedTournament.prizePool ?? 0} $
+    </Text>
+
+    <Text style={styles.modalInfo}>
+      {now < selectedTournament.startTime
+        ? `⏳ Starts in ${formatCountdown(
+            selectedTournament.startTime - now
+          )}`
+        : now <= selectedTournament.endTime
+        ? `⏰ Ends in ${formatCountdown(
+            selectedTournament.endTime - now
+          )}`
+        : "🏁 Finished"}
+    </Text>
+
+    <Text style={styles.modalInfo}>
+      👥 {tournamentCounts[selectedTournament.id] ?? 0} Participants
+    </Text>
+
+    <Text style={styles.modalInfo}>
+      ♻️ {tournamentRebuyCounts[selectedTournament.id] ?? 0} Rebuys
+    </Text>
+  </View>
+
+  {/* TABS */}
+  <View style={styles.tabRow}>
+    <TouchableOpacity
+      style={[
+        styles.tabBtn,
+        viewTab === "info" && styles.tabActive,
+      ]}
+      onPress={() => setViewTab("info")}
+    >
+      <Text
+        style={
+          viewTab === "info"
+            ? styles.tabTextActive
+            : styles.tabText
+        }
+      >
+        Information
+      </Text>
+    </TouchableOpacity>
+
+    <TouchableOpacity
+      style={[
+        styles.tabBtn,
+        viewTab === "leaderboard" &&
+          styles.tabActive,
+      ]}
+      onPress={() => setViewTab("leaderboard")}
+    >
+      <Text
+        style={
+          viewTab === "leaderboard"
+            ? styles.tabTextActive
+            : styles.tabText
+        }
+      >
+        Leaderboard
+      </Text>
+    </TouchableOpacity>
+  </View>
+
+  {/* ONLY THIS AREA SCROLLS */}
+  <View style={{ flex: 1, minHeight: 0 }}>
+
+    {viewTab === "info" ? (
+
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{
+          paddingVertical: 16,
+          paddingHorizontal: 2,
+          paddingBottom: 50,
+        }}
+        showsVerticalScrollIndicator
+      >
+
+        <Text style={styles.sectionTitle}>
+          📖 Information
+        </Text>
+
+        <View style={styles.infoBox}>
+          <Text style={styles.infoText}>
+            {selectedTournament.description ||
+              "Each participant receives a starting balance. Grow it to finish at the top of the leaderboard and win the prize pool."}
+          </Text>
+        </View>
+
+        <Text style={styles.sectionTitle}>
+          📜 Rules
+        </Text>
+
+        <View style={styles.infoBox}>
+          <Text style={styles.infoText}>
+            {selectedTournament.rules ||
+              "1. Fair play only.\n\n2. No bots.\n\n3. Highest balance wins.\n\n4. Admin decisions are final."}
+          </Text>
+        </View>
+
+        <Text style={styles.sectionTitle}>
+          🎁 Registration Benefits
+        </Text>
+
+        <View style={styles.infoBox}>
+          <Text style={styles.infoText}>
+            {selectedTournament.onRegisterInfo ||
+              `Receive ${selectedTournament.startingBalance ?? 0}$ virtual trading capital and join the live rankings.`}
+          </Text>
+        </View>
+
+        {!!selectedTournament.payoutStructure?.length && (
+          <>
+            <Text style={styles.sectionTitle}>
+              🏆 Prize Distribution
+            </Text>
+
+            <View style={styles.rankHeaderRow}>
+              <Text
+                style={[
+                  styles.rankHeaderCol,
+                  { flex: 1 },
+                ]}
+              >
+                Rank
+              </Text>
+
+              <Text
+                style={[
+                  styles.rankHeaderCol,
+                  { flex: 2 },
+                ]}
+              >
+                Level
+              </Text>
+
+              <Text
+                style={[
+                  styles.rankHeaderCol,
+                  { flex: 1 },
+                ]}
+              >
+                Prize
+              </Text>
+            </View>
+
+            {selectedTournament.payoutStructure.map(
+              (p: any) => (
+                <View
+                  key={p.rank}
+                  style={styles.rankRow}
+                >
+                  <Text
+                    style={[
+                      styles.rankCell,
+                      { flex: 1 },
+                    ]}
+                  >
+                    {p.rank === 1
+                      ? "🥇"
+                      : p.rank === 2
+                      ? "🥈"
+                      : p.rank === 3
+                      ? "🥉"
+                      : `#${p.rank}`}
+                  </Text>
+
+                  <Text
+                    style={[
+                      styles.rankLevel,
+                      { flex: 2 },
+                    ]}
+                  >
+                    {getTierForRank(p.rank)}
+                  </Text>
+
+                  <Text
+                    style={[
+                      styles.rankPrize,
+                      { flex: 1 },
+                    ]}
+                  >
+                    {p.amount} $
+                  </Text>
+                </View>
+              )
+            )}
+          </>
         )}
+
+      </ScrollView>
+
+    ) : (
+
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{
+          paddingBottom: 30,
+        }}
+        horizontal
+      >
+        <View style={{ minWidth: 760 }}>
+          <LeaderboardTable
+            list={sortedLeaderboard}
+          />
+        </View>
+      </ScrollView>
+
+    )}
+
+  </View>
+
+</View>
+)}
       </Pressable>
     </KeyboardAvoidingView>
   </Pressable>
@@ -1205,36 +1285,85 @@ disabledBtn: { opacity: 0.45 },
 // modal
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "center", alignItems: "center" },
 modalContent: {
-  backgroundColor: "#0e0f26",
-  borderRadius: 18,
-
-  width: "95%",
+  width: "96%",
+  height: "92%",
   maxWidth: 900,
-
-height: "90%",
-  maxHeight: "92%",
-
-  paddingHorizontal: 16,
-  alignSelf: "center",
-
+  backgroundColor: "#0e1128",
+  borderRadius: 22,
+  paddingHorizontal: 18,
+  paddingTop: 12,
+  paddingBottom: 10,
   overflow: "hidden",
 },
-  closeButton: {
-  alignSelf: "flex-end",
-  padding: 10,
-  marginRight: 4
+ closeButton:{
+  position:"absolute",
+  top:12,
+  right:12,
+
+  width:42,
+  height:42,
+
+  borderRadius:21,
+
+  backgroundColor:"#1b2142",
+
+  justifyContent:"center",
+  alignItems:"center",
+
+  zIndex:100,
 },
-  modalTitle: { fontSize: 20, fontWeight: "900", color: "#fff", marginBottom: 6, },
+  modalTitle:{
+  color:"#fff",
+  fontSize:22,
+  fontWeight:"900",
+
+  paddingRight:45,
+
+  marginBottom:10,
+},
   modalMetaRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 8 },
   modalPrize: { color: "#47f11dff", fontWeight: "800" },
   modalInfo: { color: "#cbd5e1" },
- tabRow: {
-  flexDirection: "row",
-  marginTop: 12,
-  zIndex: 10, // keeps tabs above scroll glitches
+ tabRow:{
+  flexDirection:"row",
+
+  marginTop:15,
+  marginBottom:10,
+
+  backgroundColor:"#141933",
+
+  borderRadius:14,
+
+  padding:4,
 },
-  tabBtn: { flex: 1, padding: 8, borderRadius: 10, alignItems: "center", marginRight: 6, backgroundColor: "#121227" },
+  tabBtn: { flex: 1,   paddingVertical:12, borderRadius: 10, alignItems: "center", marginRight: 6, backgroundColor: "#121227" },
   tabActive: { backgroundColor: "#1f2937" },
+  rankRow:{
+    flexDirection:"row",
+    alignItems:"center",
+
+    paddingVertical:10,
+
+    borderBottomWidth:1,
+
+    borderBottomColor:"#232844",
+},
+
+rankCell:{
+    color:"#fff",
+    fontWeight:"700",
+},
+
+rankLevel:{
+    color:"#facc15",
+    fontWeight:"800",
+},
+
+rankPrize:{
+    color:"#22c55e",
+    fontWeight:"900",
+    textAlign:"center",
+},
   tabText: { color: "#9ca3af", fontWeight: "700" },
   tabTextActive: { color: "#fff", fontWeight: "900" },
   sectionTitle: { fontSize: 16, fontWeight: "900", color: "#ff7ab6", marginTop: 12 },

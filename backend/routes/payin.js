@@ -131,13 +131,14 @@ if (!/^(237)?6\d{8}$/.test(cleanPhone)) {
         }),
       }
     );
-
+console.log("Callback URL:", process.env.PAYIN_WEBHOOK_URL);
     if (!paymentResponse.ok) {
       const errorText = await paymentResponse.text();
       throw new Error("Payment link failed: " + errorText);
     }
 
     const paymentData = await paymentResponse.json();
+    console.log(JSON.stringify(paymentData, null, 2));
     if (!paymentData?.data?.payment_link) {
   throw new Error("Payment link missing from provider response");
 }
@@ -226,7 +227,11 @@ router.post("/webhook", async (req, res) => {
       console.log("========== WEBHOOK ATTRIBUTES ==========");
 console.log(JSON.stringify(payload.data.data.attributes, null, 2));
 console.log("=======================================");
-
+console.log({
+  status,
+  transaction_id,
+  amount,
+});
     console.log("🔥 WEBHOOK:", { transaction_id, status });
 
     const snapshot = await db
@@ -310,11 +315,12 @@ console.log("Firestore docs found:", snapshot.size);
 
         // UPDATE TRANSACTION
         t.update(doc.ref, {
+        
           status: "completed",
           completedAt: admin.firestore.FieldValue.serverTimestamp(),
           processedWebhook: true,
         });
-
+console.log("Updating transaction:", transaction_id);
         // PREPARE LEDGER DATA
         ledgerData = {
           userId: tx.userId,
@@ -358,6 +364,8 @@ console.log("Firestore docs found:", snapshot.size);
       }
 
       console.log("✅ USER CREDITED");
+      const verify = await doc.ref.get();
+console.log("Final status:", verify.data().status);
     }
 
     // ----------------------
