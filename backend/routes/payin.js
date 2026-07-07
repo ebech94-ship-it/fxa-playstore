@@ -5,7 +5,6 @@ const fetch = require("node-fetch");
 
 const { db } = require("../firebaseAdmin");
 const admin = require("firebase-admin");
-const crypto = require("crypto");
 
 const { XAF_TO_USD, BASE_CURRENCY } = require("../config/currency");
 
@@ -174,8 +173,15 @@ originalAmount: amountNum,
 // WEBHOOK (PRODUCTION SAFE + AUDIT READY)
 // ----------------------
 router.post("/webhook", async (req, res) => {
+
+  console.log("🔥🔥🔥 SWYCHR WEBHOOK HIT 🔥🔥🔥");
+  console.log("Headers:", req.headers);
+  console.log("Body:", JSON.stringify(req.body, null, 2));
+
   try {
-    const signature = req.headers["x-swychr-signature"];
+    const signature =
+  req.headers["x-swychr-signature"] ||
+  req.headers["webhook-hash"];
 
     if (!process.env.SWYCHR_WEBHOOK_SECRET) {
       throw new Error("SWYCHR_WEBHOOK_SECRET is required");
@@ -187,24 +193,22 @@ router.post("/webhook", async (req, res) => {
     }
 
     // VERIFY SIGNATURE
-    const expected = crypto
-      .createHmac("sha256", process.env.SWYCHR_WEBHOOK_SECRET)
-      .update(req.rawBody)
-      .digest("hex");
+    // VERIFY WEBHOOK HASH
+if (signature !== process.env.SWYCHR_WEBHOOK_SECRET) {
+  console.log("❌ Invalid webhook hash");
 
-    if (signature !== expected) {
-      console.log("❌ Invalid signature");
+  await db.collection("webhook_logs").add({
+    transactionId: null,
+    status: "invalid_signature",
+    rawPayload: req.body,
+    signatureValid: false,
+    receivedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
 
-      await db.collection("webhook_logs").add({
-        transactionId: null,
-        status: "invalid_signature",
-        rawPayload: req.body,
-        signatureValid: false,
-        receivedAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
+  return res.status(401).send("Unauthorized");
+}
 
-      return res.status(401).send("Unauthorized");
-    }
+console.log("✅ Webhook hash verified");
 
     const payload = req.body;
 
