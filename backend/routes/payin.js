@@ -232,6 +232,17 @@ console.log({
   transaction_id,
   amount,
 });
+const providerStatus = Number(status);
+
+const mappedStatus =
+  providerStatus === 0 ? "pending" :
+  providerStatus === 1 ? "completed" :
+  providerStatus === 2 ? "failed" :
+  providerStatus === 3 ? "expired" :
+  providerStatus === 4 ? "processing" :
+  providerStatus === 5 ? "declined" :
+  providerStatus === 6 ? "rejected" :
+  "unknown";
     console.log("🔥 WEBHOOK:", { transaction_id, status });
 
     const snapshot = await db
@@ -254,12 +265,35 @@ console.log("Firestore docs found:", snapshot.size);
       return res.status(200).json({ received: true });
     }
 
-    const doc = snapshot.docs[0];
+    const doc = snapshot.docs[0];// ----------------------
+// PENDING / PROCESSING UPDATE
+// ----------------------
+if (
+  mappedStatus === "pending" ||
+  mappedStatus === "processing"
+) {
+
+  await doc.ref.update({
+    status: mappedStatus,
+    lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  await db.collection("webhook_logs").add({
+    transactionId: transaction_id,
+    status: mappedStatus,
+    rawPayload: payload,
+    signatureValid: true,
+    receivedAt: admin.firestore.FieldValue.serverTimestamp(),
+  });
+
+  return res.status(200).json({ received:true });
+}
+
 
     // ----------------------
     // SUCCESS PAYMENT
     // ----------------------
-    if (Number(status) === 1) {
+    if (mappedStatus === "completed") {
       let ledgerData = null;
       let treasuryData = null;
 
@@ -371,7 +405,12 @@ console.log("Final status:", verify.data().status);
     // ----------------------
     // FAILED PAYMENT
     // ----------------------
-    if (Number(status) === 2) {
+    if (
+  mappedStatus === "failed" ||
+  mappedStatus === "expired" ||
+  mappedStatus === "declined" ||
+  mappedStatus === "rejected"
+) {
 
   const txSnap = await doc.ref.get();
 
