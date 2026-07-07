@@ -513,7 +513,7 @@ return (
     padding: 30,
     borderRadius: 8,
     marginBottom: 10,
-    alignSelf: "center",
+    alignSelf: "center",top:8,
   }}
 >
   <Text style={{ color: "white", fontWeight: "bold" }}>
