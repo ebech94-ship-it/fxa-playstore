@@ -457,8 +457,11 @@ const [switcherHintTournamentId, setSwitcherHintTournamentId] = useState<string 
 
 const tournamentAccounts = useMemo(() =>
   mergedTournaments
-
-   .filter(t => t.status !== "finished")
+    // ✅ ONLY tournaments the user actually joined
+    .filter(t => {
+      const p = participantDocs[t.tournamentId];
+      return !!p && t.status !== "finished";
+    })
     .map(t => {
       const p = participantDocs[t.tournamentId];
 
@@ -470,7 +473,6 @@ const tournamentAccounts = useMemo(() =>
         name: t.name ?? tournamentMeta[t.tournamentId]?.name ?? "Tournament",
         symbol: t.symbol ?? tournamentMeta[t.tournamentId]?.symbol ?? "$",
 
-        // 🔥 SOURCE OF TRUTH
         balance: participantBalances[t.tournamentId] ?? p?.balance ?? 0,
         startingBalance: p?.startingBalance ?? t.startingBalance ?? 0,
 
@@ -482,8 +484,12 @@ const tournamentAccounts = useMemo(() =>
         performance: p?.performance ?? t.performance,
       };
     }),
-  [mergedTournaments, participantDocs, tournamentMeta, participantBalances]
-);
+[
+  mergedTournaments,
+  participantDocs,
+  tournamentMeta,
+  participantBalances,
+]);
 
 useEffect(() => {
   if (!authUser?.uid || tournaments.length === 0) return;
@@ -534,7 +540,9 @@ useEffect(() => {
 }, [authUser?.uid, tournaments]);
 
 const userTournamentState = useMemo(() => {
-  return tournaments.map(t => {
+  return tournaments
+  .filter(t => !!participantDocs[t.tournamentId])
+  .map(t => {
     const p = participantDocs[t.tournamentId];
 
     return {
