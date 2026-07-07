@@ -65,23 +65,27 @@ async function getPayoutMethodId(country_code, methodName){
       })
     }
   );
+
   const data = await response.json();
 
   console.log(
     "========== AVAILABLE PAYOUT METHODS =========="
   );
-  console.log(
-    JSON.stringify(data,null,2)
-  );
+  console.log(JSON.stringify(data,null,2));
+
+
   const methods =
     data?.data?.payment_methods || [];
+
 
   const method =
     methods.find(
       m =>
-      m.name.toLowerCase()
+      m.payment_method &&
+      m.payment_method.toLowerCase()
       === methodName.toLowerCase()
     );
+
 
   if(!method){
 
@@ -90,7 +94,8 @@ async function getPayoutMethodId(country_code, methodName){
     );
   }
 
-  return method.id;
+
+  return method.payment_method;
 }
 // ----------------------
 // FRONTEND COMPATIBILITY ROUTE
@@ -299,8 +304,7 @@ console.log("========== SWYCHR PAYOUT ==========");
 console.log(JSON.stringify(payoutData, null, 2));
 console.log("===================================");
 
-
-// -------------------------------------------------
+ // -------------------------------------------------
 // PROVIDER REJECTED REQUEST
 // -------------------------------------------------
 if (

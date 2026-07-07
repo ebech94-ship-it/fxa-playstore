@@ -395,7 +395,10 @@ const handleWithdrawal = async () => {
   beneficiary_name: formData.fullName,
   mobile_no: formData.phone,
   amount: numericAmount,
-  payment_method: "mtn_momo",
+
+  // Send the selected operator
+  payment_method: activeMethod,
+
   bank_code: "",
   account_number: "",
   remarks: "Tournament withdrawal",
@@ -406,7 +409,8 @@ const handleWithdrawal = async () => {
       ...payload,
       email: auth.currentUser?.email,
     });
-
+console.log("Sending payout payload:");
+console.log(payload);
     const res = await fetch(`${API_BASE}/api/payout`, {
       method: "POST",
       headers: {
