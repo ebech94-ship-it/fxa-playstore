@@ -176,7 +176,7 @@ router.post("/webhook", async (req, res) => {
 
   console.log("🔥🔥🔥 SWYCHR WEBHOOK HIT 🔥🔥🔥");
   console.log("Headers:", req.headers);
-  console.log("Body:", JSON.stringify(req.body, null, 2));
+  
 
   try {
     const signature =
@@ -212,6 +212,12 @@ console.log("✅ Webhook hash verified");
 
     const payload = req.body;
 
+if (payload.event === "payout_status_updated") {
+  return res.status(200).json({
+    received: true,
+    message: "Payout event received"
+  });
+}
     if (!payload?.data?.data?.attributes) {
       console.log("❌ Invalid payload");
 

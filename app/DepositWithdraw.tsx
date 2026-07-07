@@ -395,7 +395,7 @@ const handleWithdrawal = async () => {
   beneficiary_name: formData.fullName,
   mobile_no: formData.phone,
   amount: numericAmount,
-  payment_method: "mobile_money",
+  payment_method: "mtn_momo",
   bank_code: "",
   account_number: "",
   remarks: "Tournament withdrawal",
@@ -431,8 +431,7 @@ const handleWithdrawal = async () => {
 setModalVisible(false);
 
 setWithdrawalReference(
-  data.withdrawalId ||
-  data.payoutId ||
+  data.transactionId ||
   `WD-${Date.now()}`
 );
 
@@ -1157,7 +1156,7 @@ Amount: {Number(formData.amount).toFixed(2)}
           marginBottom: 10,
         }}
       >
-        Status: Pending Review
+        Status: Pending Provider Confirmation
       </Text>
 
       <Text
