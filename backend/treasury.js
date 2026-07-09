@@ -415,31 +415,10 @@ async processTournamentPayout(tournamentId) {
       }
 
   const prizeModel = tournament.prizeModel || "sponsored";
-
-let prizePool = 0;
-
-if (prizeModel === "dynamic") {
-
-  const cofferRef = db
-    .collection("tournamentCoffers")
-    .doc(tournamentId);
-
-  const cofferSnap = await t.get(cofferRef);
-
-  if (!cofferSnap.exists) {
-    throw new Error("Tournament coffer missing");
-  }
-
-  prizePool =
-    Number(
-      cofferSnap.data()?.registration?.totalAmount || 0
-    );
-
-} else {
-
-  prizePool = Number(tournament.prizePool || 0);
-
-}
+const prizePool =
+  prizeModel === "dynamic"
+    ? Number(tournament.collectedFunds || 0)
+    : Number(tournament.prizePool || 0);
 
 const payoutStructure = tournament.payoutStructure || [];
 
@@ -459,11 +438,9 @@ if (prizeModel === "dynamic") {
     );
 
 
-  if(Math.abs(totalPercentage - 100) > 0.01){
-    throw new Error(
-      "Pool payout percentage must equal 100%"
-    );
-  }
+  if (totalPercentage > 100.01) {
+  throw new Error("Pool payout percentage cannot exceed 100%");
+}
 
 }
       if (!Array.isArray(payoutStructure) || payoutStructure.length === 0) {
@@ -629,17 +606,24 @@ amount:Math.floor(amount)
         throw new Error("Over-distribution detected");
       }
 
-      t.update(treasuryRef, {
-        balance: admin.firestore.FieldValue.increment(-distributed),
-        lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
-      });
+     // Nothing was actually paid
+if (distributed <= 0) {
+  throw new Error("No payouts were processed");
+}
 
-      t.update(tournamentRef, {
-        paidOut: true,
-        payoutLocked: false,
-        status: "completed",
-        paidOutAt: admin.firestore.FieldValue.serverTimestamp(),
-      });
+// Deduct only what was actually distributed
+t.update(treasuryRef, {
+  balance: admin.firestore.FieldValue.increment(-distributed),
+  lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+});
+
+// Mark tournament completed ONLY after successful payments
+t.update(tournamentRef, {
+  paidOut: true,
+  payoutLocked: false,
+  status: "completed",
+  paidOutAt: admin.firestore.FieldValue.serverTimestamp(),
+});
 
     });
 
@@ -756,24 +740,20 @@ if (
 
 if (tournament.prizeModel === "dynamic") {
 
-  const cofferSnap = await db
-    .collection("tournamentCoffers")
-    .doc(tournamentId)
-    .get();
+ 
+    const prizeModel = tournament.prizeModel || "sponsored";
 
-  const prizePool =
-    Number(
-      cofferSnap.data()?.registration?.totalAmount || 0
-    );
+ const prizePool =
+  prizeModel === "dynamic"
+    ? Number(tournament.collectedFunds || 0)
+    : Number(tournament.prizePool || 0);
 
   amount =
     prizePool *
     (Number(payout.percentage || 0) / 100);
 
 } else {
-
   amount = Number(payout.amount);
-
 }
 const treasurySnap = await treasuryRef.get();
 
