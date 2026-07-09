@@ -366,35 +366,28 @@ const SWITCHER_WIDTH = Math.min(
 const styles = StyleSheet.create({
 container:{
     position:"absolute",
-
     top:8,
     right:8,
-
-    width: SWITCHER_WIDTH,
-
     zIndex:100,
-
     alignItems:"flex-end",
 },
  iconRow:{
-    width:"100%",
+   width: SWITCHER_WIDTH,
  flexDirection:"row",
     backgroundColor:"#1f2937",
-
     borderRadius:18,
-
     paddingHorizontal:12,
     paddingVertical:12,
-
     alignItems:"center",
-
     borderWidth:1,
     borderColor:"#334155",
 },
   activeBalance: { marginLeft: 10, fontSize: 16, fontWeight: "800", letterSpacing: 0.5, textShadowColor: "rgba(255, 215, 0, 0.9)",
 textShadowOffset: { width: 0, height: 0 },
 textShadowRadius: 8, },
-  dropdown: {  marginTop:8,
+
+  dropdown: {
+ marginTop:8,
  width: SWITCHER_WIDTH * 0.85,
  maxWidth:"100%",
  maxHeight:350, backgroundColor: "#111827",

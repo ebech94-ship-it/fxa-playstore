@@ -32,10 +32,14 @@ export type PlayerTournament = {
   symbol: string;
   currency: string;   // ✅ IMPORTANT (RESTORED)
 
-  // core
-  balance: number;
+ prizeModel?: "guaranteed" | "dynamic";
+ prizePool: number;
+collectedFunds: number;
+
+startingBalance: number;
+    balance: number;
  
-startingBalance?: number; 
+
   joined: boolean;
 
   status: "upcoming" | "ongoing" | "finished";
@@ -227,7 +231,7 @@ export type TournamentAccount = {
   id: string;      // tournament doc id (UI)
   name: string;    // tournament name (UI)
   symbol: string;  // "$" | "T"
-
+prizeModel?: "guaranteed" | "dynamic";
   balance: number;
   
   currency: string;
@@ -469,7 +473,7 @@ const tournamentAccounts = useMemo(() =>
         type: "tournament" as const,
         tournamentId: t.tournamentId,
         id: t.tournamentId,
-
+prizeModel: t.prizeModel,
         name: t.name ?? tournamentMeta[t.tournamentId]?.name ?? "Tournament",
         symbol: t.symbol ?? tournamentMeta[t.tournamentId]?.symbol ?? "$",
 
@@ -507,7 +511,21 @@ useEffect(() => {
     );
 
     const unsub = onSnapshot(ref, (snap) => {
-      if (!snap.exists()) return;
+    if (!snap.exists()) {
+  setParticipantBalances(prev => {
+    const copy = { ...prev };
+    delete copy[t.tournamentId];
+    return copy;
+  });
+
+  setParticipantDocs(prev => {
+    const copy = { ...prev };
+    delete copy[t.tournamentId];
+    return copy;
+  });
+
+  return;
+}
 
       const data = snap.data();
 
@@ -524,12 +542,9 @@ useEffect(() => {
         };
       });
 
-   setParticipantDocs((prev) => ({
+setParticipantDocs((prev) => ({
   ...prev,
-  [t.tournamentId]: {
-    ...(prev[t.tournamentId] ?? {}),
-    [authUser.uid]: data,
-  },
+  [t.tournamentId]: data,
 }));
     });
 
@@ -611,7 +626,7 @@ useEffect(() => {
   name: data.name ?? "Tournament",
   symbol: data.symbol ?? "$",
   currency: data.currency ?? "$",
-
+prizeModel: data.prizeModel ?? "guaranteed",
   // timing
   startTime: Number(data.startTime ?? 0),
   endTime: Number(data.endTime ?? 0),
@@ -620,6 +635,8 @@ useEffect(() => {
   entryFee: Number(data.entryFee ?? 0),
   rebuyFee: Number(data.rebuyFee ?? data.entryFee ?? 0),
   prizePool: Number(data.prizePool ?? 0),
+
+collectedFunds: Number(data.collectedFunds ?? 0),
 
   startingBalance: Number(data.startingBalance ?? 0),
   
@@ -729,12 +746,21 @@ useEffect(() => {
 
   /* 🔐 Auth listener */
   useEffect(() => {
-    const unsub = onAuthStateChanged(auth, (user) => {
-      setAuthUser(user);
-      
-    });
-    return unsub;
-  }, []);
+  const unsub = onAuthStateChanged(auth, (user) => {
+
+    setActiveTournament(null);
+    setActiveAccount({ type: "demo" });
+
+    setParticipantBalances({});
+    setParticipantDocs({});
+    setLeaderboardParticipants({});
+
+    setAuthUser(user);
+
+  });
+
+  return unsub;
+}, []);
 
   useEffect(() => {
   const timer = setInterval(() => {
@@ -791,14 +817,30 @@ useEffect(() => {
   if (!authUser) {
     setUserDoc(null);
     setAccounts(null);
-    setTournaments([]);
+
+    // RESET ACTIVE ACCOUNT
     setActiveTournament(null);
     setActiveAccount({ type: "demo" });
+
+    // RESET PROFILE
     setProfile(null);
     setProfileSubmitted(false);
     setProfileLoaded(false);
+
+    // RESET ADMIN
     setIsAdmin(false);
     setAdminLoaded(false);
+
+    // 🔥 RESET TOURNAMENT STATE
+    setParticipantBalances({});
+    setParticipantDocs({});
+    setLeaderboardParticipants({});
+    setTournamentMeta({});
+   
+
+    // reset demo balance until next user loads
+    setDemoBalance(1000);
+
     setLoading(false);
     return;
   }
@@ -812,25 +854,14 @@ useEffect(() => {
     }
 
     const data = snap.data() as FirestoreUserDoc;
-     // 🔥 ENSURE PUBLIC ID EXISTS
 
     setUserDoc(data);
 
-    // 🔐 ADMIN CHECK
     setIsAdmin(data?.roles?.admin === true || data?.isAdmin === true);
     setAdminLoaded(true);
 
     const acc: Accounts = data.accounts ?? {};
     setAccounts(acc);
-  
-
-
-console.log(
-  "TOURNAMENTS RAW:",
-  JSON.stringify(acc.tournaments, null, 2)
-);
-    
-  
 
     setLoading(false);
   });

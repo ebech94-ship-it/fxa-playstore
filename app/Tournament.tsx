@@ -40,8 +40,14 @@ type Tournament = {
   entryFee?: number;
   rebuyFee?: number;
   prizePool?: number;
+  collectedFunds?:number;
+  prizeModel?: "sponsored" | "dynamic";
   prize?: number;
-   payoutStructure?: { rank: number; amount: number }[];
+  payoutStructure?: {
+  rank: number;
+  amount?: number;
+  percentage?: number;
+}[];
   participantsList?: any[];
   [key: string]: any;
 };
@@ -83,14 +89,26 @@ const getPrizeForRank = (
   rank: number,
   tournament: Tournament | null
 ): number | null => {
+
   if (!tournament?.payoutStructure) return null;
 
   const entry = tournament.payoutStructure.find(
-   (p: any) => Number(p.rank) === Number(rank)
-
+    (p) => Number(p.rank) === Number(rank)
   );
 
-  return entry ? Number(entry.amount) : null;
+  if (!entry) return null;
+
+
+  // Dynamic tournament
+  if (tournament.prizeModel === "dynamic") {
+    const pool = tournament.collectedFunds ?? 0;
+
+    return pool * ((entry.percentage ?? 0) / 100);
+  }
+
+
+  // Sponsored tournament
+  return entry.amount ?? 0;
 };
 const formatNum = (value?: number, decimals = 2) => {
   if (value === null || value === undefined || isNaN(value)) return "0.00";
@@ -597,13 +615,48 @@ const allowRebuy =
   {/* PRIZE POOL */}
   <View style={styles.moneyRow}>
     <Text style={styles.leftPrizePoolText}>
-  🏆 Prize Pool: {formatNum(item.prizePool)} $
+
+{
+ item.prizeModel === "dynamic"
+
+ ? `🏆 Prize Pool: ${formatNum(
+      item.collectedFunds ?? 0
+    )} $`
+
+ : `🏆 Prize Pool: ${formatNum(
+      item.prizePool ?? 0
+    )} $`
+}
+
+</Text>
+<Text
+style={{
+ color:"#94a3b8",
+ fontSize:11,
+ marginTop:2
+}}
+>
+
+{
+ item.prizeModel === "dynamic"
+ ? "🔥 Growing from registrations & rebuys"
+ : "🎁 Guaranteed prize pool"
+}
+
 </Text>
 
     <View style={styles.dividerLine} />
 
     <Text style={styles.rightMoneyText}>
-      ≈ {formatXAF(toXAF(item.prizePool))} XAF
+    ≈ {
+  formatXAF(
+    toXAF(
+      item.prizeModel === "dynamic"
+        ? item.collectedFunds ?? 0
+        : item.prizePool ?? 0
+    )
+  )
+} XAF
     </Text>
   </View>
 
@@ -789,7 +842,21 @@ disabled={
      <Text style={styles.tableColBalance} numberOfLines={1}>
   {formatNum(user.balance)}T
 </Text>
-<Text style={styles.tableColPerformance}>
+<Text
+  style={[
+    styles.tableColPerformance,
+    {
+      color:
+        (
+          (user.balance ?? 0)
+          - (selectedTournament?.startingBalance ?? 0)
+          - (user.rebuyInjectedTotal ?? 0)
+        ) >= 0
+          ? "#22c55e"
+          : "#ef4444",
+    },
+  ]}
+>
   {((user.balance ?? 0)
     - (selectedTournament?.startingBalance ?? 0)
     - (user.rebuyInjectedTotal ?? 0)) >= 0 ? "+" : ""}
@@ -806,7 +873,9 @@ disabled={
 
       {/* Prize */}
       <Text style={styles.tableColPrize}>
-        {prize ? `${prize} $` : "-"}
+       {prize !== null
+ ? `${formatNum(prize)} $`
+ : "-"}
       </Text>
 
     </View>
@@ -866,15 +935,32 @@ disabled={
           <Text style={styles.tableColBalance}>
            {formatNum(row.balance)}T
           </Text>
-<Text style={styles.tableColPerformance}>
-  {((row.balance ?? 0)
+<Text
+  style={[
+    styles.tableColPerformance,
+    {
+      color:
+        (
+          (row.balance ?? 0)
+          - (selectedTournament?.startingBalance ?? 0)
+          - (row.rebuyInjectedTotal ?? 0)
+        ) >= 0
+          ? "#22c55e"
+          : "#ef4444",
+    },
+  ]}
+>
+  {(
+    (row.balance ?? 0)
     - (selectedTournament?.startingBalance ?? 0)
-    - (row.rebuyInjectedTotal ?? 0)) >= 0 ? "+" : ""}
-{formatNum(
-  (row.balance ?? 0)
-  - (selectedTournament?.startingBalance ?? 0)
-  - (row.rebuyInjectedTotal ?? 0)
-)}T
+    - (row.rebuyInjectedTotal ?? 0)
+  ) >= 0 ? "+" : ""}
+
+  {formatNum(
+    (row.balance ?? 0)
+    - (selectedTournament?.startingBalance ?? 0)
+    - (row.rebuyInjectedTotal ?? 0)
+  )}T
 </Text>
           <Text style={styles.tableColTier}>
             {getTierForRank(i + 1)}
@@ -887,7 +973,9 @@ disabled={
                     i + 1,
                     selectedTournament
                   );
-                  return prize ? `${prize} $` : "-";
+                  return prize !== null
+ ? `${formatNum(prize)} $`
+ : "-";
                 })()
               : "-"}
           </Text>
@@ -1003,7 +1091,7 @@ flexShrink: 1,
     onPress={() => setSelectedTournament(null)} // tap outside closes modal
   >
     <KeyboardAvoidingView
-  style={{ flex: 1, justifyContent: "center", alignItems: "center" }}
+  style={{ flex: 1, justifyContent: "center", alignItems: "center",  paddingVertical: 12, }}
   behavior={Platform.OS === "ios" ? "padding" : "height"}
 >
       <Pressable
@@ -1020,7 +1108,13 @@ flexShrink: 1,
         </Pressable>
 
       {selectedTournament && (
-<View style={{ flex: 1, minHeight: 0 }}>
+<View
+  style={{
+    flex: 1,
+    minHeight: 0,
+    width: "100%",
+  }}
+>
 
   {/* HEADER */}
   <View
@@ -1037,8 +1131,14 @@ flexShrink: 1,
     </Text>
 
     <Text style={styles.modalPrize}>
-      🏆 Prize Pool: {selectedTournament.prizePool ?? 0} $
-    </Text>
+
+🏆 Prize Pool: {
+ selectedTournament.prizeModel === "dynamic"
+ ? formatNum(selectedTournament.collectedFunds ?? 0)
+ : formatNum(selectedTournament.prizePool ?? 0)
+} $
+
+</Text>
 
     <Text style={styles.modalInfo}>
       {now < selectedTournament.startTime
@@ -1102,19 +1202,29 @@ flexShrink: 1,
   </View>
 
   {/* ONLY THIS AREA SCROLLS */}
-  <View style={{ flex: 1, minHeight: 0 }}>
+<View
+  style={{
+    flex: 1,
+    minHeight: 0,
+    width: "100%",
+  }}
+>
 
     {viewTab === "info" ? (
 
       <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={{
-          paddingVertical: 16,
-          paddingHorizontal: 2,
-          paddingBottom: 50,
-        }}
-        showsVerticalScrollIndicator
-      >
+  style={{ flex: 1, minHeight: 0, }}
+  contentContainerStyle={{
+    flexGrow: 0,
+    paddingVertical: 16,
+    paddingHorizontal: 2,
+    paddingBottom: 40,
+  }}
+  nestedScrollEnabled
+  showsVerticalScrollIndicator={false}
+  bounces={false}
+  overScrollMode="never"
+>
 
         <Text style={styles.sectionTitle}>
           📖 Information
@@ -1220,7 +1330,13 @@ flexShrink: 1,
                       { flex: 1 },
                     ]}
                   >
-                    {p.amount} $
+                   {selectedTournament.prizeModel === "dynamic"
+  ? `${formatNum(
+      (selectedTournament.collectedFunds ?? 0) *
+      ((p.percentage ?? 0) / 100)
+    )} $`
+  : `${formatNum(p.amount ?? 0)} $`
+}
                   </Text>
                 </View>
               )
@@ -1232,19 +1348,33 @@ flexShrink: 1,
 
     ) : (
 
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={{
-          paddingBottom: 30,
-        }}
-        horizontal
-      >
-        <View style={{ minWidth: 760 }}>
-          <LeaderboardTable
-            list={sortedLeaderboard}
-          />
-        </View>
-      </ScrollView>
+<ScrollView
+  horizontal
+  showsHorizontalScrollIndicator={false}
+  bounces={false}
+  overScrollMode="never"
+>
+  <ScrollView
+    nestedScrollEnabled
+    showsVerticalScrollIndicator={false}
+    bounces={false}
+    overScrollMode="never"
+    contentContainerStyle={{
+      paddingBottom: 20,
+    }}
+  >
+    <View
+      style={{
+        minWidth: 620,
+        width: "100%",
+      }}
+    >
+      <LeaderboardTable
+        list={sortedLeaderboard}
+      />
+    </View>
+  </ScrollView>
+</ScrollView>
 
     )}
 
@@ -1286,14 +1416,21 @@ disabledBtn: { opacity: 0.45 },
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "center", alignItems: "center" },
 modalContent: {
   width: "96%",
-  height: "92%",
   maxWidth: 900,
+
+  height: "88%",
+  maxHeight: 700,
+
   backgroundColor: "#0e1128",
   borderRadius: 22,
-  paddingHorizontal: 18,
+
+  paddingHorizontal: 14,
   paddingTop: 12,
-  paddingBottom: 10,
+  paddingBottom: 8,
+
   overflow: "hidden",
+
+  alignSelf: "center",
 },
  closeButton:{
   position:"absolute",

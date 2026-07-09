@@ -94,6 +94,7 @@ async registerTournament(t, userId, tournamentId) {
 
   const user = userSnap.data();
   const tournament = tournamentSnap.data();
+const prizeModel = tournament.prizeModel || "sponsored";
 
   const entryFee = Number(tournament.entryFee || 0);
   const startingBalance = Number(tournament.startingBalance || 0);
@@ -127,15 +128,20 @@ async registerTournament(t, userId, tournamentId) {
       lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
     }, { merge: true });
 
-    t.set(cofferRef, {
-      registration: {
-        count: admin.firestore.FieldValue.increment(1),
-        totalAmount: admin.firestore.FieldValue.increment(entryFee),
-      },
-      lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
-    }, { merge: true });
+   t.set(cofferRef, {
+  registration: {
+    count: admin.firestore.FieldValue.increment(1),
+    totalAmount: admin.firestore.FieldValue.increment(entryFee),
+  },
+  prizeModel,
+  lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+}, { merge: true });
   }
-
+if (prizeModel === "dynamic") {
+  t.update(tournamentRef, {
+    prizePool: admin.firestore.FieldValue.increment(entryFee),
+  });
+}
   // tournament global update
   t.update(tournamentRef, {
     collectedFunds: admin.firestore.FieldValue.increment(entryFee),
@@ -178,10 +184,10 @@ performance: {
 
       startingBalance,
       balance: startingBalance,
-      
-
-      prizePool: tournament.prizePool || 0,
-
+    prizePool:
+ prizeModel==="sponsored"
+ ? tournament.prizePool || 0
+ : null,
       joined: true,
       status:
   Date.now() < tournament.startTime
@@ -267,7 +273,7 @@ async processRebuy(t, userId, tournamentId) {
 const newRebuyCount = (participant.rebuyCount || 0) + 1;
 
 const newInjectedTotal =
-  (participant.rebuyInjectedTotal || 0) + rebuyFee;
+  (participant.rebuyInjectedTotal || 0) + startingBalance;
 
 const newRebuys = [
   ...(participant.rebuys || []),
@@ -408,9 +414,58 @@ async processTournamentPayout(tournamentId) {
         throw new Error("Payout running");
       }
 
-      const prizePool = Number(tournament.prizePool || 0);
-      const payoutStructure = tournament.payoutStructure || [];
+  const prizeModel = tournament.prizeModel || "sponsored";
 
+let prizePool = 0;
+
+if (prizeModel === "dynamic") {
+
+  const cofferRef = db
+    .collection("tournamentCoffers")
+    .doc(tournamentId);
+
+  const cofferSnap = await t.get(cofferRef);
+
+  if (!cofferSnap.exists) {
+    throw new Error("Tournament coffer missing");
+  }
+
+  prizePool =
+    Number(
+      cofferSnap.data()?.registration?.totalAmount || 0
+    );
+
+} else {
+
+  prizePool = Number(tournament.prizePool || 0);
+
+}
+
+const payoutStructure = tournament.payoutStructure || [];
+
+
+if (!Array.isArray(payoutStructure) || payoutStructure.length === 0) {
+  throw new Error("Invalid payout structure");
+}
+
+
+// validate pool percentage
+if (prizeModel === "dynamic") {
+
+  const totalPercentage =
+    payoutStructure.reduce(
+      (sum,p)=>sum + Number(p.percentage || 0),
+      0
+    );
+
+
+  if(Math.abs(totalPercentage - 100) > 0.01){
+    throw new Error(
+      "Pool payout percentage must equal 100%"
+    );
+  }
+
+}
       if (!Array.isArray(payoutStructure) || payoutStructure.length === 0) {
         throw new Error("Invalid payout structure");
       }
@@ -427,25 +482,77 @@ async processTournamentPayout(tournamentId) {
         throw new Error("Treasury insufficient");
       }
 
-      const participantsQuery = tournamentRef
-        .collection("participants")
-        .orderBy("performance", "desc")
-        .limit(payoutStructure.length);
+ const participantsQuery = tournamentRef
+  .collection("participants");
 
-      const participantSnap = await t.get(participantsQuery);
+const participantSnap = await t.get(participantsQuery);
 
-      if (participantSnap.empty) {
-        throw new Error("No participants");
-      }
+if (participantSnap.empty) {
+  throw new Error("No participants");
+}
 
-      const winners = participantSnap.docs
-        .slice(0, payoutStructure.length)
-        .map((doc, i) => ({
-          userId: doc.id,
-          amount: Number(payoutStructure[i]?.amount || 0),
-        }))
-        .filter((w) => w.amount > 0);
 
+const players = participantSnap.docs.map((doc)=>({
+  id: doc.id,
+  data: doc.data(),
+}));
+
+
+// SAME RANKING LOGIC AS FRONTEND
+players.sort((a,b)=>{
+
+  const aData = a.data;
+  const bData = b.data;
+
+
+  const aPerformance =
+    (aData.balance ?? 0)
+    - (aData.startingBalance ?? 0)
+    - (aData.rebuyInjectedTotal ?? 0);
+
+
+  const bPerformance =
+    (bData.balance ?? 0)
+    - (bData.startingBalance ?? 0)
+    - (bData.rebuyInjectedTotal ?? 0);
+
+
+  return bPerformance - aPerformance;
+
+});
+
+
+const winners = players
+.slice(0, payoutStructure.length)
+.map((player,i)=>{
+
+const payoutRule = payoutStructure[i];
+
+let amount = 0;
+
+
+if(prizeModel === "dynamic"){
+
+amount =
+prizePool *
+(Number(payoutRule.percentage || 0) / 100);
+
+}else{
+
+amount =
+Number(payoutRule.amount || 0);
+
+}
+
+
+return {
+userId: player.id,
+rank:payoutRule.rank,
+amount:Math.floor(amount)
+};
+
+})
+.filter(w=>w.amount>0);
       // ======================
       // READ ALL WINNER DOCS
       // ======================
@@ -542,6 +649,11 @@ async processTournamentPayout(tournamentId) {
 
     console.log(`🏆 Tournament ${tournamentId} paid out`);
 
+return {
+  success: true,
+  message: "Tournament payout completed",
+};
+
   } catch (error) {
 
     await db.runTransaction(async (t) => {
@@ -583,14 +695,35 @@ async processTournamentPayout(tournamentId) {
 
   // 1️⃣ Get leaderboard sorted EXACTLY like bulk payout
   const leaderboardSnap = await tournamentRef
-    .collection("participants")
-    .orderBy("performance.pnl", "desc")
-    .get();
+.collection("participants")
+.get();
 
-  const leaderboard = leaderboardSnap.docs.map((d) => ({
-    id: d.id,
-    data: d.data(),
-  }));
+
+const leaderboard = leaderboardSnap.docs.map((d)=>({
+id:d.id,
+data:d.data(),
+}));
+
+
+leaderboard.sort((a,b)=>{
+
+const aPerformance =
+(a.data.balance ?? 0)
+- (a.data.startingBalance ?? 0)
+- (a.data.rebuyInjectedTotal ?? 0);
+
+
+const bPerformance =
+(b.data.balance ?? 0)
+- (b.data.startingBalance ?? 0)
+- (b.data.rebuyInjectedTotal ?? 0);
+
+
+return bPerformance - aPerformance;
+
+});
+
+ 
 
   // 2️⃣ Find rank
   const rank = leaderboard.findIndex((p) => p.id === participantId) + 1;
@@ -598,16 +731,59 @@ async processTournamentPayout(tournamentId) {
   if (rank <= 0) throw new Error("Participant not ranked");
 
   // 3️⃣ Get payout
-  const payout = tournament.payoutStructure.find(
-    (p) => p.rank === rank
-  );
+// 3️⃣ Get payout (SAME LOGIC AS BULK PAYOUT)
+const payout = tournament.payoutStructure[rank - 1];
 
-  if (!payout || payout.amount <= 0) {
-    throw new Error("No payout for this rank");
-  }
+if (!payout) {
+  throw new Error("No payout for this rank");
+}
 
-  const amount = Number(payout.amount);
+if (
+  tournament.prizeModel === "sponsored" &&
+  Number(payout.amount || 0) <= 0
+) {
+  throw new Error("No payout for this rank");
+}
 
+if (
+  tournament.prizeModel === "dynamic" &&
+  Number(payout.percentage || 0) <= 0
+) {
+  throw new Error("No payout for this rank");
+}
+
+  let amount;
+
+if (tournament.prizeModel === "dynamic") {
+
+  const cofferSnap = await db
+    .collection("tournamentCoffers")
+    .doc(tournamentId)
+    .get();
+
+  const prizePool =
+    Number(
+      cofferSnap.data()?.registration?.totalAmount || 0
+    );
+
+  amount =
+    prizePool *
+    (Number(payout.percentage || 0) / 100);
+
+} else {
+
+  amount = Number(payout.amount);
+
+}
+const treasurySnap = await treasuryRef.get();
+
+if (!treasurySnap.exists) {
+ throw new Error("Treasury missing");
+}
+
+if ((treasurySnap.data().balance || 0) < amount) {
+ throw new Error("Treasury insufficient");
+}
   // 4️⃣ Run transaction
   await db.runTransaction(async (t) => {
     const userSnap = await t.get(userRef);
