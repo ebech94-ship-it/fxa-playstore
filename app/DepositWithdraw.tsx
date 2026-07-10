@@ -496,9 +496,9 @@ const handleWithdrawal = async () => {
       return;
     }
 
-
     console.log("✅ PAYOUT SUCCESS");
 
+setWithdrawProcessing(false);
 
     setModalVisible(false);
 
@@ -506,10 +506,7 @@ const handleWithdrawal = async () => {
     setWithdrawalReference(
       data.transactionId ||
       `WD-${Date.now()}`
-    );
-
-
-    setWithdrawProcessing(false);
+    ); 
 
     setWithdrawalSuccessVisible(true);
 
@@ -592,10 +589,15 @@ if (!/^(237)?6\d{8}$/.test(cleanPhone)) {
 
 const confirmAndSend = async () => {
  if (loading) return;
-  try {
+
+ try {
     setLoading(true);
-setConfirmVisible(false);
-   
+    setConfirmVisible(false);
+
+    if (!isDeposit) {
+      setWithdrawProcessing(true);
+    }
+
     if (isDeposit) {
       await handleDeposit();
     } else {
@@ -1253,16 +1255,27 @@ Amount: {Number(formData.amount).toFixed(2)}
       </Text>
 
       <Text
-        style={{
-          color: "#9CA3AF",
-          textAlign: "center",
-          marginBottom: 20,
-        }}
-      >
-        Mobile Money withdrawals are usually processed
-        within a few minutes, but may take longer during
-        high activity periods.
-      </Text>
+  style={{
+    color: "#9CA3AF",
+    textAlign: "left",
+    marginBottom: 20,
+    lineHeight: 20,
+  }}
+>
+  What happens next?
+  {"\n\n"}
+
+  ✓ Funds have been reserved from your account
+  {"\n"}
+
+  ✓ Payment provider is processing your Mobile Money transfer
+  {"\n"}
+
+  ✓ You will receive confirmation when completed
+  {"\n\n"}
+
+  You can safely close this page.
+</Text>
 
       <TouchableOpacity
         style={styles.confirmButton}
