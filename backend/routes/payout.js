@@ -6,7 +6,48 @@ const fetch = require("node-fetch");
 
 
 const { XAF_TO_USD, BASE_CURRENCY } = require("../config/currency");
+// ----------------------
+// FIREBASE AUTH FOR PAYOUT
+// ----------------------
+const authenticate = async (req, res, next) => {
 
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    return res.status(401).json({
+      error: "No Firebase token provided"
+    });
+  }
+
+  const idToken = authHeader.split("Bearer ")[1];
+
+  try {
+
+    const decodedToken =
+      await admin.auth().verifyIdToken(idToken);
+
+    req.user = decodedToken;
+
+    console.log("🔥 PAYOUT AUTH USER:", {
+      uid: decodedToken.uid,
+      email: decodedToken.email || "NO_EMAIL",
+      phone: decodedToken.phone_number || "NO_PHONE"
+    });
+
+    next();
+
+  } catch (err) {
+
+    console.error(
+      "PAYOUT AUTH ERROR:",
+      err.message
+    );
+
+    return res.status(401).json({
+      error: "Invalid Firebase token"
+    });
+  }
+};
 // ----------------------
 // TOKEN CACHE (PAYOUT)
 // ----------------------
@@ -108,10 +149,14 @@ router.post("/create-request", async (req, res, next) => {
 // ----------------------
 // CREATE PAYOUT
 // ----------------------
-router.post("/", async (req, res) => {
+router.post("/", authenticate, async (req, res) => {
 console.log("🔥 WITHDRAW ROUTE HIT");
 console.log("📌 BODY:", req.body);
-console.log("👤 USER:", req.user?.uid);
+console.log("👤 PAYOUT USER:", {
+  uid: req.user?.uid,
+  email: req.user?.email || "NO_EMAIL",
+  phone: req.user?.phone_number || "NO_PHONE"
+});
   let transactionId;
 
   try {
@@ -136,12 +181,8 @@ await getPayoutMethodId(
   payment_method
 );
 
-
-    const idToken = req.headers.authorization?.split("Bearer ")[1];
-    if (!idToken) return res.status(401).json({ error: "Unauthorized" });
-
-    const decodedToken = await admin.auth().verifyIdToken(idToken);
-    const uid = decodedToken.uid;
+const uid = req.user.uid;
+ 
 const formattedMobile =
 mobile_no.startsWith("+237")
 ? mobile_no

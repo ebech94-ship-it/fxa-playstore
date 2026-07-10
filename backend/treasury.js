@@ -7,68 +7,191 @@ module.exports = {
 --------------------------------------------------- */
 async processWithdrawal(userId, amount, momoNumber) {
 
+  console.log("========== PROCESS WITHDRAWAL ==========");
+
+  console.log("👤 USER ID RECEIVED:", userId);
+
+  console.log("💰 AMOUNT RECEIVED:", amount);
+
+  console.log("📱 MOMO NUMBER RECEIVED:", momoNumber);
+
+
+  if (!userId) {
+    console.log("❌ NO USER ID PROVIDED");
+    throw new Error("User authentication missing");
+  }
+
+
   if (!amount || isNaN(amount) || Number(amount) <= 0) {
+    console.log("❌ INVALID AMOUNT");
     throw new Error("Invalid withdrawal amount");
   }
 
+
   const numericAmount = Number(amount);
 
+
   if (!momoNumber || typeof momoNumber !== "string") {
+    console.log("❌ INVALID MOMO NUMBER");
     throw new Error("Invalid MoMo number");
   }
 
+
   const userRef = db.collection("users").doc(userId);
 
+
   await db.runTransaction(async (t) => {
+
     const userSnap = await t.get(userRef);
-    const user = userSnap.data();
 
-    if (!userSnap.exists) throw new Error("User not found");
 
-    const wallet = userSnap.data()?.accounts?.real?.balance || 0;
+    console.log(
+      "USER EXISTS:",
+      userSnap.exists
+    );
 
-    if (wallet < numericAmount) {
-      throw new Error("User does not have enough balance");
+
+    if (!userSnap.exists) {
+      console.log("❌ USER DOCUMENT NOT FOUND:", userId);
+      throw new Error("User not found");
     }
 
+
+    const user = userSnap.data();
+
+
+    console.log(
+      "🔥 USER DATA:",
+      {
+        username:user.username,
+        email:user.email,
+        verified:user.verified,
+        wallet:user.accounts?.real?.balance
+      }
+    );
+
+
+    const wallet =
+      user.accounts?.real?.balance || 0;
+
+
+    console.log(
+      "CURRENT REAL WALLET:",
+      wallet
+    );
+
+
+    if (wallet < numericAmount) {
+
+      console.log(
+        "❌ INSUFFICIENT USER BALANCE",
+        {
+          wallet,
+          requested:numericAmount
+        }
+      );
+
+      throw new Error(
+        "User does not have enough balance"
+      );
+    }
+
+
     t.update(userRef, {
-      "accounts.real.balance": admin.firestore.FieldValue.increment(-numericAmount),
+
+      "accounts.real.balance":
+        admin.firestore.FieldValue.increment(
+          -numericAmount
+        ),
+
     });
 
-    const treasuryRef = db.collection("treasury").doc("main");
+
+
+    const treasuryRef =
+      db.collection("treasury")
+      .doc("main");
+
 
     t.set(
       treasuryRef,
       {
-        balance: admin.firestore.FieldValue.increment(-numericAmount),
-        lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+        balance:
+          admin.firestore.FieldValue.increment(
+            -numericAmount
+          ),
+
+        lastUpdated:
+          admin.firestore.FieldValue.serverTimestamp(),
+
       },
-      { merge: true }
+      {
+        merge:true
+      }
     );
 
-    const transactionRef = db.collection("transactions").doc();
-    const payoutRef = db.collection("payouts").doc();
+
+
+    const transactionRef =
+      db.collection("transactions")
+      .doc();
+
+
+    const payoutRef =
+      db.collection("payouts")
+      .doc();
+
+
 
     t.set(transactionRef, {
+
       userId,
-       username: user.username || "Unknown",
-      amount: numericAmount,
-      type: "withdrawal",
-      status: "pending",
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+
+      username:
+        user.username ||
+        user.displayName ||
+        "Unknown",
+
+      amount:numericAmount,
+
+      type:"withdrawal",
+
+      status:"pending",
+
+      createdAt:
+        admin.firestore.FieldValue.serverTimestamp(),
+
     });
+
+
 
     t.set(payoutRef, {
+
       userId,
-      amount: numericAmount,
+
+      amount:numericAmount,
+
       momoNumber,
-      status: "pending",
-      transactionId: transactionRef.id,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+
+      status:"pending",
+
+      transactionId:
+        transactionRef.id,
+
+      createdAt:
+        admin.firestore.FieldValue.serverTimestamp(),
+
     });
+
+
   });
 
-  console.log(`📤 Withdrawal request for ${userId} → ${numericAmount}`);
+
+  console.log(
+    `✅ Withdrawal stored: ${userId} → ${numericAmount}`
+  );
+
+
 },
 
 /* ---------------------------------------------------
@@ -139,7 +262,10 @@ const prizeModel = tournament.prizeModel || "sponsored";
   }
 if (prizeModel === "dynamic") {
   t.update(tournamentRef, {
-    prizePool: admin.firestore.FieldValue.increment(entryFee),
+
+
+    prizePool:
+      admin.firestore.FieldValue.increment(entryFee),
   });
 }
   // tournament global update
@@ -510,9 +636,10 @@ let amount = 0;
 
 if(prizeModel === "dynamic"){
 
-amount =
-prizePool *
-(Number(payoutRule.percentage || 0) / 100);
+amount = Math.floor(
+  prizePool *
+  (Number(payoutRule.percentage || 0) / 100)
+);
 
 }else{
 
@@ -574,9 +701,17 @@ amount:Math.floor(amount)
           partSnap,
         } = item;
 
-        if (!userSnap.exists || !partSnap.exists) continue;
+        if (!userSnap.exists) {
+  throw new Error(`Winner user missing: ${w.userId}`);
+}
 
-        if (partSnap.data().paidOut) continue;
+if (!partSnap.exists) {
+  throw new Error(`Winner participant missing: ${w.userId}`);
+}
+
+if (partSnap.data().paidOut) {
+  continue;
+}
 
         t.update(userRef, {
           "accounts.real.balance":
@@ -663,7 +798,14 @@ return {
 
   const tournament = tournamentSnap.data();
 
-  if (tournament.paidOut) throw new Error("Tournament already fully paid");
+  if (
+  tournament.paidOut &&
+  participantSnap.exists &&
+  participantSnap.data().paidOut
+) {
+  throw new Error("Participant already paid");
+}
+  
   if (!Array.isArray(tournament.payoutStructure)) {
     throw new Error("Invalid payout structure");
   }

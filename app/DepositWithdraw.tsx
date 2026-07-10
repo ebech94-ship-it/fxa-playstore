@@ -344,113 +344,192 @@ if (data.paymentUrl) {
 };
 
 /* -------------------- Mobile Money Withdrawal -------------------- */
+/* -------------------- Mobile Money Withdrawal -------------------- */
 const handleWithdrawal = async () => {
+
+  console.log("========== WITHDRAWAL START ==========");
+
   const numericAmount = Number(formData.amount);
 
+  console.log("FORM DATA:", formData);
+
+  console.log("CURRENT USER:", {
+    uid: auth.currentUser?.uid,
+    email: auth.currentUser?.email,
+    phone: auth.currentUser?.phoneNumber,
+  });
+
+  console.log("PROFILE:", profile);
+
+  console.log("APP SETTINGS:", {
+    enablePayouts: appSettings.enablePayouts,
+    maintenanceMode: appSettings.maintenanceMode,
+  });
+
+
   if (!numericAmount || numericAmount <= 0) {
+    console.log("❌ INVALID AMOUNT");
     Alert.alert("Invalid Amount", "Enter a valid amount.");
     return;
   }
 
+
   if (!formData.phone) {
+    console.log("❌ NO PHONE NUMBER");
     Alert.alert("Phone Required", "Enter withdrawal phone number.");
     return;
   }
 
+
   if (!appSettings.enablePayouts) {
+    console.log("❌ PAYOUT DISABLED");
     Alert.alert(
       "Payouts Disabled",
-      "Payout requests are temporarily disabled. Please try again later."
+      "Payout requests are temporarily disabled."
     );
     return;
   }
+
 
   if (appSettings.maintenanceMode) {
+    console.log("❌ MAINTENANCE MODE");
     Alert.alert(
       "Maintenance Mode",
-      "Withdrawals are unavailable during maintenance."
+      "Withdrawals unavailable."
     );
     return;
   }
 
+
   try {
-  
+
     if (!auth.currentUser) {
-    setWithdrawProcessing(true);
+      console.log("❌ NO AUTH USER");
       Alert.alert("Auth Error", "User not logged in.");
       return;
     }
 
+
     const token = await auth.currentUser.getIdToken(true);
+
+    console.log("🔥 FIREBASE TOKEN GENERATED:", !!token);
+
+
     const API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL;
-    if (!API_BASE) {
+
+
+    console.log("API BASE:", API_BASE);
+
+
+    const payload = {
+
+      country_code: "CM",
+
+      beneficiary_name:
+        profile?.displayName ||
+        formData.fullName ||
+        "Unknown",
+
+      mobile_no: formData.phone,
+
+      amount: numericAmount,
+
+      payment_method: activeMethod,
+
+      bank_code: "",
+
+      account_number: "",
+
+      remarks: "Tournament withdrawal",
+
+    };
+
+
+    console.log("========== PAYOUT PAYLOAD ==========");
+    console.log(JSON.stringify(payload, null, 2));
+
+
+    const res = await fetch(
+      `${API_BASE}/api/payout`,
+      {
+        method:"POST",
+
+        headers:{
+          "Content-Type":"application/json",
+
+          Authorization:`Bearer ${token}`,
+        },
+
+        body:JSON.stringify(payload),
+      }
+    );
+
+
+    console.log(
+      "BACKEND STATUS:",
+      res.status
+    );
+
+
+    const data =
+      await res.json()
+      .catch(()=>({}));
+
+
+    console.log(
+      "BACKEND RESPONSE:",
+      JSON.stringify(data,null,2)
+    );
+
+
+    if(!res.ok){
+
+      console.log("❌ PAYOUT FAILED");
+
+      Alert.alert(
+        "Error",
+        data.error ||
+        data.message ||
+        "Withdrawal failed"
+      );
+
+      return;
+    }
+
+
+    console.log("✅ PAYOUT SUCCESS");
+
+
+    setModalVisible(false);
+
+
+    setWithdrawalReference(
+      data.transactionId ||
+      `WD-${Date.now()}`
+    );
+
+
     setWithdrawProcessing(false);
-  Alert.alert("Config Error", "API URL not set");
-  return;
-}
 
-    // 🔥 FIXED PAYLOAD (MATCHES BACKEND / ACCOUNTPE SPEC)
-  const payload = {
-  country_code: "CM",
-  beneficiary_name: formData.fullName,
-  mobile_no: formData.phone,
-  amount: numericAmount,
+    setWithdrawalSuccessVisible(true);
 
-  // Send the selected operator
-  payment_method: activeMethod,
 
-  bank_code: "",
-  account_number: "",
-  remarks: "Tournament withdrawal",
-};
+  } catch(err){
 
-    console.log("🔴 WITHDRAWAL REQUEST:", {
-      API_BASE,
-      ...payload,
-      email: auth.currentUser?.email,
-    });
-console.log("Sending payout payload:");
-console.log(payload);
-    const res = await fetch(`${API_BASE}/api/payout`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify(payload),
-    });
+    console.error(
+      "🔥 WITHDRAWAL EXCEPTION:",
+      err
+    );
 
-    console.log("Response status:", res.status);
 
-    const data = await res.json().catch(() => ({}));
-    console.log("Backend response:", data);
+    Alert.alert(
+      "Connection Problem",
+      "Please check your internet connection."
+    );
+  }
 
-    if (!res.ok) {
-  Alert.alert(
-    "Error",
-    data.error || data.message || "Failed to create withdrawal"
-  );
-  return;
-}
-setModalVisible(false);
 
-setWithdrawalReference(
-  data.transactionId ||
-  `WD-${Date.now()}`
-);
-
-setWithdrawProcessing(false);
-setWithdrawalSuccessVisible(true);
- } catch (err) {
-  setWithdrawProcessing(false);
-
-  console.error("Withdrawal error:", err);
-
-  Alert.alert(
-    "Connection Problem",
-    "Please check your internet connection and try again."
-  );
-}
+  console.log("========== WITHDRAWAL END ==========");
 };
 
   /* -------------------- Submit -------------------- */

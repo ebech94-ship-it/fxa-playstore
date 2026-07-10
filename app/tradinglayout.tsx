@@ -779,7 +779,7 @@ demoBalance={demoBalance}
       {/* NO MORE switcher here */}
 
       {/* Trade Size */}
-      <View style={[styles.inputRow, { marginTop: 120 }]}>
+      <View style={[styles.inputRow, { marginTop: 50 }]}>
   <Text style={styles.label}>Trade Size</Text>
 
   <TouchableOpacity
@@ -983,11 +983,10 @@ const styles = StyleSheet.create({
   chartContainer: { width: "70%", height: "100%",  justifyContent: "flex-start", paddingBottom: 50, },
 
   rightPanel: { overflow: "visible",
-  position: "relative", zIndex: 10, 
-  width: "20%", backgroundColor: "#2c2c2c",
-   padding: 10, top: 5,
+  position: "relative", zIndex: 10, width: "20%",
+   backgroundColor: "#2c2c2c", padding: 10, top:15,
    justifyContent: "space-around", },
-   
+
  panelSection: { marginVertical: 1 },
   label: { color: "#ccc", marginBottom: 2, fontSize: 14, bottom: 2 },
   input: {  backgroundColor: "rgba(255,255,255,0.1)",  borderColor: "#666",  borderWidth: 1,  borderRadius: 6, 
@@ -1000,7 +999,8 @@ const styles = StyleSheet.create({
   profitBox: { backgroundColor: "rgba(255,255,0,0.1)",  borderColor: "gold", borderWidth: 1, borderRadius: 8,
  padding: 8,  marginBottom: 5, alignItems: "center",  bottom: 40, },
   profitText: { color: "darkgoldenrod", fontWeight: "bold", fontSize: 16 },
-  actionButton: { padding: 30,  marginVertical: 8,  borderRadius: 30,  bottom: 20,  alignItems: "center"  },
+  actionButton: { padding: 15,  marginVertical: 8,  borderRadius: 20,  
+  bottom: 20,  alignItems: "center"  },
   actionText: { color: "white", fontWeight: "bold",  fontSize: 18},
   
   overlay: { position: "absolute", top: 85, left: "10%", width: "75%", height: "80%", backgroundColor: "#333",
