@@ -997,9 +997,9 @@ const styles = StyleSheet.create({
   expButtonActive: { backgroundColor: "blue" },
   expButtonText: { color: "#fff", fontSize: 14 },
   profitBox: { backgroundColor: "rgba(255,255,0,0.1)",  borderColor: "gold", borderWidth: 1, borderRadius: 8,
- padding: 8,  marginBottom: 5, alignItems: "center",  bottom: 40, },
+ padding: 8,  marginBottom: 5, alignItems: "center",  bottom: 50, },
   profitText: { color: "darkgoldenrod", fontWeight: "bold", fontSize: 16 },
-  actionButton: { padding: 15,  marginVertical: 8,  borderRadius: 20,  
+  actionButton: { padding: 15,  marginVertical: 5,  borderRadius: 20,  
   bottom: 20,  alignItems: "center"  },
   actionText: { color: "white", fontWeight: "bold",  fontSize: 18},
   

@@ -1,9 +1,9 @@
 // lib/firebase.ts
+
 import { getApp, getApps, initializeApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
+import { Auth, getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
-// ⚠️ Use your real env values
 const firebaseConfig = {
   apiKey: process.env.EXPO_PUBLIC_FIREBASE_API_KEY!,
   authDomain: process.env.EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN!,
@@ -13,11 +13,12 @@ const firebaseConfig = {
   appId: process.env.EXPO_PUBLIC_FIREBASE_APP_ID!,
 };
 
-// ✅ Prevent re-initialization on fast refresh
 const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 
-// 🔐 Firebase services
-export const auth = getAuth(app);
+const auth: Auth = getAuth(app);
+
+export { auth };
+
 export const db = getFirestore(app);
 
 export default app;

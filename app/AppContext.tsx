@@ -402,7 +402,7 @@ const balancesState = useMemo(
 );
 
 
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [appReady, setAppReady] = useState(false);
 const [unreadCount, setUnreadCount] = useState(0);
 
@@ -726,6 +726,8 @@ useEffect(() => {
 }, [tournaments]);
 
 useEffect(() => {
+  if (!authUser) return;
+
   const ref = doc(db, "settings", "app");
 
   const unsub = onSnapshot(ref, (snap) => {
@@ -1033,22 +1035,28 @@ useEffect(() => {
   let readCount = 0;
 
   const unsubAlerts = onSnapshot(
-    collection(db, "alerts"),
-    (snap) => {
-      totalAlerts = snap.size;
-      setUnreadCount(Math.max(totalAlerts - readCount, 0));
-    }
-  );
+ collection(db,"alerts"),
+ (snap)=> {
+    console.log("ALERTS OK:", snap.size);
+ },
+ (error)=>{
+    console.log("ALERTS ERROR:", error.message);
+ }
+);
 
   const q = query(
     collection(db, "userAlertReads"),
     where("userId", "==", authUser.uid)
   );
 
-  const unsubReads = onSnapshot(q, (snap) => {
-    readCount = snap.size;
-    setUnreadCount(Math.max(totalAlerts - readCount, 0));
-  });
+ const unsubReads = onSnapshot(q,
+(snap)=>{
+ console.log("USER ALERT READS OK:", snap.size);
+},
+(error)=>{
+ console.log("USER ALERT READS ERROR:", error.message);
+}
+);
 
   return () => {
     unsubAlerts();

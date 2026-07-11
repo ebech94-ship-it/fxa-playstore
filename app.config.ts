@@ -40,33 +40,40 @@ export default {
       favicon: "./assets/images/favicon.png",
     },
 
-    plugins: [
-      [
-        "expo-splash-screen",
-        {
-          image: "./assets/images/myicon.png",
-          imageWidth: 200,
-          resizeMode: "contain",
-          backgroundColor: "#ffffff",
-          dark: { backgroundColor: "#000000" },
-        },
-      ],
-      "expo-font",
-      "expo-secure-store",
-      "expo-web-browser",
-      "expo-localization",
-      "expo-router",
-      [
-        "expo-build-properties",
-        {
-          ios: { useFrameworks: "static" },
-          android: {
-            enableProguardInReleaseBuilds: true, // enable Proguard
-            extraProguardRules: "-keep class com.ebeh.forextournamentsarena.** { *; }"
-          }
-        },
-      ],
-    ],
+   plugins: [
+  [
+    "expo-splash-screen",
+    {
+      image: "./assets/images/myicon.png",
+      imageWidth: 200,
+      resizeMode: "contain",
+      backgroundColor: "#ffffff",
+      dark: { backgroundColor: "#000000" },
+    },
+  ],
+ "expo-status-bar",
+  "expo-font",
+  "expo-secure-store",
+  "expo-web-browser",
+  "expo-localization",
+  "expo-router",
+
+  "@react-native-community/datetimepicker",
+  "expo-image",
+  "expo-sharing",
+
+  [
+    "expo-build-properties",
+    {
+      ios: { useFrameworks: "static" },
+      android: {
+        enableProguardInReleaseBuilds: true,
+        extraProguardRules:
+          "-keep class com.ebeh.forextournamentsarena.** { *; }",
+      },
+    },
+  ],
+],
 
     experiments: {
       typedRoutes: true,

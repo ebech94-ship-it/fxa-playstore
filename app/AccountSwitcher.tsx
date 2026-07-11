@@ -294,7 +294,7 @@ const t = tournamentAccounts.find(
           isActive && styles.activeCard,
         ]}
       >
-       <Text numberOfLines={1} style={{ fontSize: 12 }}>
+       <Text numberOfLines={1} style={{ fontSize: 11 }}>
           <Text numberOfLines={1}
             style={[
               { fontWeight: "600" },
@@ -356,10 +356,9 @@ const t = tournamentAccounts.find(
 }
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
-const SWITCHER_WIDTH = Math.min(
-  SCREEN_WIDTH * 0.75,
-  280
-);
+// Right panel is 20% of the layout.
+// Keep the switcher inside that column.
+const SWITCHER_WIDTH = SCREEN_WIDTH * 0.20 - 16;
 
 /* ================= STYLES ================= */
 
@@ -375,7 +374,7 @@ container:{
    width: SWITCHER_WIDTH,
  flexDirection:"row",
     backgroundColor:"#1f2937",
-    borderRadius:18,
+    borderRadius:14,
     paddingHorizontal:12,
     paddingVertical:12,
     alignItems:"center",
@@ -387,31 +386,47 @@ textShadowOffset: { width: 0, height: 0 },
 textShadowRadius: 8, },
 
   dropdown: {
- marginTop:8,
+ marginTop:1,
  width: SWITCHER_WIDTH * 0.85,
  maxWidth:"100%",
  maxHeight:350, backgroundColor: "#111827",
     borderRadius: 12,  padding: 10, },
-  card: { borderWidth: 1, borderColor: "#374151", borderRadius: 10, padding: 10,
-    marginBottom: 8, },
+
+  card: {
+  borderWidth: 1,
+  borderColor: "#374151",
+  borderRadius: 6,
+  paddingHorizontal: 6,
+  paddingVertical: 5,
+  marginBottom: 3,
+},
+
  activeCard: {
   borderColor: "#22d3ee",
   borderWidth: 2,
   backgroundColor: "#0f2a3d",
 },
-  cardTitle: { color: "#fff", fontSize: 14,fontWeight: "700", },
-  balance: { fontSize: 13, marginTop: 2, },
-  row: { flexDirection: "row", justifyContent: "space-between", gap: 8, marginTop: 6,
+  cardTitle: { color: "#fff", fontSize: 12,
+  fontWeight: "700", },
+  balance: { fontSize: 11, marginTop: 1, },
+  row: { flexDirection: "row",
+   justifyContent: "space-between", gap: 4, 
+   marginTop: 4,
   },
-  button: { paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, marginTop: 6,
+  button: { paddingHorizontal: 8, paddingVertical: 3,
+   borderRadius: 6, marginTop: 4,
   },
-  buttonText: { color: "#fff", fontSize: 12, fontWeight: "600",  },
-  sectionTitle: { color: "#9ca3af", fontSize: 12, marginVertical: 6,  },
+  buttonText: { color: "#fff", fontSize: 10,
+   fontWeight: "600",  },
+  sectionTitle: { color: "#9ca3af", fontSize: 10, 
+  marginVertical: 4,  },
   warning: { position: "absolute", top: 0, left: 0, right: 0, alignItems: "center",
     zIndex: 1000, },
   warningText: { backgroundColor: "rgba(255,0,0,0.85)", color: "#fff", padding: 8,
     borderRadius: 6, fontWeight: "bold",  },
-  tradingLockedBadge: { marginTop: 4, fontSize: 11, fontWeight: "600", color: "#fbbf24", // amber, stands out but subtle
-  backgroundColor: "rgba(255,255,255,0.1)", paddingHorizontal: 6, paddingVertical: 2,
-  borderRadius: 6, alignSelf: "flex-start",},
+  tradingLockedBadge: { marginTop: 2, fontSize: 9,
+   fontWeight: "600", color: "#fbbf24", // amber, stands out but subtle
+  backgroundColor: "rgba(255,255,255,0.1)",
+   paddingHorizontal: 4, paddingVertical: 1,
+  borderRadius: 4, alignSelf: "flex-start",},
 });

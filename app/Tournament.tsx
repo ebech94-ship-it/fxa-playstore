@@ -22,7 +22,7 @@ import { db } from "../firebaseConfig";
 
 // enable LayoutAnimation on Android
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
+ 
 }
 
 
@@ -629,21 +629,23 @@ const allowRebuy =
 }
 
 </Text>
-<Text
-style={{
- color:"#94a3b8",
- fontSize:11,
- marginTop:2
-}}
+<View
+  style={[
+    styles.prizeTypeBadge,
+    item.prizeModel === "dynamic"
+      ? styles.dynamicBadge
+      : styles.guaranteedBadge,
+  ]}
 >
-
-{
- item.prizeModel === "dynamic"
- ? "🔥 Growing from registrations & rebuys"
- : "🎁 Guaranteed prize pool"
-}
-
-</Text>
+  <Text
+    numberOfLines={1}
+    style={styles.prizeTypeText}
+  >
+    {item.prizeModel === "dynamic"
+      ? "🔥 Growing Prize Pool"
+      : "🎁 Guaranteed Prize Pool"}
+  </Text>
+</View>
 
     <View style={styles.dividerLine} />
 
@@ -1214,12 +1216,12 @@ flexShrink: 1,
 
       <ScrollView
   style={{ flex: 1, minHeight: 0, }}
-  contentContainerStyle={{
-    flexGrow: 0,
-    paddingVertical: 16,
-    paddingHorizontal: 2,
-    paddingBottom: 40,
-  }}
+ contentContainerStyle={{
+  flexGrow: 1,
+  paddingVertical: 12,
+  paddingHorizontal: 4,
+  paddingBottom: 60,
+}}
   nestedScrollEnabled
   showsVerticalScrollIndicator={false}
   bounces={false}
@@ -1363,12 +1365,11 @@ flexShrink: 1,
       paddingBottom: 20,
     }}
   >
-    <View
-      style={{
-        minWidth: 620,
-        width: "100%",
-      }}
-    >
+  <View
+style={{
+  minWidth: Platform.OS === "android" ? 520 : 620,
+}}
+>
       <LeaderboardTable
         list={sortedLeaderboard}
       />
@@ -1394,7 +1395,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#07081a", padding: 12 },
   pageTitle: { fontSize: 22, fontWeight: "800", color: "#ff7ab6", textAlign: "center", marginVertical: 10 },
   // card
-  card: { backgroundColor: "#12122a",  padding: 14,  marginVertical: 8,  borderRadius: 14,  shadowColor: "#000",
+  card: { backgroundColor: "#12122a",  padding: 10,  marginVertical: 8,  borderRadius: 14,  shadowColor: "#000",
   shadowOpacity: 0.6,  shadowRadius: 10,  elevation: 6,  borderWidth: 1,  borderColor: "rgba(255,255,255,0.03)",},
   cardGlow: {  shadowColor: "#32d3ff",  shadowOpacity: 0.9,  shadowRadius: 16,},
   cardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
@@ -1418,7 +1419,7 @@ modalContent: {
   width: "96%",
   maxWidth: 900,
 
-  height: "88%",
+  height: Platform.OS === "android" ? "82%" : "85%",
   maxHeight: 700,
 
   backgroundColor: "#0e1128",
@@ -1429,7 +1430,6 @@ modalContent: {
   paddingBottom: 8,
 
   overflow: "hidden",
-
   alignSelf: "center",
 },
  closeButton:{
@@ -1451,7 +1451,7 @@ modalContent: {
 },
   modalTitle:{
   color:"#fff",
-  fontSize:22,
+  fontSize:17,
   fontWeight:"900",
 
   paddingRight:45,
@@ -1473,7 +1473,7 @@ modalContent: {
 
   padding:4,
 },
-  tabBtn: { flex: 1,   paddingVertical:12, borderRadius: 10, alignItems: "center", marginRight: 6, backgroundColor: "#121227" },
+  tabBtn: { flex: 1,   paddingVertical: 8, borderRadius: 10, alignItems: "center", marginRight: 6, backgroundColor: "#121227" },
   tabActive: { backgroundColor: "#1f2937" },
   rankRow:{
     flexDirection:"row",
@@ -1513,7 +1513,27 @@ rankPrize:{
   borderWidth: 1,
   borderColor: "#2b2b3a",
 },
+prizeTypeBadge:{
+  alignSelf:"flex-start",
+  marginTop:3,
+  paddingHorizontal:7,
+  paddingVertical:2,
+  borderRadius:20,
+},
 
+prizeTypeText:{
+  color:"#cbd5e1",
+  fontSize:10,
+  fontWeight:"700",
+},
+
+dynamicBadge:{
+  backgroundColor:"rgba(34,197,94,0.15)",
+},
+
+guaranteedBadge:{
+  backgroundColor:"rgba(250,204,21,0.15)",
+},
   buttonRow: { flexDirection: "row", marginTop: 12, gap: 8 },
   registerBtn: { flex: 1, backgroundColor: "#0b74ff", padding: 12, borderRadius: 10, alignItems: "center", marginRight: 6 },
   rebuyBtn: { flex: 1, backgroundColor: "#059669", padding: 12, borderRadius: 10, alignItems: "center", marginLeft: 6 },
@@ -1557,8 +1577,8 @@ confirmBtn: {  flex: 1,  backgroundColor: "#22c55e",  padding: 12,  borderRadius
   },
   // small utilities
   pinnedText: { color: "#fff", fontWeight: "900" },
-  cardBigTitle: { fontSize: 20, fontWeight: "900", color: "rgba(236, 220, 220, 1)", marginBottom: 6,},
-metaText: {color: "#aaa", fontSize: 13, marginTop: 4,},
+  cardBigTitle: { fontSize: 18, fontWeight: "900", color: "rgba(236, 220, 220, 1)", marginBottom: 4,},
+metaText: {color: "#aaa", fontSize: 11, marginTop: 4,},
 
 cardPrizeRow: { marginTop: 8, marginBottom: 6,},
 
@@ -1568,14 +1588,14 @@ cardFeeText: { color: "#60a5fa", fontWeight: "bold", fontSize: 15,},
 
 
 startingBalanceText: { color: "#22c55e", fontWeight: "700", fontSize: 14, marginTop: 4 },
-tableColName: {  width: 160,   color: "#fff",},
-tableColSmall: {width: 40,    color: "#fff", fontWeight: "700" },
-tableColBalance: {  width: 130,   color: "#38bdf8",  fontWeight: "700",},
-tableColPerformance: {  width: 140,   color: "#22c55e", fontWeight: "700", },
+tableColName: {  width: 100,  flexShrink:1,  color: "#fff",},
+tableColSmall: {width: 40,    flexShrink:1, color: "#fff", fontWeight: "700" },
+tableColBalance: {  width: 85,  flexShrink:1,   color: "#38bdf8",  fontWeight: "700",},
+tableColPerformance: {  width: 90,  flexShrink:1,   color: "#22c55e", fontWeight: "700", },
 
-tableColTier: {  width: 170,   color: "#facc15",  fontWeight: "700",},
+tableColTier: {  width: 120,  flexShrink:1,  color: "#facc15",  fontWeight: "700",},
 
-tableColPrize: {  width: 140,   color: "#22c55e",  fontWeight: "800",},
+tableColPrize: {  width: 85,   flexShrink:1, color: "#22c55e",  fontWeight: "800",},
 
 rankHeaderRow: {
   flexDirection: 'row',
@@ -1610,7 +1630,7 @@ cardDate: {
 leftPrizePoolText: {
   color: "#fde047",
   fontWeight: "900",
-  fontSize: 15,
+  fontSize: 12,
 
   textShadowColor: "#facc15",
   textShadowOffset: { width: 0, height: 0 },
@@ -1628,14 +1648,14 @@ moneyRow: {
 leftMoneyText: {
   color: "#60a5fa",
   fontWeight: "800",
-  fontSize: 14,
+  fontSize: 11,
   flex: 1,
 },
 
 rightMoneyText: {
   color: "#fbbf24",
   fontWeight: "900",
-  fontSize: 13,
+  fontSize: 12,
   textAlign: "right",
   flex: 1,
 },
