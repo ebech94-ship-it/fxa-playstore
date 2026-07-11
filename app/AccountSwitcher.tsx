@@ -358,8 +358,8 @@ const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
 // Right panel is 20% of the layout.
 // Keep the switcher inside that column.
-const SWITCHER_WIDTH = SCREEN_WIDTH * 0.20 - 16;
-
+const SWITCHER_WIDTH = SCREEN_WIDTH * 0.10 - 16;
+const DROPDOWN_WIDTH = SCREEN_WIDTH * 0.17 - 16;
 /* ================= STYLES ================= */
 
 const styles = StyleSheet.create({
@@ -387,7 +387,7 @@ textShadowRadius: 8, },
 
   dropdown: {
  marginTop:1,
- width: SWITCHER_WIDTH * 0.85,
+  width: DROPDOWN_WIDTH,
  maxWidth:"100%",
  maxHeight:350, backgroundColor: "#111827",
     borderRadius: 12,  padding: 10, },

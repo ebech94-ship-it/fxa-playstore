@@ -83,7 +83,7 @@ const [showSetPassword, setShowSetPassword] = useState(false);
 const [linkPassword, setLinkPassword] = useState("");
 const [linkConfirmPassword, setLinkConfirmPassword] = useState("");
 const [pendingGoogleUser, setPendingGoogleUser] = useState<any>(null);
-
+const [pendingAuthUser, setPendingAuthUser] = useState<any>(null);
 
 const { setActiveAccount, setProfile } = useApp();
 
@@ -93,10 +93,9 @@ const { setActiveAccount, setProfile } = useApp();
 
 // Web: use proxy
 // Mobile: use scheme
-const redirectUri =
-  Platform.OS === "web"
-    ? makeRedirectUri({ useProxy: true } as any) // cast to any to silence TS
-    : makeRedirectUri({ scheme: "com.ebeh.forextournamentsarena" });
+const redirectUri = makeRedirectUri({
+  scheme: "com.ebeh.forextournamentsarena",
+});
 
 console.log("REDIRECT URI:", redirectUri);
 
@@ -106,7 +105,7 @@ const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
     ios: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
     web: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
   }),
-  redirectUri,  // <-- important for web to redirect back
+  // <-- important for web to redirect back
 });
 
 
@@ -238,7 +237,7 @@ const sendOTP = async () => {
     const result = await signInWithPhoneNumber(
       auth,
       `+${callingCode}${cleanedPhone}`,
-      appVerifier as any // undefined on Android → native verification
+      appVerifier // undefined on Android → native verification
     );
 
     setConfirmationResult(result);
@@ -382,10 +381,20 @@ const run = async () => {
       accessToken ?? undefined
     );
 
-   const { user } = await signInWithCredential(auth, credential);
+  const { user } = await signInWithCredential(auth, credential);
+
+const hasPassword = user.providerData.some(
+  (p) => p.providerId === "password"
+);
+
+if (!hasPassword) {
+  setPendingGoogleUser(user);
+  setShowSetPassword(true);
+  setLoading(false);
+  return;
+}
 
 const uid = user.uid;
-
 const ref = inviteRef;// ✅ FIX HERE
 
     if (ref) {
@@ -502,10 +511,19 @@ const handleLogin = async () => {
       resolvedEmail = identifier;
     } else {
       // 2️⃣ OTHERWISE → LOOK UP USER IN FIRESTORE
-      const q = query(
-        collection(db, "users"),
-        where("publicId", "==", identifier)
-      );
+     let q;
+
+if(identifier.startsWith("+") || /^[0-9]+$/.test(identifier)){
+ q = query(
+  collection(db,"users"),
+  where("phone","==",identifier)
+ );
+}else{
+ q = query(
+  collection(db,"users"),
+  where("publicId","==",identifier)
+ );
+}
 
       const snap = await getDocs(q);
 
@@ -543,6 +561,55 @@ if (!resolvedEmail) {
     setLoading(false);
   }
 };
+const handleCreatePhonePassword = async () => {
+  if (!isValidPassword(linkPassword)) {
+    return alert("Password must be at least 6 characters");
+  }
+
+  if (linkPassword !== linkConfirmPassword) {
+    return alert("Passwords do not match");
+  }
+
+  try {
+    setLoading(true);
+
+    const user = auth.currentUser;
+
+    if (!user) {
+      return alert("No user found");
+    }
+
+    const fakeEmail = `${callingCode}${phone}@fxarena.phone`;
+
+    const credential = EmailAuthProvider.credential(
+      fakeEmail,
+      linkPassword.trim()
+    );
+
+    await linkWithCredential(user, credential);
+
+    await setDoc(
+      doc(db, "users", user.uid),
+      {
+        passwordCreated: true,
+      },
+      { merge: true }
+    );
+
+    alert("Password created successfully 🎉");
+
+    setShowSetPassword(false);
+
+    await AsyncStorage.setItem("isLoggedIn", "true");
+
+    router.replace("/tradinglayout");
+
+  } catch (e) {
+    alert((e as Error).message);
+  } finally {
+    setLoading(false);
+  }
+};
 const handleLinkPassword = async () => {
   if (!isValidPassword(linkPassword)) {
     return alert("Password must be at least 6 characters. Example: 123456");
@@ -559,10 +626,10 @@ const handleLinkPassword = async () => {
       return alert("No Google user to link password to.");
     }
 
-    const credential = EmailAuthProvider.credential(
-      pendingGoogleUser.email,
-      linkPassword.trim()
-    );
+ const credential = EmailAuthProvider.credential(
+  pendingGoogleUser.email,
+  linkPassword.trim()
+);
 
     await linkWithCredential(pendingGoogleUser, credential);
 
@@ -688,8 +755,15 @@ const handleLinkPassword = async () => {
         styles.button,
         { opacity: accepted ? 1 : 0.4 },
       ]}
-      onPress={() => accepted && openForm(setShowSignupPhone)}
-      disabled={!accepted}
+      onPress={() => {
+  if (!accepted) return;
+
+  setOtpFailed(false);
+  setConfirmationResult(null);
+  setOtp("");
+  setPhone("");
+  openForm(setShowSignupPhone);
+}}
     >
       <Text style={styles.buttonText}>📱 Sign Up with Phone</Text>
     </TouchableOpacity>
@@ -774,9 +848,14 @@ onPress={() => accepted && !loading && request && promptAsync()}
  placeholder="Confirm password"
 
 />
-     <TouchableOpacity
+    <TouchableOpacity
   style={[styles.button, { opacity: !loading ? 1 : 0.4 }]}
-  onPress={() => !loading && handleLinkPassword()}
+  onPress={() =>
+    !loading &&
+    (pendingGoogleUser
+      ? handleLinkPassword()
+      : handleCreatePhonePassword())
+  }
   disabled={loading}
 >
   <Text style={styles.buttonText}>
@@ -862,53 +941,83 @@ onPress={() => accepted && !loading && request && promptAsync()}
       onChangeText={setName}
     />
 
-    {/* Phone Row */}
-    <View style={{ flexDirection: "row", alignItems: "center", gap:8}}>
-      {/* COUNTRY CODE BUTTON */}
-      <TouchableOpacity
-        onPress={() => setShowPicker(true)}
-        style={{
-          paddingVertical: 14,
-          paddingHorizontal: 12,
-          borderRadius: 8,
-          borderWidth: 1,
-          borderColor: "#5A4BE7",
-          marginRight: 8,
-          minWidth: 80,
-          alignItems: "center",
-        }}
-      >
-       <Text style={{ color: "white", fontWeight: "bold" }}>
-  {COUNTRIES.find(c => c.code === countryCode)?.name} +{callingCode}
-        </Text>
-      </TouchableOpacity>
+   {/* Phone Row */}
+<View
+  style={{
+    flexDirection: "row",
+    width: "100%",
+    alignItems: "center",
+  }}
+>
+  {/* COUNTRY CODE SMALL BOX */}
+  <TouchableOpacity
+    onPress={() => setShowPicker(true)}
+    style={{
+      height: 52,
+      width: 95,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: "#5A4BE7",
+      backgroundColor: "#1e1e1e",
+      justifyContent: "center",
+      alignItems: "center",
+      marginRight: 8,
+    }}
+  >
+    <Text
+      style={{
+        color: "white",
+        fontSize: 13,
+        fontWeight: "bold",
+      }}
+    >
+      +{callingCode}
+    </Text>
+    <Text
+      style={{
+        color: "#aaa",
+        fontSize: 11,
+      }}
+    >
+      {countryCode}
+    </Text>
+  </TouchableOpacity>
 
-      {/* PHONE INPUT */}
-      <TextInput
-        style={[styles.input, { flex: 1 }]}
-        placeholder="Phone number"
-        placeholderTextColor="#ddd"
-        keyboardType="phone-pad"
-        value={phone}
-       onChangeText={(text) => {
-  const cleaned = text
-    .replace(/\s+/g, "")      // remove spaces
-    .replace(/[-()]/g, "")    // remove dashes & brackets
-    .replace(/^\+/, "");      // remove leading +
 
-  setPhone(cleaned.replace(/[^0-9]/g, ""));
-}}
-      />
-      {/* STEP 1 — SEND OTP BUTTON */}
+  {/* PHONE INPUT */}
+  <TextInput
+    style={[
+      styles.input,
+      {
+        flex: 1,
+        fontSize: 18,
+        height: 52,
+      },
+    ]}
+    placeholder="Phone number"
+    placeholderTextColor="#ddd"
+    keyboardType="phone-pad"
+    value={phone}
+    onChangeText={(text) => {
+      const cleaned = text
+        .replace(/\s+/g, "")
+        .replace(/[-()]/g, "")
+        .replace(/^\+/, "");
+
+      setPhone(cleaned.replace(/[^0-9]/g, ""));
+    }}
+  />
+</View>
+
+
+{/* SEND OTP */}
 <TouchableOpacity
   style={[
     styles.button,
     {
-      width: 100,   // 👈 FIX SIZE
-      paddingVertical: 10,
-      marginLeft: 6,
-      opacity: otpLoading ? 0.5 : 1
-    }
+      marginTop: 10,
+      opacity: otpLoading ? 0.5 : 1,
+    },
   ]}
   onPress={sendOTP}
   disabled={otpLoading}
@@ -918,11 +1027,7 @@ onPress={() => accepted && !loading && request && promptAsync()}
   </Text>
 </TouchableOpacity>
 
-    </View>
-
-   
-   {/* STEP 2 — OTP VERIFY */}
- {/* STEP 2 — VERIFY OTP */}
+  
 {/* STEP 2 — OTP SECTION */}
 {(confirmationResult || otpFailed) && (
   <>
@@ -952,19 +1057,38 @@ onPress={() => accepted && !loading && request && promptAsync()}
     {otpFailed && (
       <TouchableOpacity
         style={[styles.button, { backgroundColor: "#0f4698ff", marginTop: 10 }]}
-        onPress={async () => {
-          const tempUid = `${phone}_${Date.now()}`;
+        
+      onPress={async () => {
 
-          await setDoc(doc(db, "users", tempUid), {
-            phone: `+${callingCode}${phone}`,
-            name,
-            verified: false,
-            createdAt: serverTimestamp(),
-          });
+ const uid = auth.currentUser?.uid;
 
-          await AsyncStorage.setItem("isLoggedIn", "true");
-          router.replace("/tradinglayout");
-        }}
+ if (!uid) {
+   alert("Please try again");
+   return;
+ }
+
+ await setDoc(
+   doc(db,"users",uid),
+   {
+     phone:`+${callingCode}${phone}`,
+     displayName:name,
+     verified:false,
+     createdAt:serverTimestamp(),
+   },
+   {merge:true}
+ );
+
+ setPendingAuthUser(auth.currentUser);
+
+ // ✅ RESET OTP UI
+ setOtpFailed(false);
+ setConfirmationResult(null);
+ setOtp("");
+ setPhone("");
+ 
+ setShowSetPassword(true);
+
+}}
       >
         <Text style={styles.buttonText}>Continue without OTP</Text>
       </TouchableOpacity>
@@ -1049,7 +1173,7 @@ onPress={() => accepted && !loading && request && promptAsync()}
 
                   <TextInput
                     style={styles.input}
-                   placeholder="Email / Username / Phone"
+                 placeholder="Email, Public ID, or Phone number"
                     placeholderTextColor="#aaa"
                     value={email}
                     onChangeText={setEmail}

@@ -779,7 +779,7 @@ demoBalance={demoBalance}
       {/* NO MORE switcher here */}
 
       {/* Trade Size */}
-      <View style={[styles.inputRow, { marginTop: 50 }]}>
+      <View style={[styles.inputRow, styles.tradeSizeRow]}>
   <Text style={styles.label}>Trade Size</Text>
 
   <TouchableOpacity
@@ -799,7 +799,7 @@ demoBalance={demoBalance}
       </View>
 
       {/* Expiration */}
-      <View style={[styles.inputRow, { marginBottom: 80 }]}>
+      <View style={[styles.inputRow,  styles.expirationRow]}>
         <Text style={styles.label}>Expiration</Text>
        <TouchableOpacity
   style={styles.expiryButton}
@@ -873,7 +873,7 @@ demoBalance={demoBalance}
   style={{ position:"absolute", top:6, right:8 }}
   onPress={() => setShowAmountPad(false)}
 >
-  <Text style={{ color:"red", fontSize:18 }}>✕</Text>
+  <Text style={{ color:"red", fontSize:16 }}>✕</Text>
 </TouchableOpacity>
       {[
         ["7","8","9"],
@@ -984,24 +984,35 @@ const styles = StyleSheet.create({
 
   rightPanel: { overflow: "visible",
   position: "relative", zIndex: 10, width: "20%",
-   backgroundColor: "#2c2c2c", padding: 10, top:15,
-   justifyContent: "space-around", },
+   backgroundColor: "#2c2c2c", padding: 10, top:8,
+   justifyContent: "flex-start", },
 
  panelSection: { marginVertical: 1 },
   label: { color: "#ccc", marginBottom: 2, fontSize: 14, bottom: 2 },
   input: {  backgroundColor: "rgba(255,255,255,0.1)",  borderColor: "#666",  borderWidth: 1,  borderRadius: 6, 
    padding: 5, color: "#fff", fontSize: 14, },
-  inputRow: { marginVertical: 6 },
+  inputRow: { marginVertical: 6,  width: "100%", },
+
+
+tradeSizeRow: {
+  marginTop: 90,
+},
+
+expirationRow: {
+  marginTop: 90,
+},
+
   expiryButton: { paddingVertical: 6, paddingHorizontal: 12, backgroundColor: "rgba(255,255,255,0.1)", borderRadius: 3,
    marginRight: 6,  },
   expButtonActive: { backgroundColor: "blue" },
   expButtonText: { color: "#fff", fontSize: 14 },
-  profitBox: { backgroundColor: "rgba(255,255,0,0.1)",  borderColor: "gold", borderWidth: 1, borderRadius: 8,
- padding: 8,  marginBottom: 5, alignItems: "center",  bottom: 50, },
+  profitBox: { backgroundColor: "rgba(255,255,0,0.1)",  
+  borderColor: "gold", borderWidth: 1, borderRadius: 8,
+ padding: 8,  marginBottom: 5, alignItems: "center",  top: 60, },
   profitText: { color: "darkgoldenrod", fontWeight: "bold", fontSize: 16 },
-  actionButton: { padding: 15,  marginVertical: 5,  borderRadius: 20,  
-  bottom: 20,  alignItems: "center"  },
-  actionText: { color: "white", fontWeight: "bold",  fontSize: 18},
+  actionButton: { padding: 18,  borderRadius: 22, paddingVertical: 20,
+  marginBottom: 10,  alignItems: "center", top:110 },
+  actionText: { color: "white", fontWeight: "bold",  fontSize: 16},
   
   overlay: { position: "absolute", top: 85, left: "10%", width: "75%", height: "80%", backgroundColor: "#333",
  borderRadius: 4,  zIndex: 100,  padding: 5, },
@@ -1021,16 +1032,16 @@ profitGlowRed: { shadowColor: "#ff2222",  shadowOffset: { width: 0, height: 0 },
 badgeText: {  color: "#fff", fontSize: 10, fontWeight: "bold",},
 padOverlay:{  flex:1,  backgroundColor:"rgba(0,0,0,0.5)",  justifyContent:"center",
   alignItems:"center"},
-padContainer:{ width:220, backgroundColor:"#1c1c1c", borderRadius:12,
-  padding:10},
+padContainer:{ width:210, backgroundColor:"#1c1c1c", borderRadius:11,
+  padding:8},
 
 padRow:{  flexDirection:"row", justifyContent:"space-between",
   marginVertical:4},
 
-padKey:{  width:60,  height:45, backgroundColor:"#333", borderRadius:8,
+padKey:{  width:55,  height:40, backgroundColor:"#333", borderRadius:8,
   justifyContent:"center", alignItems:"center"},
 
-padKeyText:{  color:"#fff", fontSize:18,  fontWeight:"bold"
+padKeyText:{  color:"#fff", fontSize:16,  fontWeight:"bold"
 },
 expiryContainer: {  width: 240,  backgroundColor: "#111",
   borderRadius: 10,  padding: 10,},
