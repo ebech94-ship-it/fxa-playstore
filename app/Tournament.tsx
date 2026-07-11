@@ -1220,7 +1220,7 @@ flexShrink: 1,
   flexGrow: 1,
   paddingVertical: 12,
   paddingHorizontal: 4,
-  paddingBottom: 60,
+  paddingBottom: 20,
 }}
   nestedScrollEnabled
   showsVerticalScrollIndicator={false}
@@ -1367,7 +1367,7 @@ flexShrink: 1,
   >
   <View
 style={{
-  minWidth: Platform.OS === "android" ? 520 : 620,
+  minWidth: 650,
 }}
 >
       <LeaderboardTable
@@ -1416,21 +1416,13 @@ disabledBtn: { opacity: 0.45 },
 // modal
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "center", alignItems: "center" },
 modalContent: {
-  width: "96%",
-  maxWidth: 900,
-
-  height: Platform.OS === "android" ? "82%" : "85%",
-  maxHeight: 700,
-
-  backgroundColor: "#0e1128",
-  borderRadius: 22,
-
-  paddingHorizontal: 14,
-  paddingTop: 12,
-  paddingBottom: 8,
-
+  width: "92%",
+  maxWidth: 520,
+  maxHeight: "82%",
+  backgroundColor: "#12122a",
+  borderRadius: 18,
+  padding: 18,
   overflow: "hidden",
-  alignSelf: "center",
 },
  closeButton:{
   position:"absolute",

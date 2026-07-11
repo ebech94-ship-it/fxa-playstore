@@ -775,11 +775,11 @@ demoBalance={demoBalance}
     </View>
 
     {/* Right Panel (unchanged EXCEPT switcher removed) */}
-    <View style={styles.rightPanel}>
+    <View style={[styles.rightPanel, styles.controlPanelSpacing]}>
       {/* NO MORE switcher here */}
 
       {/* Trade Size */}
-      <View style={[styles.inputRow, styles.tradeSizeRow]}>
+      <View style={[styles.inputRow]}>
   <Text style={styles.label}>Trade Size</Text>
 
   <TouchableOpacity
@@ -799,7 +799,7 @@ demoBalance={demoBalance}
       </View>
 
       {/* Expiration */}
-      <View style={[styles.inputRow,  styles.expirationRow]}>
+      <View style={[styles.inputRow]}>
         <Text style={styles.label}>Expiration</Text>
        <TouchableOpacity
   style={styles.expiryButton}
@@ -976,46 +976,33 @@ demoBalance={demoBalance}
 
 // Styles
 const styles = StyleSheet.create({
-  leftMenu: { width: "10%", backgroundColor: "#2c2c2c", top:3, bottom: 10, paddingTop: 10, },
+   leftMenu: { width: "10%", backgroundColor: "#2c2c2c", top:3, bottom: 10, paddingTop: 10, },
   menuItem: { marginVertical: 20, alignItems: "center" },
   menuText: { color: "white", fontSize: 12, marginTop: 4 },
 
   chartContainer: { width: "70%", height: "100%",  justifyContent: "flex-start", paddingBottom: 50, },
 
   rightPanel: { overflow: "visible",
-  position: "relative", zIndex: 10, width: "20%",
-   backgroundColor: "#2c2c2c", padding: 10, top:8,
-   justifyContent: "flex-start", },
-
- panelSection: { marginVertical: 1 },
-  label: { color: "#ccc", marginBottom: 2, fontSize: 14, bottom: 2 },
-  input: {  backgroundColor: "rgba(255,255,255,0.1)",  borderColor: "#666",  borderWidth: 1,  borderRadius: 6, 
+  position: "relative", zIndex: 10, width: "20%", backgroundColor: "#2c2c2c", padding: 10, top:30,
+   justifyContent: "space-around", },
+ panelSection: { marginVertical: 1 }, label: { color: "#ccc", marginBottom: 2, fontSize: 14, bottom: 2 },
+  input: {  backgroundColor: "rgba(255,255,255,0.1)", borderColor: "#666",  borderWidth: 1,  borderRadius: 6, 
    padding: 5, color: "#fff", fontSize: 14, },
-  inputRow: { marginVertical: 6,  width: "100%", },
-
-
-tradeSizeRow: {
-  marginTop: 90,
-},
-
-expirationRow: {
-  marginTop: 90,
-},
-
+  inputRow: { marginVertical: 6 },
   expiryButton: { paddingVertical: 6, paddingHorizontal: 12, backgroundColor: "rgba(255,255,255,0.1)", borderRadius: 3,
-   marginRight: 6,  },
+   marginRight: 6, },
   expButtonActive: { backgroundColor: "blue" },
   expButtonText: { color: "#fff", fontSize: 14 },
-  profitBox: { backgroundColor: "rgba(255,255,0,0.1)",  
-  borderColor: "gold", borderWidth: 1, borderRadius: 8,
- padding: 8,  marginBottom: 5, alignItems: "center",  top: 60, },
+  profitBox: { backgroundColor: "rgba(255,255,0,0.1)",  borderColor: "gold", borderWidth: 1, borderRadius: 8,
+ padding: 8,  marginBottom: 0, alignItems: "center",  bottom: 9, },
   profitText: { color: "darkgoldenrod", fontWeight: "bold", fontSize: 16 },
-  actionButton: { padding: 18,  borderRadius: 22, paddingVertical: 20,
-  marginBottom: 10,  alignItems: "center", top:110 },
-  actionText: { color: "white", fontWeight: "bold",  fontSize: 16},
+
+  actionButton: { padding: 12,  marginVertical: 4,  borderRadius: 12, 
+   bottom: 20,  alignItems: "center", },
+  actionText: { color: "white", fontWeight: "bold",fontSize: 14 },
   
-  overlay: { position: "absolute", top: 85, left: "10%", width: "75%", height: "80%", backgroundColor: "#333",
- borderRadius: 4,  zIndex: 100,  padding: 5, },
+  overlay: { position: "absolute", top: 80, left: "10%", width: "80%", height: "80%", backgroundColor: "#333",
+ borderRadius: 4,  zIndex: 100,  padding: 6, },
   closeButton: { position: "absolute", top: 10, right: 10, zIndex: 10 },
   pageContent: { flex: 1, marginTop: 0 },
   profitGlowBlue: { shadowColor: "#00aaff", shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.9, shadowRadius: 20,
@@ -1025,7 +1012,11 @@ profitGlowRed: { shadowColor: "#ff2222",  shadowOffset: { width: 0, height: 0 },
   // New switcher container: fixed height so AccountSwitcher doesn't jump.
   switcherContainer: { width: "100%", minHeight: 120,
     maxHeight: 160,  marginBottom: 12,
-    justifyContent: "center", flexDirection: "column", },
+    justifyContent: "center", flexDirection: "row", },
+
+controlPanelSpacing:{
+  paddingTop:90,
+},
 
   badge: {  position: "absolute",  top: -5, right: -5, backgroundColor: "red", borderRadius: 10,
   paddingHorizontal: 6, paddingVertical: 2, zIndex: 100,},

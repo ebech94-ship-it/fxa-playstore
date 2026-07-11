@@ -3,7 +3,9 @@ import type { UserProfile } from "../app/AppContext";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-
+import {
+  FirebaseRecaptchaVerifierModal
+} from "expo-firebase-recaptcha";
 import * as Linking from "expo-linking";
 import PasswordInput from "../components/PasswordInput";
 
@@ -94,18 +96,17 @@ const { setActiveAccount, setProfile } = useApp();
 // Web: use proxy
 // Mobile: use scheme
 const redirectUri = makeRedirectUri({
-  scheme: "com.ebeh.forextournamentsarena",
+  scheme: "forextournamentsarena",
 });
 
 console.log("REDIRECT URI:", redirectUri);
 
-const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
-  clientId: Platform.select({
-    android: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
-    ios: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-    web: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-  }),
-  // <-- important for web to redirect back
+const [request, response, promptAsync] =
+Google.useIdTokenAuthRequest({
+  androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
+  iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+  webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+  redirectUri,
 });
 
 
@@ -127,9 +128,7 @@ const [otpFailed, setOtpFailed] = useState(false);
 
 const googleHandledRef = useRef(false);
    // 🔑 WEB + MOBILE OTP
-  const recaptchaRef = useRef<RecaptchaVerifier | null>(null);
-
-
+const recaptchaRef = useRef<FirebaseRecaptchaVerifierModal>(null);
 const COUNTRIES = [
   // 🇨🇲 Central & West Africa
   { code: "CM", name: "Cameroon", callingCode: "237" },
@@ -221,24 +220,14 @@ const sendOTP = async () => {
     setOtpLoading(true);
 
     // ✅ Only create Recaptcha for web
-    let appVerifier: RecaptchaVerifier | undefined = undefined;
-    if (Platform.OS === "web") {
-      if (!recaptchaRef.current) {
-        recaptchaRef.current = new RecaptchaVerifier(
-          auth,
-          "recaptcha-container",
-          { size: "invisible" }
-        );
-      }
-      appVerifier = recaptchaRef.current;
-    }
+   
 
     // 🔑 signInWithPhoneNumber
-    const result = await signInWithPhoneNumber(
-      auth,
-      `+${callingCode}${cleanedPhone}`,
-      appVerifier // undefined on Android → native verification
-    );
+const result = await signInWithPhoneNumber(
+  auth,
+  `+${callingCode}${cleanedPhone}`,
+  recaptchaRef.current!
+);
 
     setConfirmationResult(result);
   
@@ -664,6 +653,11 @@ const handleLinkPassword = async () => {
       style={styles.bg}
       resizeMode="cover"
     >
+
+<FirebaseRecaptchaVerifierModal
+  ref={recaptchaRef}
+  firebaseConfig={auth.app.options}
+/>
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{ flexGrow: 1 }}
@@ -672,11 +666,7 @@ const handleLinkPassword = async () => {
       >
         <View style={styles.overlay}>
   
-{Platform.OS === "web" && (
-  <View>
-    <div id="recaptcha-container"></div>
-  </View>
-)}
+
           <Text style={styles.title}>Welcome to Forex Tournaments Arena</Text>
        {inviteRef && (
   <View style={{ marginBottom: 16 }}>

@@ -356,10 +356,7 @@ const t = tournamentAccounts.find(
 }
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
-// Right panel is 20% of the layout.
-// Keep the switcher inside that column.
-const SWITCHER_WIDTH = SCREEN_WIDTH * 0.10 - 16;
-const DROPDOWN_WIDTH = SCREEN_WIDTH * 0.17 - 16;
+
 /* ================= STYLES ================= */
 
 const styles = StyleSheet.create({
@@ -371,7 +368,8 @@ container:{
     alignItems:"flex-end",
 },
  iconRow:{
-   width: SWITCHER_WIDTH,
+  
+ maxWidth:250,
  flexDirection:"row",
     backgroundColor:"#1f2937",
     borderRadius:14,
@@ -381,15 +379,16 @@ container:{
     borderWidth:1,
     borderColor:"#334155",
 },
-  activeBalance: { marginLeft: 10, fontSize: 16, fontWeight: "800", letterSpacing: 0.5, textShadowColor: "rgba(255, 215, 0, 0.9)",
+  activeBalance: { marginLeft: 10, fontSize: 16, fontWeight: "800", 
+  letterSpacing: 0.5, textShadowColor: "rgba(255, 215, 0, 0.9)",
 textShadowOffset: { width: 0, height: 0 },
 textShadowRadius: 8, },
 
   dropdown: {
  marginTop:1,
-  width: DROPDOWN_WIDTH,
- maxWidth:"100%",
- maxHeight:350, backgroundColor: "#111827",
+ width:240,
+ maxHeight:350,
+ backgroundColor: "#111827",
     borderRadius: 12,  padding: 10, },
 
   card: {
