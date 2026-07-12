@@ -3,9 +3,6 @@ import type { UserProfile } from "../app/AppContext";
 
 import AsyncStorage from "@react-native-async-storage/async-storage";
 
-import {
-  FirebaseRecaptchaVerifierModal
-} from "expo-firebase-recaptcha";
 import * as Linking from "expo-linking";
 import PasswordInput from "../components/PasswordInput";
 
@@ -21,7 +18,7 @@ import {
   fetchSignInMethodsForEmail,
   GoogleAuthProvider,
   linkWithCredential,
-  RecaptchaVerifier,
+
 
   signInWithCredential,
   signInWithEmailAndPassword,
@@ -128,7 +125,8 @@ const [otpFailed, setOtpFailed] = useState(false);
 
 const googleHandledRef = useRef(false);
    // 🔑 WEB + MOBILE OTP
-const recaptchaRef = useRef<FirebaseRecaptchaVerifierModal>(null);
+const recaptchaRef = useRef<any>(null);
+
 const COUNTRIES = [
   // 🇨🇲 Central & West Africa
   { code: "CM", name: "Cameroon", callingCode: "237" },
@@ -226,7 +224,7 @@ const sendOTP = async () => {
 const result = await signInWithPhoneNumber(
   auth,
   `+${callingCode}${cleanedPhone}`,
-  recaptchaRef.current!
+  undefined
 );
 
     setConfirmationResult(result);
@@ -654,10 +652,7 @@ const handleLinkPassword = async () => {
       resizeMode="cover"
     >
 
-<FirebaseRecaptchaVerifierModal
-  ref={recaptchaRef}
-  firebaseConfig={auth.app.options}
-/>
+
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={{ flexGrow: 1 }}
