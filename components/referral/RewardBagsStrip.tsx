@@ -13,18 +13,21 @@ type Props = {
 
 export default function RewardBagsStrip({ validReferrals }: Props) {
   const rewards: RewardItem[] = [
-    { target: 3, points: 100, title: "Starter Bag" },
-    { target: 10, points: 400, title: "Bronze Bag" },
-    { target: 20, points: 900, title: "Silver Bag" },
-    { target: 50, points: 2000, title: "VIP Chest" },
-     { target: 100, points: 5000, title: "Diamond Vault" },
-
+  { target: 3, points: 100, title: "Starter Bag" },
+  { target: 5, points: 250, title: "Bonus Bag" },
+  { target: 10, points: 400, title: "Bronze Bag" },
+  { target: 15, points: 600, title: "Ticket Vault" },
+  { target: 20, points: 900, title: "Silver Vault" },
+  { target: 30, points: 1500, title: "Bonus Chest" },
+  { target: 50, points: 2000, title: "VIP Chest" },
+  { target: 75, points: 3500, title: "Premium Vault" },
+  { target: 100, points: 5000, title: "Diamond Vault" },
+  { target: 150, points: 10000, title: "Gold Vault" },
   { target: 250, points: 15000, title: "Elite Vault" },
-
   { target: 500, points: 50000, title: "GodSpeed Vault" },
-
+  { target: 750, points: 75000, title: "Leader Vault" },
   { target: 1000, points: 100000, title: "Tech Partner Vault" },
-  ];
+];
 
   return (
     <View style={styles.wrapper}>
