@@ -1,5 +1,5 @@
 import { LinearGradient } from "expo-linear-gradient";
-import { useRouter, useLocalSearchParams } from "expo-router";
+import { useLocalSearchParams, useRouter } from "expo-router";
 //import { getAuth } from "firebase/auth";
 
 import { WebView } from "react-native-webview";
@@ -791,7 +791,18 @@ You can navigate and explore the app safely without making any real transactions
       showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
     >
-           <Text style={styles.modalTitle}>
+         <Text style={{
+  fontSize: 22,
+  fontWeight: "900",
+  textAlign: "center",
+  marginBottom: 8,
+}}>
+  <Text style={{color:"#FFCC00"}}>God</Text>
+  <Text style={{color:"#9CA3AF"}}>Speed</Text>
+  <Text style={{color:"#FFCC00"}}> Tech ⚡</Text>
+</Text>
+
+<Text style={styles.modalTitle}>
   {activeMethod} {isDeposit ? "Deposit" : "Withdrawal"}
 </Text>
             <View style={{ flexDirection: "row", justifyContent: "flex-end", marginBottom: 10 }}>
