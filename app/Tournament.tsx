@@ -884,109 +884,7 @@ disabled={
   );
 };
   // table header for leaderboard
-  const LeaderboardTable = ({ list }: { list: LeaderboardUser[] }) => {
-  return (
-    <View>
-      {renderPinnedUserRow(list)}
-
-      <View style={styles.tableHeader}>
-        <Text style={[styles.tableColSmall, styles.headerText]}>#</Text>
-        <Text style={[styles.tableColName, styles.headerText]}>
-          Participant
-        </Text>
-        <Text style={[styles.tableColBalance, styles.headerText]}>
-          Balance
-        </Text>
-        <Text style={[styles.tableColPerformance, styles.headerText]}>
-  Performance
-</Text>
-        <Text style={[styles.tableColTier, styles.headerText]}>
-          Level
-        </Text>
-        <Text style={[styles.tableColPrize, styles.headerText]}>
-          Prize
-        </Text>
-      </View>
-
-      {list.map((row, i) => (
-        <View
-          key={row.id}
-          style={[
-            styles.tableRow,
-            row.id === currentUser?.uid &&
-              styles.currentRowHighlight,
-          ]}
-        >
-          <Text style={styles.tableColSmall}>
-            {i === 0
-              ? "🥇"
-              : i === 1
-              ? "🥈"
-              : i === 2
-              ? "🥉"
-              : i + 1}
-          </Text>
-
-          <View style={styles.tableColName}>
-            <NameWithFlag
-              username={row.username || "Player"}
-              countryCode={row.countryCode}
-            />
-          </View>
-
-          <Text style={styles.tableColBalance}>
-           {formatNum(row.balance)}T
-          </Text>
-<Text
-  style={[
-    styles.tableColPerformance,
-    {
-      color:
-        (
-          (row.balance ?? 0)
-          - (selectedTournament?.startingBalance ?? 0)
-          - (row.rebuyInjectedTotal ?? 0)
-        ) >= 0
-          ? "#22c55e"
-          : "#ef4444",
-    },
-  ]}
->
-  {(
-    (row.balance ?? 0)
-    - (selectedTournament?.startingBalance ?? 0)
-    - (row.rebuyInjectedTotal ?? 0)
-  ) >= 0 ? "+" : ""}
-
-  {formatNum(
-    (row.balance ?? 0)
-    - (selectedTournament?.startingBalance ?? 0)
-    - (row.rebuyInjectedTotal ?? 0)
-  )}T
-</Text>
-          <Text style={styles.tableColTier}>
-            {getTierForRank(i + 1)}
-          </Text>
-
-          <Text style={styles.tableColPrize}>
-            {selectedTournament
-              ? (() => {
-                  const prize = getPrizeForRank(
-                    i + 1,
-                    selectedTournament
-                  );
-                  return prize !== null
- ? `${formatNum(prize)} $`
- : "-";
-                })()
-              : "-"}
-          </Text>
-        </View>
-      ))}
-    </View>
-  );
-};
-
+  
   return (
     <View style={styles.container}>
     <Text style={styles.pageTitle}>🏆 Forex Tournaments</Text>
@@ -1244,7 +1142,7 @@ flexShrink: 1,
   contentContainerStyle={{
     paddingVertical: 12,
     paddingHorizontal: 4,
-    paddingBottom: 60,
+    paddingBottom: 30,
   }}
   showsVerticalScrollIndicator={false}
   bounces={true}
@@ -1324,7 +1222,9 @@ flexShrink: 1,
                   styles.rankHeaderCol,
                   { flex: 2 },
                 ]}
+                
               >
+              
                 Level
               </Text>
 
@@ -1387,36 +1287,123 @@ flexShrink: 1,
             )}
           </>
         )}
-
+<View style={{ height: 32 }} />
       </ScrollView>
 
     ) : (
 
-<ScrollView
+ <ScrollView
   horizontal
   showsHorizontalScrollIndicator={false}
   bounces={false}
-  overScrollMode="never"
 >
-  <ScrollView
+  <FlatList
+    data={sortedLeaderboard}
+    keyExtractor={(item) => item.id}
     nestedScrollEnabled
-    showsVerticalScrollIndicator={false}
-    bounces={false}
-    overScrollMode="never"
+    showsVerticalScrollIndicator
     contentContainerStyle={{
-      paddingBottom: 20,
+      paddingBottom: 40,
+      minWidth: 650,
     }}
-  >
-  <View
-style={{
-  minWidth: 650,
-}}
->
-      <LeaderboardTable
-        list={sortedLeaderboard}
-      />
-    </View>
-  </ScrollView>
+    ListHeaderComponent={
+      <>
+        {renderPinnedUserRow(sortedLeaderboard)}
+
+        <View style={styles.tableHeader}>
+          <Text style={[styles.tableColSmall, styles.headerText]}>#</Text>
+          <Text style={[styles.tableColName, styles.headerText]}>
+            Participant
+          </Text>
+          <Text style={[styles.tableColBalance, styles.headerText]}>
+            Balance
+          </Text>
+          <Text style={[styles.tableColPerformance, styles.headerText]}>
+            Performance
+          </Text>
+          <Text style={[styles.tableColTier, styles.headerText]}>
+            Level
+          </Text>
+          <Text style={[styles.tableColPrize, styles.headerText]}>
+            Prize
+          </Text>
+        </View>
+      </>
+    }
+    renderItem={({ item, index }) => {
+      const prize = selectedTournament
+        ? getPrizeForRank(index + 1, selectedTournament)
+        : null;
+
+      return (
+        <View
+          style={[
+            styles.tableRow,
+            item.id === currentUser?.uid &&
+              styles.currentRowHighlight,
+          ]}
+        >
+          <Text style={styles.tableColSmall}>
+            {index === 0
+              ? "🥇"
+              : index === 1
+              ? "🥈"
+              : index === 2
+              ? "🥉"
+              : index + 1}
+          </Text>
+
+          <View style={styles.tableColName}>
+            <NameWithFlag
+              username={item.username || "Player"}
+              countryCode={item.countryCode}
+            />
+          </View>
+
+          <Text style={styles.tableColBalance}>
+            {formatNum(item.balance)}T
+          </Text>
+
+          <Text
+            style={[
+              styles.tableColPerformance,
+              {
+                color:
+                  (
+                    (item.balance ?? 0) -
+                    (selectedTournament?.startingBalance ?? 0) -
+                    (item.rebuyInjectedTotal ?? 0)
+                  ) >= 0
+                    ? "#22c55e"
+                    : "#ef4444",
+              },
+            ]}
+          >
+            {(
+              (item.balance ?? 0) -
+              (selectedTournament?.startingBalance ?? 0) -
+              (item.rebuyInjectedTotal ?? 0)
+            ) >= 0
+              ? "+"
+              : ""}
+            {formatNum(
+              (item.balance ?? 0) -
+                (selectedTournament?.startingBalance ?? 0) -
+                (item.rebuyInjectedTotal ?? 0)
+            )}T
+          </Text>
+
+          <Text style={styles.tableColTier}>
+            {getTierForRank(index + 1)}
+          </Text>
+
+          <Text style={styles.tableColPrize}>
+            {prize !== null ? `${formatNum(prize)} $` : "-"}
+          </Text>
+        </View>
+      );
+    }}
+  />
 </ScrollView>
 
     )}
@@ -1469,7 +1456,7 @@ modalContent: {
   backgroundColor: "#12122a",
   borderRadius: 18,
   padding: 18,
-  overflow: "hidden",
+ 
 },
  closeButton:{
   position:"absolute",
