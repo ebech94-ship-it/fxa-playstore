@@ -1456,7 +1456,7 @@ modalContent: {
   backgroundColor: "#12122a",
   borderRadius: 18,
   padding: 18,
- 
+overflow: "visible",
 },
  closeButton:{
   position:"absolute",
