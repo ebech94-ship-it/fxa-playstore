@@ -1304,7 +1304,7 @@ flexShrink: 1,
     showsVerticalScrollIndicator
     contentContainerStyle={{
       paddingBottom: 40,
-      minWidth: 650,
+      minWidth: 750,
     }}
     ListHeaderComponent={
       <>
@@ -1614,14 +1614,14 @@ cardFeeText: { color: "#60a5fa", fontWeight: "bold", fontSize: 15,},
 
 
 startingBalanceText: { color: "#22c55e", fontWeight: "700", fontSize: 14, marginTop: 4 },
-tableColName: {  width: 100,  flexShrink:1,  color: "#fff",},
+tableColName: {  width: 120,  flexShrink:1,  color: "#fff",},
 tableColSmall: {width: 40,    flexShrink:1, color: "#fff", fontWeight: "700" },
-tableColBalance: {  width: 85,  flexShrink:1,   color: "#38bdf8",  fontWeight: "700",},
-tableColPerformance: {  width: 90,  flexShrink:1,   color: "#22c55e", fontWeight: "700", },
+tableColBalance: {  width: 95,  flexShrink:1,   color: "#38bdf8",  fontWeight: "700",},
+tableColPerformance: {  width: 125,  flexShrink:1,   color: "#22c55e", fontWeight: "700", },
 
-tableColTier: {  width: 120,  flexShrink:1,  color: "#facc15",  fontWeight: "700",},
+tableColTier: {  width: 145,  flexShrink:1,  color: "#facc15",  fontWeight: "700",},
 
-tableColPrize: {  width: 85,   flexShrink:1, color: "#22c55e",  fontWeight: "800",},
+tableColPrize: {  width: 95,   flexShrink:1, color: "#22c55e",  fontWeight: "800",},
 
 rankHeaderRow: {
   flexDirection: 'row',
