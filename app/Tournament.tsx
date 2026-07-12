@@ -1006,8 +1006,8 @@ disabled={
     paddingVertical: 5,
 
     borderRadius: 999,
-    marginTop: 5,
-    marginBottom: 8,
+    marginTop: 2,
+    marginBottom: 4,
 
     maxWidth: "90%",
   }}
@@ -1097,13 +1097,14 @@ flexShrink: 1,
       setSelectedTournament(null);
     }}
   >
-    <KeyboardAvoidingView
-      style={{
-        width: "100%",
-        justifyContent: "flex-end",
-        alignItems: "center",
-        paddingBottom: 20,
-      }}
+   <KeyboardAvoidingView
+  style={{
+    flex: 1,
+    width: "100%",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 15,
+  }}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
       <Pressable
@@ -1262,8 +1263,25 @@ flexShrink: 1,
             {selectedTournament.rules ||
               "1. Fair play only.\n\n2. No bots.\n\n3. Highest balance wins.\n\n4. Admin decisions are final."}
           </Text>
+          
         </View>
+<Text style={styles.sectionTitle}>
+  📈 How Winners Are Ranked
+</Text>
 
+<View style={styles.infoBox}>
+  <Text style={styles.infoText}>
+    • Every trader starts with the same tournament balance.
+
+    {"\n\n"}• Rankings are based on <Text style={{ fontWeight: "700", color: "#22c55e" }}>Trading Performance</Text>, not simply account balance.
+
+    {"\n\n"}• Trading Performance = Current Balance − Starting Balance − Rebuy Capital Received.
+
+    {"\n\n"}• Rebuys help you continue trading but do not improve your ranking.
+
+    {"\n\n"}• The trader with the highest Trading Performance finishes #1.
+  </Text>
+</View>
         <Text style={styles.sectionTitle}>
           🎁 Registration Benefits
         </Text>
@@ -1407,7 +1425,7 @@ style={{
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#07081a", padding: 12 },
-  pageTitle: { fontSize: 22, fontWeight: "800", color: "#ff7ab6", textAlign: "center", marginVertical: 10 },
+  pageTitle: { fontSize: 18, fontWeight: "800", color: "#ff7ab6", textAlign: "center", marginVertical: 10 },
   // card
   card: { backgroundColor: "#12122a",  padding: 10,  marginVertical: 8,  borderRadius: 14,  shadowColor: "#000",
   shadowOpacity: 0.6,  shadowRadius: 10,  elevation: 6,  borderWidth: 1,  borderColor: "rgba(255,255,255,0.03)",},
@@ -1429,7 +1447,7 @@ cardFooter: { flexDirection: "row", justifyContent: "space-between", marginTop: 
 disabledBtn: { opacity: 0.45 },
 // modal
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.7)", 
-  justifyContent: "flex-end", alignItems: "center" },
+  justifyContent: "center", alignItems: "center" },
 modalContent: {
   width: "92%",
   maxWidth: 520,
@@ -1438,7 +1456,7 @@ modalContent: {
   borderRadius: 18,
   padding: 18,
   overflow: "hidden",
-  marginBottom: 20,
+ 
 },
  closeButton:{
   position:"absolute",

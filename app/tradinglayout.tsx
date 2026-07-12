@@ -997,7 +997,7 @@ const styles = StyleSheet.create({
  padding: 8,  marginBottom: 0, alignItems: "center",  bottom: 9, },
   profitText: { color: "darkgoldenrod", fontWeight: "bold", fontSize: 16 },
 
-  actionButton: { padding: 12,  marginVertical: 4,  borderRadius: 12, 
+  actionButton: { padding: 14,  marginVertical: 4,  borderRadius: 14, 
    bottom: 20,  alignItems: "center", },
   actionText: { color: "white", fontWeight: "bold",fontSize: 14 },
   
@@ -1015,7 +1015,7 @@ profitGlowRed: { shadowColor: "#ff2222",  shadowOffset: { width: 0, height: 0 },
     justifyContent: "center", flexDirection: "row", },
 
 controlPanelSpacing:{
-  paddingTop:45,
+  paddingTop:35,
 },
 
   badge: {  position: "absolute",  top: -5, right: -5, backgroundColor: "red", borderRadius: 10,
