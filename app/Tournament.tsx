@@ -1003,11 +1003,11 @@ disabled={
     borderColor: "rgba(34,197,94,0.25)",
 
     paddingHorizontal: 12,
-    paddingVertical: 5,
+    paddingVertical: 2,
 
     borderRadius: 999,
-    marginTop: 2,
-    marginBottom: 4,
+    marginTop: 0,
+    marginBottom: 2,
 
     maxWidth: "90%",
   }}
@@ -1101,16 +1101,24 @@ flexShrink: 1,
   style={{
     flex: 1,
     width: "100%",
-    justifyContent: "center",
-    alignItems: "center",
-    padding: 15,
   }}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
+  behavior={Platform.OS === "ios" ? "padding" : "height"}
+>
+  <ScrollView
+    contentContainerStyle={{
+      flexGrow: 1,
+      justifyContent: "center",
+      alignItems: "center",
+      padding: 10,
+    }}
+    showsVerticalScrollIndicator={false}
+    bounces={false}
+  >
+
+    <Pressable
+      style={styles.modalContent}
+      onPress={(e) => e.stopPropagation()}
     >
-      <Pressable
-        style={styles.modalContent}
-        onPress={(e) => e.stopPropagation()}
-      >
 
         {/* Close button */}
         <Pressable
@@ -1128,7 +1136,7 @@ flexShrink: 1,
 <View
   style={{
     flex: 1,
-    minHeight: 0,
+ 
     width: "100%",
   }}
 >
@@ -1222,25 +1230,27 @@ flexShrink: 1,
 <View
   style={{
     flex: 1,
-    minHeight: 0,
+   
     width: "100%",
   }}
 >
 
     {viewTab === "info" ? (
 
-      <ScrollView
-  style={{ flex: 1, minHeight: 0, }}
- contentContainerStyle={{
-  flexGrow: 1,
-  paddingVertical: 12,
-  paddingHorizontal: 4,
-  paddingBottom: 20,
-}}
-  nestedScrollEnabled
+     <ScrollView
+  style={{
+    flex: 1,
+  }}
+  contentContainerStyle={{
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    paddingBottom: 60,
+  }}
   showsVerticalScrollIndicator={false}
-  bounces={false}
+  bounces={true}
+  nestedScrollEnabled={false}
   overScrollMode="never"
+  scrollEventThrottle={16}
 >
 
         <Text style={styles.sectionTitle}>
@@ -1415,9 +1425,12 @@ style={{
 
 </View>
 )}
-      </Pressable>
-    </KeyboardAvoidingView>
-  </Pressable>
+            </Pressable>
+
+    </ScrollView>
+
+  </KeyboardAvoidingView>
+</Pressable>
 </Modal>
     </View>
   );
@@ -1425,7 +1438,8 @@ style={{
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#07081a", padding: 12 },
-  pageTitle: { fontSize: 18, fontWeight: "800", color: "#ff7ab6", textAlign: "center", marginVertical: 10 },
+  pageTitle: { fontSize: 16, fontWeight: "800", color: "#ff7ab6", 
+  textAlign: "center",  marginTop: 2,  marginBottom: 2, },
   // card
   card: { backgroundColor: "#12122a",  padding: 10,  marginVertical: 8,  borderRadius: 14,  shadowColor: "#000",
   shadowOpacity: 0.6,  shadowRadius: 10,  elevation: 6,  borderWidth: 1,  borderColor: "rgba(255,255,255,0.03)",},
@@ -1449,14 +1463,13 @@ disabledBtn: { opacity: 0.45 },
   modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.7)", 
   justifyContent: "center", alignItems: "center" },
 modalContent: {
-  width: "92%",
-  maxWidth: 520,
-  maxHeight: "75%",
+  width: "96%",
+  height: "92%",
+  maxWidth: 650,
   backgroundColor: "#12122a",
   borderRadius: 18,
   padding: 18,
   overflow: "hidden",
- 
 },
  closeButton:{
   position:"absolute",
