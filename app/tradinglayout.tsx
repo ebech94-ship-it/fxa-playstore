@@ -976,7 +976,7 @@ demoBalance={demoBalance}
 
 // Styles
 const styles = StyleSheet.create({
-   leftMenu: { width: "10%", backgroundColor: "#2c2c2c", top:3, bottom: 10, paddingTop: 10, },
+   leftMenu: { width: "12.5%", backgroundColor: "#2c2c2c", top:3, bottom: 10, paddingTop: 10, },
   menuItem: { marginVertical: 20, alignItems: "center" },
   menuText: { color: "white", fontSize: 12, marginTop: 4 },
 
@@ -1001,7 +1001,7 @@ const styles = StyleSheet.create({
    bottom: 20,  alignItems: "center", },
   actionText: { color: "white", fontWeight: "bold",fontSize: 14 },
   
-  overlay: { position: "absolute", top: 80, left: "10%", width: "80%", height: "80%", backgroundColor: "#333",
+  overlay: { position: "absolute", top: 80, left: "12.5%", width: "80%", height: "80%", backgroundColor: "#333",
  borderRadius: 4,  zIndex: 100,  padding: 6, },
   closeButton: { position: "absolute", top: 10, right: 10, zIndex: 10 },
   pageContent: { flex: 1, marginTop: 0 },
