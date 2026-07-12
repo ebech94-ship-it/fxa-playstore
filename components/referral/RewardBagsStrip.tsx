@@ -17,6 +17,13 @@ export default function RewardBagsStrip({ validReferrals }: Props) {
     { target: 10, points: 400, title: "Bronze Bag" },
     { target: 20, points: 900, title: "Silver Bag" },
     { target: 50, points: 2000, title: "VIP Chest" },
+     { target: 100, points: 5000, title: "Diamond Vault" },
+
+  { target: 250, points: 15000, title: "Elite Vault" },
+
+  { target: 500, points: 50000, title: "GodSpeed Vault" },
+
+  { target: 1000, points: 100000, title: "Tech Partner Vault" },
   ];
 
   return (
@@ -42,7 +49,21 @@ const progress = Math.min(validReferrals / item.target, 1);
               ]}
             >
               <Text style={styles.icon}>
-                {item.target >= 50 ? "💎" : unlocked ? "🔥" : "🎁"}
+                {
+ item.target >= 1000
+ ? "🏛"
+ : item.target >= 500
+ ? "👑"
+ : item.target >= 250
+ ? "🚀"
+ : item.target >= 100
+ ? "💎"
+ : item.target >= 50
+ ? "🏆"
+ : unlocked
+ ? "🔥"
+ : "🎁"
+}
               </Text>
 
               <Text style={styles.title}>{item.title}</Text>
