@@ -42,6 +42,16 @@ export default function RewardsTab({
       reward: "🏆 VIP Access",
       target: 50,
     },
+     {
+    title: "Invite 500 Friends",
+    reward: "👑 GodSpeed Ambassador Status",
+    target: 500,
+  },
+  {
+    title: "Invite 1000 Friends",
+    reward: "🏛 GodSpeed Tech Partner Eligibility",
+    target: 1000,
+  },
   ];
 
   const handleClaim = async (item: any) => {
