@@ -21,38 +21,78 @@ export default function RewardsTab({
   const [loadingClaim, setLoadingClaim] = useState<number | null>(null);
   const [claimed, setClaimed] = useState<Record<string, boolean>>({});
 
-  const rewards = [
-    {
-      title: "Invite 3 Friends",
-      reward: "🎟 Free Tournament Ticket",
-      target: 3,
-    },
-    {
-      title: "Invite 10 Friends",
-      reward: "🥉 Bronze Badge",
-      target: 10,
-    },
-    {
-      title: "Invite 20 Friends",
-      reward: "🥈 Silver Badge",
-      target: 20,
-    },
-    {
-      title: "Invite 50 Friends",
-      reward: "🏆 VIP Access",
-      target: 50,
-    },
-     {
+const rewards = [
+  {
+    title: "Invite 3 Friends",
+    reward: "🎟 Free Tournament Ticket",
+    target: 3,
+  },
+  {
+    title: "Invite 5 Friends",
+    reward: "💰 $5 Trading Bonus",
+    target: 5,
+  },
+  {
+    title: "Invite 10 Friends",
+    reward: "🥉 Bronze Badge",
+    target: 10,
+  },
+  {
+    title: "Invite 15 Friends",
+    reward: "🎟 2 Tournament Tickets",
+    target: 15,
+  },
+  {
+    title: "Invite 20 Friends",
+    reward: "🥈 Silver Badge",
+    target: 20,
+  },
+  {
+    title: "Invite 30 Friends",
+    reward: "💰 $20 Wallet Bonus",
+    target: 30,
+  },
+  {
+    title: "Invite 50 Friends",
+    reward: "🏆 VIP Access",
+    target: 50,
+  },
+  {
+    title: "Invite 75 Friends",
+    reward: "💎 Premium Profile Frame",
+    target: 75,
+  },
+  {
+    title: "Invite 100 Friends",
+    reward: "🥇 Gold Badge",
+    target: 100,
+  },
+  {
+    title: "Invite 150 Friends",
+    reward: "💰 $100 Trading Bonus",
+    target: 150,
+  },
+  {
+    title: "Invite 250 Friends",
+    reward: "👑 Elite Ambassador",
+    target: 250,
+  },
+  {
     title: "Invite 500 Friends",
-    reward: "👑 GodSpeed Ambassador Status",
+    reward: "🌍 GodSpeed Ambassador Status",
     target: 500,
+  },
+  {
+    title: "Invite 750 Friends",
+    reward: "💼 FX Arena Leader Recognition",
+    target: 750,
   },
   {
     title: "Invite 1000 Friends",
     reward: "🏛 GodSpeed Tech Partner Eligibility",
     target: 1000,
   },
-  ];
+];
 
   const handleClaim = async (item: any) => {
     if (!uid) return;

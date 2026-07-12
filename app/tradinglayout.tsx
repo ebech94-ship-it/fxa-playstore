@@ -981,7 +981,7 @@ const styles = StyleSheet.create({
   menuItem: { marginVertical: 20, alignItems: "center" },
   menuText: { color: "white", fontSize: 12, marginTop: 4 },
 
-  chartContainer: { width: "70%", height: "100%",  justifyContent: "flex-start", paddingBottom: 50, },
+  chartContainer: { width: "67.5%", height: "100%",  justifyContent: "flex-start", paddingBottom: 50, },
 
   rightPanel: { overflow: "visible",
   position: "relative", zIndex: 10, width: "20%", backgroundColor: "#2c2c2c", padding: 10, top:30,
