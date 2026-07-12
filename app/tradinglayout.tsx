@@ -1015,7 +1015,7 @@ profitGlowRed: { shadowColor: "#ff2222",  shadowOffset: { width: 0, height: 0 },
     justifyContent: "center", flexDirection: "row", },
 
 controlPanelSpacing:{
-  paddingTop:90,
+  paddingTop:45,
 },
 
   badge: {  position: "absolute",  top: -5, right: -5, backgroundColor: "red", borderRadius: 10,
@@ -1034,17 +1034,34 @@ padKey:{  width:55,  height:40, backgroundColor:"#333", borderRadius:8,
 
 padKeyText:{  color:"#fff", fontSize:16,  fontWeight:"bold"
 },
-expiryContainer: {  width: 240,  backgroundColor: "#111",
-  borderRadius: 10,  padding: 10,},
+expiryContainer: {  
+  width: 190,
+  backgroundColor: "#111",
+  borderRadius: 10,
+  padding: 6,
+},
 
-expiryGrid: {  flexDirection: "row",  flexWrap: "wrap",
-  justifyContent: "space-between",},
+expiryGrid: {  
+  flexDirection: "row",
+  flexWrap: "wrap",
+  justifyContent: "center",
+  gap: 4,
+},
 
-expiryKey: {  width: "30%",  padding: 10,  marginVertical: 5,
-  backgroundColor: "#222",  borderRadius: 6,
-  alignItems: "center",},
+expiryKey: {  
+  width: 52,
+  height: 32,
+  backgroundColor: "#222",
+  borderRadius: 5,
+  alignItems: "center",
+  justifyContent: "center",
+},
 
-expiryKeyText: {  color: "#fff",  fontSize: 14,},
+expiryKeyText: {  
+  color: "#fff",
+  fontSize: 12,
+  fontWeight: "bold",
+},
 payoutBox: {
   marginTop: 12,
   backgroundColor: "rgba(255,255,0,0.1)", 

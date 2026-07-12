@@ -147,8 +147,7 @@ const formatXAF = (value: number) => {
 
 export default function TournamentScreen({ currentUser }: TournamentScreenProps) {
   const [selectedTournament, setSelectedTournament] = useState<Tournament | null>(null);
-
- 
+const [showTournamentPopup, setShowTournamentPopup] = useState(false);
 
   const [now, setNow] = useState(new Date().getTime());
  
@@ -563,10 +562,11 @@ const allowRebuy =
         styles.card,
         status === "ongoing" && styles.cardGlow,
       ]}
-      onPress={() => {
-        setSelectedTournament(item);
-        setViewTab("info");
-      }}
+    onPress={() => {
+  setSelectedTournament(item);
+  setViewTab("info");
+  setShowTournamentPopup(true);
+}}
     >
       {/* TITLE */}
       <Text
@@ -996,26 +996,25 @@ disabled={
     alignSelf: "center",
     flexDirection: "row",
     alignItems: "center",
-
-    flexWrap: "wrap",          // 🔥 allows portrait shrink
+    flexWrap: "wrap",
 
     backgroundColor: "#0f172a",
     borderWidth: 1,
     borderColor: "rgba(34,197,94,0.25)",
 
-    paddingHorizontal: 18,
-    paddingVertical: 10,       // 🔥 reduced height
+    paddingHorizontal: 12,
+    paddingVertical: 5,
 
     borderRadius: 999,
-    marginTop: 8,
-    marginBottom: 14,
+    marginTop: 5,
+    marginBottom: 8,
 
-    maxWidth: "95%",           // 🔥 prevents overflow outside modal
+    maxWidth: "90%",
   }}
 >
   <Ionicons
     name="wallet-outline"
-    size={20}
+    size={16}
     color="#22c55e"
     style={{ marginRight: 6 }}
   />
@@ -1023,7 +1022,7 @@ disabled={
   <Text
     style={{
       color: "#94a3b8",
-       fontSize: 13,
+       fontSize: 11,
     flexShrink: 1,
       marginRight: 4,
     }}
@@ -1036,7 +1035,7 @@ disabled={
     style={{
       color: "#3b82f6",
       fontWeight: "800",
-     fontSize: 13,
+     fontSize: 11,
 flexShrink: 1,
       letterSpacing: 1,
     }}
@@ -1050,7 +1049,7 @@ flexShrink: 1,
   style={{
       color: "#fbbf24",
       fontWeight: "900",
-      fontSize: 18,
+      fontSize: 15,
 flexShrink: 1,
       textShadowColor: "rgba(251,191,36,0.7)",
       textShadowOffset: { width: 0, height: 0 },
@@ -1082,29 +1081,44 @@ flexShrink: 1,
    
 
       {/* tournament modal */}
-    <Modal
-  visible={!!selectedTournament}
+   <Modal
+  visible={showTournamentPopup}
   animationType="slide"
   transparent
-  onRequestClose={() => setSelectedTournament(null)}
+  onRequestClose={() => {
+    setShowTournamentPopup(false);
+    setSelectedTournament(null);
+  }}
 >
   <Pressable
     style={styles.modalOverlay}
-    onPress={() => setSelectedTournament(null)} // tap outside closes modal
+    onPress={() => {
+      setShowTournamentPopup(false);
+      setSelectedTournament(null);
+    }}
   >
     <KeyboardAvoidingView
-  style={{ flex: 1, justifyContent: "center", alignItems: "center",  paddingVertical: 12, }}
-  behavior={Platform.OS === "ios" ? "padding" : "height"}
->
+      style={{
+        width: "100%",
+        justifyContent: "flex-end",
+        alignItems: "center",
+        paddingBottom: 20,
+      }}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+    >
       <Pressable
         style={styles.modalContent}
-        onPress={(e) => e.stopPropagation()} // prevent taps inside modal from closing
+        onPress={(e) => e.stopPropagation()}
       >
+
         {/* Close button */}
         <Pressable
           style={styles.closeButton}
-          onPress={() => setSelectedTournament(null)}
-          hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }} // easier to tap
+          onPress={() => {
+            setShowTournamentPopup(false);
+            setSelectedTournament(null);
+          }}
+          hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
         >
           <Ionicons name="close" size={26} color="#fff" />
         </Pressable>
@@ -1414,15 +1428,17 @@ cardFooter: { flexDirection: "row", justifyContent: "space-between", marginTop: 
   actionText: { color: "#fff", fontWeight: "bold" }, actionTextAlt: { color: "#fff", fontWeight: "700" },
 disabledBtn: { opacity: 0.45 },
 // modal
-  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.7)", justifyContent: "center", alignItems: "center" },
+  modalOverlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.7)", 
+  justifyContent: "flex-end", alignItems: "center" },
 modalContent: {
   width: "92%",
   maxWidth: 520,
-  maxHeight: "82%",
+  maxHeight: "75%",
   backgroundColor: "#12122a",
   borderRadius: 18,
   padding: 18,
   overflow: "hidden",
+  marginBottom: 20,
 },
  closeButton:{
   position:"absolute",

@@ -458,7 +458,7 @@ return (
       style={{
   position: "absolute",
   right: 6,
-  top: "10%",   // centers it vertically
+  top: 35,   // centers it vertically
   height: 50,   // slim horizontal button
   justifyContent: "center",
   alignItems: "center",
