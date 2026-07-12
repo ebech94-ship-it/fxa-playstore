@@ -970,7 +970,7 @@ demoBalance={demoBalance}
     <Text style={{ color: "#fff" }}>{tradeToast.expiration}</Text>
   </Animated.View>
 )}
-  </View>
+  </View> 
 );
 }
 

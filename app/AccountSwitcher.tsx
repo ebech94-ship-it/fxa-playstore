@@ -244,19 +244,19 @@ const t = tournamentAccounts.find(
             </TouchableOpacity>
 
             <View style={styles.row}>
-              <TouchableOpacity
-                onPress={() => router.push("/DepositWithdraw")}
-                style={[styles.button, { backgroundColor: "#4CAF50" }]}
-              >
-                <Text style={styles.buttonText}>Deposit</Text>
-              </TouchableOpacity>
+             <TouchableOpacity
+  onPress={() => router.push("/DepositWithdraw?mode=deposit")}
+  style={[styles.button, { backgroundColor: "#4CAF50" }]}
+>
+  <Text style={styles.buttonText}>Deposit</Text>
+</TouchableOpacity>
 
-              <TouchableOpacity
-                onPress={() => router.push("/DepositWithdraw")}
-                style={[styles.button, { backgroundColor: "#9333ea" }]}
-              >
-                <Text style={styles.buttonText}>Withdraw</Text>
-              </TouchableOpacity>
+<TouchableOpacity
+  onPress={() => router.push("/DepositWithdraw?mode=withdraw")}
+  style={[styles.button, { backgroundColor: "#9333ea" }]}
+>
+  <Text style={styles.buttonText}>Withdraw</Text>
+</TouchableOpacity>
             </View>
           </View>
 

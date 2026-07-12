@@ -1,5 +1,5 @@
 import { LinearGradient } from "expo-linear-gradient";
-import { useRouter } from "expo-router";
+import { useRouter, useLocalSearchParams } from "expo-router";
 //import { getAuth } from "firebase/auth";
 
 import { WebView } from "react-native-webview";
@@ -122,6 +122,7 @@ type Currency = "USD" | "XAF";
 
 
 export default function DepositWithdraw() {
+const { mode } = useLocalSearchParams();
   const router = useRouter();
   const [currentUser, setCurrentUser] = useState(auth.currentUser);
 const [rates, setRates] = useState<Record<Currency, number>>({
@@ -136,7 +137,8 @@ const [withdrawalSuccessVisible, setWithdrawalSuccessVisible] = useState(false);
 const [withdrawalReference, setWithdrawalReference] = useState("");
 const [withdrawProcessing, setWithdrawProcessing] = useState(false);
 
-  const [isDeposit, setIsDeposit] = useState(true);
+
+  const [isDeposit, setIsDeposit] = useState(mode !== "withdraw");
   const [activeMethod, setActiveMethod] = useState("");
   const [modalVisible, setModalVisible] = useState(false);
   const [confirmVisible, setConfirmVisible] = useState(false);
@@ -175,6 +177,21 @@ const convert = (amount: number, from: Currency, to: Currency) => {
     [key]: value,
   }));
 };
+
+useEffect(() => {
+  if (mode === "deposit") {
+    setIsDeposit(true);
+    setActiveMethod("MTN");
+    setModalVisible(true);
+  }
+
+  if (mode === "withdraw") {
+    setIsDeposit(false);
+    setActiveMethod("MTN");
+    setModalVisible(true);
+  }
+}, [mode]);
+
   useEffect(() => {
     const unsub = auth.onAuthStateChanged(setCurrentUser);
     return () => unsub();
