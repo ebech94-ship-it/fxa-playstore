@@ -565,7 +565,16 @@ console.log("Mapped Status:", mappedStatus);
 
 
     const payoutRef = snapshot.docs[0].ref;
+console.log("PAYOUT DOC FOUND:", snapshot.size);
 
+const payoutDataDebug = snapshot.docs[0].data();
+
+console.log("PAYOUT DATA:");
+console.log(JSON.stringify(payoutDataDebug, null, 2));
+
+console.log("CURRENT PAYOUT STATUS:", payoutDataDebug.status);
+
+console.log("ABOUT TO CHECK MAPPED STATUS:", mappedStatus);
 
 
     // ----------------------
@@ -576,7 +585,7 @@ console.log("Mapped Status:", mappedStatus);
       mappedStatus === "pending" ||
       mappedStatus === "processing"
     ){
-
+console.log("ENTERED PENDING/PROCESSING BLOCK");
       await payoutRef.update({
 
         status:mappedStatus,
@@ -600,7 +609,7 @@ console.log("Mapped Status:", mappedStatus);
 
     if(mappedStatus === "completed"){
 
-
+console.log("ENTERED COMPLETED BLOCK");
       await db.runTransaction(async(t)=>{
 
 
@@ -749,7 +758,7 @@ console.log("Mapped Status:", mappedStatus);
  mappedStatus === "cancelled" ||
  mappedStatus === "refunded"
 ){
-
+console.log("ENTERED FAILED/REFUND BLOCK");
       await db.runTransaction(async(t)=>{
 
         const snap =
