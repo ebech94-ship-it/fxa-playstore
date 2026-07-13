@@ -212,12 +212,8 @@ console.log("✅ Webhook hash verified");
 
     const payload = req.body;
 
-if (payload.event === "payout_status_updated") {
-  return res.status(200).json({
-    received: true,
-    message: "Payout event received"
-  });
-}
+
+
     if (!payload?.data?.data?.attributes) {
       console.log("❌ Invalid payload");
 
@@ -254,12 +250,12 @@ const mappedStatus =
   providerStatus === 6 ? "rejected" :
   "unknown";
     console.log("🔥 WEBHOOK:", { transaction_id, status });
+const snapshot = await db
+  .collection("transactions")
+  .where("transactionId", "==", transaction_id)
+  .limit(1)
+  .get();
 
-    const snapshot = await db
-      .collection("transactions")
-      .where("transactionId", "==", transaction_id)
-      .limit(1)
-      .get();
 console.log("Firestore docs found:", snapshot.size);
     if (snapshot.empty) {
       console.log("❌ Transaction not found");
@@ -311,6 +307,9 @@ if (
         const snap = await t.get(doc.ref);
         const tx = snap.data();
 
+console.log("Transaction Record:");
+console.log(tx);
+
         if (!tx.userId) throw new Error("Invalid transaction");
 
         if (tx.status === "completed") return;
@@ -318,7 +317,10 @@ if (
 
         const txAmountUSD = Number(tx.amount);
         const webhookAmountUSD = Number(amount) / XAF_TO_USD;
-
+console.log("Stored USD:", tx.amount);
+console.log("Stored XAF:", tx.originalAmount);
+console.log("Webhook XAF:", amount);
+console.log("Webhook USD:", webhookAmountUSD);
         // VALIDATION
         if (
           tx.originalAmount &&
@@ -339,7 +341,9 @@ if (
         const userSnap = await t.get(userRef);
         const beforeBalance = userSnap.data()?.accounts?.real?.balance || 0;
         const afterBalance = beforeBalance + txAmountUSD;
-
+console.log("Before Balance:", beforeBalance);
+console.log("Deposit:", txAmountUSD);
+console.log("After Balance:", afterBalance);
         // UPDATE USER
        t.update(userRef, {
   "accounts.real.balance": admin.firestore.FieldValue.increment(txAmountUSD),
@@ -398,6 +402,7 @@ console.log("Updating transaction:", transaction_id);
           ...ledgerData,
          createdAt: admin.firestore.FieldValue.serverTimestamp(),
         });
+        console.log("✅ Ledger saved.");
       }
 
       if (treasuryData) {
@@ -405,6 +410,7 @@ console.log("Updating transaction:", transaction_id);
           ...treasuryData,
           createdAt: admin.firestore.FieldValue.serverTimestamp(),
         });
+        console.log("✅ Treasury ledger saved.");
       }
 
       console.log("✅ USER CREDITED");
@@ -447,9 +453,13 @@ console.log("Final status:", verify.data().status);
     return res.status(200).json({ received: true });
 
   } catch (error) {
-    console.error("Webhook error:", error.message);
+    console.error("❌ WEBHOOK ERROR");
+console.error(error);
+console.error(error.stack);
 
-    return res.status(500).json({ error: error.message });
+   return res.status(200).json({
+  received: true,
+});
   }
 });
 module.exports = router;

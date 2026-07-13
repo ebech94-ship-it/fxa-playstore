@@ -210,9 +210,10 @@ mobile_no.startsWith("+237")
     const netXAF = grossXAF - feeXAF;
 
     // 🆔 TRANSACTION ID
-   transactionId = `payout_${Date.now()}_${Math.random()
-  .toString(36)
-  .substring(2, 8)}`;
+ transactionId = `PAYOUT_${Date.now()}_${Math.random()
+.toString(36)
+.substring(2, 8)
+.toUpperCase()}`;
 
     // 🚫 PREVENT DUPLICATE PROCESSING (MOVED UP - SAFE)
    const existing = await db
@@ -310,7 +311,7 @@ accountpeMethod,
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
       });
     });
-
+console.log("✅ Firestore transaction committed successfully.");
     // 🔑 GET TOKEN (MOVED AFTER LOCK)
   // 🔑 GET TOKEN
 const token = await getPayoutToken();
@@ -431,15 +432,18 @@ if (error.message === "MIN_WITHDRAWAL_1_USD") {
 // ----------------------
 router.post("/webhook", async (req, res) => {
 
-  console.log("🔥🔥🔥 SWYCHR PAYOUT WEBHOOK HIT 🔥🔥🔥");
-  console.log(JSON.stringify(req.body, null, 2));
+  console.log("🔥🔥🔥 SWYCHR WEBHOOK HIT 🔥🔥🔥");
+  console.log("Time:", new Date().toISOString());
+  console.log("Headers:", JSON.stringify(req.headers, null, 2));
+  console.log("Body:", JSON.stringify(req.body, null, 2));
 
   try {
-
     const signature =
-      req.headers["x-swychr-signature"] ||
-      req.headers["webhook-hash"];
+  req.headers["x-swychr-signature"] ||
+  req.headers["webhook-hash"];
 
+console.log("Received Signature:", signature);
+console.log("Expected Signature:", process.env.SWYCHR_WEBHOOK_SECRET);
     // ----------------------
     // VERIFY SIGNATURE
     // ----------------------
@@ -524,7 +528,8 @@ router.post("/webhook", async (req, res) => {
   providerStatus === 6 ? "rejected" :
   "unknown";
 
-
+console.log("Provider Status:", providerStatus);
+console.log("Mapped Status:", mappedStatus);
     console.log("🔥 PAYOUT STATUS:", {
       transaction_id,
       mappedStatus
@@ -737,11 +742,13 @@ router.post("/webhook", async (req, res) => {
     // FAILED / CANCELLED / REFUNDED
     // ----------------------
 
-    if(
-      mappedStatus === "failed" ||
-      mappedStatus === "cancelled" ||
-      mappedStatus === "refunded"
-    ){
+   if(
+ mappedStatus === "failed" ||
+ mappedStatus === "declined" ||
+ mappedStatus === "rejected" ||
+ mappedStatus === "cancelled" ||
+ mappedStatus === "refunded"
+){
 
       await db.runTransaction(async(t)=>{
 
