@@ -5,6 +5,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import * as Clipboard from "expo-clipboard";
 
 type ActivityItem = {
   id: string;
@@ -45,6 +46,10 @@ export default function OverviewTab({
       ? Math.min((weeklyProgress / weeklyTarget) * 100, 100)
       : 0;
 
+      const copyUserId = async () => {
+  await Clipboard.setStringAsync(publicId);
+};
+
   return (
     <ScrollView
       showsVerticalScrollIndicator={false}
@@ -60,9 +65,11 @@ export default function OverviewTab({
           <Text style={styles.codeLabel}>
             Referral Code
           </Text>
-          <Text style={styles.code}>
-            {publicId || "Generating..."}
-          </Text>
+         <TouchableOpacity onPress={copyUserId}>
+  <Text style={styles.code}>
+    {publicId || "Generating..."} 📋
+  </Text>
+</TouchableOpacity>
         </View>
 
         <Text style={styles.linkText}>

@@ -4,13 +4,16 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 
 import { WebView } from "react-native-webview";
 
-import { useApp } from "./AppContext";
-/*import {
-  addDoc,
+import {
   collection,
-  serverTimestamp,
-} from "firebase/firestore";*/
- import { useEffect, useState } from "react";
+  limit,
+  onSnapshot,
+  orderBy,
+  query,
+} from "firebase/firestore";
+import { useApp } from "./AppContext";
+
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -26,6 +29,7 @@ import {
   TouchableOpacity,
   View
 } from "react-native";
+import { db } from "../firebaseConfig";
 
 import { auth } from "../firebaseConfig";
 
@@ -135,14 +139,16 @@ const [paymentLoading, setPaymentLoading] = useState(false);
 
 const [withdrawalSuccessVisible, setWithdrawalSuccessVisible] = useState(false);
 const [withdrawalReference, setWithdrawalReference] = useState("");
+const [withdrawTimeout, setWithdrawTimeout] = useState<NodeJS.Timeout | null>(null);
 const [withdrawProcessing, setWithdrawProcessing] = useState(false);
-
+const [depositSuccessVisible, setDepositSuccessVisible] = useState(false);
 
   const [isDeposit, setIsDeposit] = useState(mode !== "withdraw");
   const [activeMethod, setActiveMethod] = useState("");
   const [modalVisible, setModalVisible] = useState(false);
   const [confirmVisible, setConfirmVisible] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [transactions, setTransactions] = useState<any[]>([]);
 const { appSettings, profile } = useApp();
 
   /* -------------------- Form State -------------------- */
@@ -163,7 +169,7 @@ const { appSettings, profile } = useApp();
   const isMobileMoney =
   activeMethod === "MTN" || activeMethod === "Orange";
 
-const methodLimits = isMobileMoney ? LIMITS.mobile : LIMITS.card;
+const methodLimits = LIMITS.mobile;
 const [lang, setLang] = useState<"en" | "fr">("en");
 
 const convert = (amount: number, from: Currency, to: Currency) => {
@@ -177,6 +183,28 @@ const convert = (amount: number, from: Currency, to: Currency) => {
     [key]: value,
   }));
 };
+
+
+useEffect(() => {
+  if (!currentUser) return;
+
+  const q = query(
+    collection(db, "users", currentUser.uid, "transactions"),
+    orderBy("createdAt", "desc"),
+    limit(8)
+  );
+
+  const unsub = onSnapshot(q, (snap) => {
+    const rows = snap.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+    }));
+
+    setTransactions(rows);
+  });
+
+  return unsub;
+}, [currentUser]);
 
 useEffect(() => {
   if (mode === "deposit") {
@@ -198,9 +226,11 @@ useEffect(() => {
     
   }, []);
 
-  useEffect(() => {
-  setActiveMethod("");
-}, [isDeposit]);
+useEffect(() => {
+  if (!modalVisible) {
+    setActiveMethod("");
+  }
+}, [isDeposit, modalVisible]);
 
 useEffect(() => {
   if (profile?.displayName) {
@@ -502,7 +532,11 @@ const handleWithdrawal = async () => {
     if(!res.ok){
 
       console.log("❌ PAYOUT FAILED");
+setWithdrawProcessing(false);
 
+if (withdrawTimeout) {
+  clearTimeout(withdrawTimeout);
+}
       Alert.alert(
         "Error",
         data.error ||
@@ -514,7 +548,9 @@ const handleWithdrawal = async () => {
     }
 
     console.log("✅ PAYOUT SUCCESS");
-
+if (withdrawTimeout) {
+  clearTimeout(withdrawTimeout);
+}
 setWithdrawProcessing(false);
 
     setModalVisible(false);
@@ -535,7 +571,11 @@ setWithdrawProcessing(false);
       err
     );
 
+setWithdrawProcessing(false);
 
+if (withdrawTimeout) {
+  clearTimeout(withdrawTimeout);
+}
     Alert.alert(
       "Connection Problem",
       "Please check your internet connection."
@@ -611,9 +651,20 @@ const confirmAndSend = async () => {
     setLoading(true);
     setConfirmVisible(false);
 
-    if (!isDeposit) {
-      setWithdrawProcessing(true);
-    }
+   if (!isDeposit) {
+  setWithdrawProcessing(true);
+
+  const timer = setTimeout(() => {
+    setWithdrawProcessing(false);
+
+    Alert.alert(
+      "Withdrawal Still Processing",
+      "Your request has been sent but the payment provider has not responded yet.\n\nPlease check your transaction history in a few minutes.\n\nDo NOT submit another withdrawal."
+    );
+  }, 30000); // 30 seconds
+
+  setWithdrawTimeout(timer);
+}
 
     if (isDeposit) {
       await handleDeposit();
@@ -643,9 +694,12 @@ setFormData({
   }
 };
 
-const minWithdrawDisplay = isMobileMoney
-  ? convert(methodLimits.withdraw.min, "XAF", "USD")
-  : methodLimits.withdraw.min;
+const minWithdrawDisplay = convert(
+  LIMITS.mobile.withdraw.min,
+  "XAF",
+  "USD"
+);
+
   const t = TEXT[lang];
 const FEE_RATE = 0.01;
 
@@ -777,7 +831,104 @@ You can navigate and explore the app safely without making any real transactions
           </TouchableOpacity>
         ))}
       </View>
+<View style={styles.historyCard}>
 
+<Text style={styles.historyTitle}>
+Recent Transactions
+</Text>
+
+<View style={styles.tableHeader}>
+
+<Text style={[styles.col, {flex:2}]}>Type</Text>
+
+<Text style={styles.col}>Method</Text>
+
+<Text style={styles.col}>Amount</Text>
+
+<Text style={styles.col}>Status</Text>
+<Text style={[styles.col,{flex:1.4}]}>Time</Text>
+
+</View>
+
+{transactions.length === 0 ? (
+
+<Text style={styles.emptyHistory}>
+No transactions yet.
+</Text>
+
+) : (
+
+transactions.map(tx => (
+
+<View
+key={tx.id}
+style={styles.tableRow}
+>
+
+<Text
+style={[
+styles.col,
+{flex:2},
+{
+color:
+tx.type==="deposit"
+? "#22c55e"
+: "#f87171"
+}
+]}
+>
+
+{tx.type?.toUpperCase()}
+
+</Text>
+
+<Text style={styles.col}>
+{tx.method}
+</Text>
+
+<Text style={styles.col}>
+{tx.amount}
+</Text>
+
+<Text
+style={[
+styles.col,
+{
+color:
+tx.status==="SUCCESS"
+? "#22c55e"
+:
+tx.status==="PENDING"
+? "#facc15"
+:
+"#ef4444"
+}
+]}
+>
+
+{tx.status}
+
+</Text>
+<Text style={[styles.col,{flex:1.6,fontSize:10}]}>
+  {tx.createdAt?.toDate
+    ? tx.createdAt
+        .toDate()
+        .toLocaleString([], {
+          day: "2-digit",
+          month: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+        })
+    : "--"}
+</Text>
+
+</View>
+
+))
+
+)}
+
+</View>
       {/* -------------------- MODAL -------------------- */}
 <Modal visible={modalVisible} transparent  animationType="fade"
   onRequestClose={() => setModalVisible(false)}>
@@ -1110,7 +1261,10 @@ Amount: {Number(formData.amount).toFixed(2)}
       </Text>
 
       <TouchableOpacity
-        onPress={() => setPaymentVisible(false)}
+       onPress={() => {
+  setPaymentVisible(false);
+  setDepositSuccessVisible(true);
+}}
       >
         <Text
           style={{
@@ -1317,6 +1471,79 @@ Amount: {Number(formData.amount).toFixed(2)}
     </View>
   </View>
 </Modal>
+<Modal
+ visible={depositSuccessVisible}
+ transparent
+ animationType="fade"
+>
+
+<View style={styles.modalOverlay}>
+
+<View style={styles.modalContainer}>
+
+<Text
+style={{
+color:"#00ff99",
+fontSize:22,
+fontWeight:"bold",
+textAlign:"center",
+marginBottom:15
+}}
+>
+Deposit Submitted ✅
+</Text>
+
+
+<Text
+style={{
+color:"#fff",
+textAlign:"center",
+lineHeight:20,
+marginBottom:15
+}}
+>
+Your payment request has been received.
+</Text>
+
+
+<Text
+  style={{
+    color:"#9CA3AF",
+    textAlign:"center",
+    lineHeight:20,
+    marginBottom:20
+  }}
+>
+✓ Your payment has been submitted successfully.
+{"\n"}
+✓ The payment provider is now confirming your transaction.
+{"\n"}
+✓ Your wallet balance will increase automatically once the payment is confirmed.
+{"\n"}
+✓ You can now close this page and check your wallet or transaction history in a few moments.
+</Text>
+
+
+<TouchableOpacity
+style={styles.confirmButton}
+onPress={() => {
+  setDepositSuccessVisible(false);
+  router.push("/AccountSwitcher"); // or your wallet screen
+}}
+>
+
+<Text style={styles.confirmButtonText}>
+Check Wallet
+</Text>
+
+</TouchableOpacity>
+
+
+</View>
+
+</View>
+
+</Modal>
     </ScrollView>
   );
 }
@@ -1489,6 +1716,47 @@ currencyBadge: {
   fontWeight: "900",
   fontSize: 16,
   marginLeft: 10,
+},
+historyCard:{
+backgroundColor:"#0B1220",
+marginTop:18,
+borderRadius:14,
+padding:12,
+},
+
+historyTitle:{
+color:"#fff",
+fontSize:16,
+fontWeight:"700",
+marginBottom:10,
+},
+
+tableHeader:{
+flexDirection:"row",
+borderBottomWidth:1,
+borderBottomColor:"#333",
+paddingBottom:6,
+marginBottom:4,
+},
+
+tableRow:{
+flexDirection:"row",
+paddingVertical:8,
+borderBottomWidth:0.5,
+borderBottomColor:"#222",
+},
+
+col:{
+flex:1,
+fontSize:11,
+color:"#ddd",
+textAlign:"center",
+},
+
+emptyHistory:{
+color:"#777",
+textAlign:"center",
+paddingVertical:15,
 },
 
 });

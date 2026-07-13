@@ -29,7 +29,7 @@ const rewards = [
   },
   {
     title: "Invite 5 Friends",
-    reward: "💰 $5 Trading Bonus",
+    reward: "💰 $5 Wallet Bonus",
     target: 5,
   },
   {
@@ -49,7 +49,7 @@ const rewards = [
   },
   {
     title: "Invite 30 Friends",
-    reward: "💰 $20 Wallet Bonus",
+    reward: "💰 $10 Wallet Bonus",
     target: 30,
   },
   {
@@ -69,7 +69,7 @@ const rewards = [
   },
   {
     title: "Invite 150 Friends",
-    reward: "💰 $100 Trading Bonus",
+    reward: "💰 $15 Wallet Bonus",
     target: 150,
   },
   {

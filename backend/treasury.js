@@ -144,23 +144,17 @@ async processWithdrawal(userId, amount, momoNumber) {
 
 
     t.set(transactionRef, {
-
       userId,
-
       username:
         user.username ||
         user.displayName ||
         "Unknown",
-
+        publicId: user.publicId || null,
       amount:numericAmount,
-
       type:"withdrawal",
-
       status:"pending",
-
       createdAt:
         admin.firestore.FieldValue.serverTimestamp(),
-
     });
 
 
@@ -340,7 +334,8 @@ performance: {
   // transaction log
   t.set(db.collection("transactions").doc(), {
     userId,
-    username: user.username || "Unknown",
+   username: user.username || user.displayName || "Unknown",
+ publicId: user.publicId || null,
     tournamentId,
     amount: entryFee,
     type: "tournament_registration",
@@ -446,7 +441,8 @@ const newRebuys = [
   // transaction log
   t.set(db.collection("transactions").doc(), {
     userId,
-    username: user.username || "Unknown",
+    username: user.username || user.displayName || "Unknown",
+ publicId: user.publicId || null,
     tournamentId,
     amount: rebuyFee,
     type: "rebuy",
@@ -497,7 +493,8 @@ async adminAdjustBalance(t, userId, amount, mode, reason = "", adminId = null) {
 
   t.set(db.collection("transactions").doc(), {
      userId,
-     username: user.username || "Unknown",
+    username: user.username || user.displayName || "Unknown",
+ publicId: user.publicId || null,
     amount,
     type: mode === "add" ? "admin_credit" : "admin_debit",
     reason,

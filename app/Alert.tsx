@@ -16,6 +16,7 @@ import { db } from "../firebaseConfig";
 type Alert = {
   id: string;
   message?: string;
+  deleted?: boolean;
   type?: string;
   tournamentId?: string;
   read?: boolean;
@@ -47,7 +48,11 @@ const loadAlerts = useCallback(() => {
   createdAt: d.data().createdAt?.toDate?.() || new Date(),
 }));
 
-  setAlerts(alertData);
+  const filtered = alertData.filter(
+  (a) => !a.deleted
+);
+
+setAlerts(filtered);
 
   const unread = alertData.filter((a) => !a.read).length;
   setUnreadCount(unread);

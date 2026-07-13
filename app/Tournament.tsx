@@ -1133,23 +1133,16 @@ flexShrink: 1,
   }}
 >
 
-    {viewTab === "info" ? (
+   {viewTab === "info" ? (
 
-     <ScrollView
-  style={{
-    flex: 1,
-  }}
-  contentContainerStyle={{
-    paddingVertical: 12,
-    paddingHorizontal: 4,
-    paddingBottom: 30,
-  }}
-  showsVerticalScrollIndicator={false}
-  bounces={true}
-  nestedScrollEnabled={false}
-  overScrollMode="never"
-  scrollEventThrottle={16}
->
+  <View
+    style={{
+      width: "100%",
+      paddingVertical: 12,
+      paddingHorizontal: 4,
+      paddingBottom: 30,
+    }}
+  >
 
         <Text style={styles.sectionTitle}>
           📖 Information
@@ -1288,48 +1281,52 @@ flexShrink: 1,
           </>
         )}
 <View style={{ height: 32 }} />
-      </ScrollView>
+    </View>
 
     ) : (
 
- <ScrollView
-  horizontal
-  showsHorizontalScrollIndicator={false}
-  bounces={false}
->
-  <FlatList
-    data={sortedLeaderboard}
-    keyExtractor={(item) => item.id}
+<View style={{ width: "100%" }}>
+  <ScrollView
+    horizontal
+    showsHorizontalScrollIndicator={true}
     nestedScrollEnabled
-    showsVerticalScrollIndicator
-    contentContainerStyle={{
-      paddingBottom: 40,
-      minWidth: 750,
-    }}
-    ListHeaderComponent={
-      <>
-        {renderPinnedUserRow(sortedLeaderboard)}
+    directionalLockEnabled={false}
+  >
 
-        <View style={styles.tableHeader}>
-          <Text style={[styles.tableColSmall, styles.headerText]}>#</Text>
-          <Text style={[styles.tableColName, styles.headerText]}>
-            Participant
-          </Text>
-          <Text style={[styles.tableColBalance, styles.headerText]}>
-            Balance
-          </Text>
-          <Text style={[styles.tableColPerformance, styles.headerText]}>
-            Performance
-          </Text>
-          <Text style={[styles.tableColTier, styles.headerText]}>
-            Level
-          </Text>
-          <Text style={[styles.tableColPrize, styles.headerText]}>
-            Prize
-          </Text>
-        </View>
-      </>
-    }
+    <View style={{ minWidth: 750 }}>
+
+      <FlatList
+        data={sortedLeaderboard}
+        keyExtractor={(item) => item.id}
+        nestedScrollEnabled
+        showsVerticalScrollIndicator
+        contentContainerStyle={{
+          paddingBottom: 40,
+        }}
+        ListHeaderComponent={
+          <>
+            {renderPinnedUserRow(sortedLeaderboard)}
+
+            <View style={styles.tableHeader}>
+              <Text style={[styles.tableColSmall, styles.headerText]}>#</Text>
+              <Text style={[styles.tableColName, styles.headerText]}>
+                Participant
+              </Text>
+              <Text style={[styles.tableColBalance, styles.headerText]}>
+                Balance
+              </Text>
+              <Text style={[styles.tableColPerformance, styles.headerText]}>
+                Performance
+              </Text>
+              <Text style={[styles.tableColTier, styles.headerText]}>
+                Level
+              </Text>
+              <Text style={[styles.tableColPrize, styles.headerText]}>
+                Prize
+              </Text>
+            </View>
+          </>
+        }
     renderItem={({ item, index }) => {
       const prize = selectedTournament
         ? getPrizeForRank(index + 1, selectedTournament)
@@ -1404,7 +1401,11 @@ flexShrink: 1,
       );
     }}
   />
-</ScrollView>
+
+    </View>
+
+  </ScrollView>
+</View>
 
     )}
 
@@ -1456,7 +1457,7 @@ modalContent: {
   backgroundColor: "#12122a",
   borderRadius: 18,
   padding: 18,
-overflow: "visible",
+overflow: "hidden",
 },
  closeButton:{
   position:"absolute",

@@ -28,10 +28,14 @@ const admin = require("firebase-admin");
 // If your Node version < 18, uncomment next two lines
  const fetch = require("node-fetch");
  global.fetch = fetch;
+
 // routes
 const payinRoutes = require("./routes/payin");
-const payoutRoutes = require("./routes/payout");
 
+const {
+  router: payoutRoutes,
+  payoutWebhookHandler,
+} = require("./routes/payout");
 
 
 const app = express();
@@ -632,9 +636,25 @@ app.get("/admin/activity-history", authenticate, requireAdmin, async (req, res) 
     res.status(500).json({ error: err.message });
   }
 });
+
+
+
 // ----------------------
 // ROUTES
 // ----------------------
+app.post("/api/webhook", async (req, res) => {
+
+  const event = req.body?.event;
+
+  console.log("🔥 Unified webhook:", event);
+
+  if (event === "payout_status_updated") {
+    return payoutWebhookHandler(req, res);
+  }
+
+  return payinRoutes(req, res);
+});
+
 app.use("/api/payin", payinRoutes);
 app.use("/api/payout", payoutRoutes);     // withdrawals
 // ---------------------------------------------------------------------
@@ -837,10 +857,6 @@ app.use((err, req, res, next) => {
 // ----------------------
 const PORT = process.env.PORT || 4000;
 
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`🚀 Backend running on port ${PORT}`);
-});
-  console.log("Routes loaded: payin, payout, tournament, admin");
 
 
 app.get("/admin/transactions", authenticate, requireAdmin, async (req, res) => {
@@ -902,13 +918,16 @@ app.get("/admin/pending-transactions", authenticate, requireAdmin, async (req, r
    const transactions = snap.docs.map(doc => {
   const data = doc.data();
 
-  return {
-    id: doc.id,
-    user: data.username || "Unknown",
-    amount: data.amount || 0,
-    status: data.status || "pending",
-      createdAt: data.createdAt?.toDate?.().toISOString() || null,
-  };
+return {
+  id: doc.id,
+  userId: data.userId || null,
+  username: data.username || null,
+  publicId: data.publicId || null,
+  user: data.username || data.publicId || data.userId || "Unknown",
+  amount: data.amount || 0,
+  status: data.status || "pending",
+  createdAt: data.createdAt?.toDate?.().toISOString() || null,
+};
 });
 
     res.json(transactions);
@@ -917,3 +936,8 @@ app.get("/admin/pending-transactions", authenticate, requireAdmin, async (req, r
     res.status(500).json({ error: err.message });
   }
 });
+
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`🚀 Backend running on port ${PORT}`);
+});
+  console.log("Routes loaded: payin, payout, tournament, admin");

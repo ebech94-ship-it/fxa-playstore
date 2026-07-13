@@ -430,7 +430,7 @@ if (error.message === "MIN_WITHDRAWAL_1_USD") {
 // ----------------------
 // WEBHOOK (PRODUCTION SAFE + PAYIN STYLE)
 // ----------------------
-router.post("/webhook", async (req, res) => {
+async function payoutWebhookHandler(req, res) {
 
   console.log("🔥🔥🔥 SWYCHR WEBHOOK HIT 🔥🔥🔥");
   console.log("Time:", new Date().toISOString());
@@ -581,25 +581,28 @@ console.log("ABOUT TO CHECK MAPPED STATUS:", mappedStatus);
     // PENDING / PROCESSING
     // ----------------------
 
-    if(
-      mappedStatus === "pending" ||
-      mappedStatus === "processing"
-    ){
-console.log("ENTERED PENDING/PROCESSING BLOCK");
-      await payoutRef.update({
+ if(
+  mappedStatus === "pending" ||
+  mappedStatus === "processing"
+){
 
-        status:mappedStatus,
+console.log("🟡 ENTERED PENDING/PROCESSING UPDATE");
 
-        lastUpdated:
-          admin.firestore.FieldValue.serverTimestamp(),
+await payoutRef.update({
 
-      });
+  status:mappedStatus,
 
+  lastUpdated:
+    admin.firestore.FieldValue.serverTimestamp(),
 
-      return res.status(200).json({
-        received:true
-      });
-    }
+});
+
+console.log("🟢 PAYOUT STATUS UPDATED TO:", mappedStatus);
+
+return res.status(200).json({
+  received:true
+});
+}
 
 
 
@@ -627,7 +630,7 @@ console.log("ENTERED COMPLETED BLOCK");
           payout.status === "completed" ||
           payout.processedWebhook
         ){
-
+console.log("⚠️ Duplicate payout webhook ignored:", transaction_id);
           return;
         }
 
@@ -880,7 +883,7 @@ console.log("ENTERED FAILED/REFUND BLOCK");
       received:true
     });
   }
-});
+};
 // ----------------------
 // STATUS CHECK
 // ----------------------
@@ -1002,4 +1005,9 @@ router.post("/admin/retry-payout", async (req, res) => {
     return res.status(500).json({ error: err.message });
   }
 });
-module.exports = router;
+router.post("/webhook", payoutWebhookHandler);
+
+module.exports = {
+  router,
+  payoutWebhookHandler,
+};

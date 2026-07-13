@@ -95,10 +95,28 @@ provider?: string;
 verifiedAt?: any;
 
 referredBy?: string | null;
-  referralCount?: number;
-  referralPoints?: number;
-  referralEarnings?: number;
-  validReferrals?: number; // 🔥 IMPORTANT (tournament-qualified referrals)
+
+referralCount?: number;
+pendingReferrals?: number;
+activeReferrals?: number;
+validReferrals?: number;
+
+referralPoints?: number;
+referralEarnings?: number;
+
+coins?: number;
+
+claimedRewards?: Record<
+  string,
+  {
+    claimedAt: any;
+    reward: any;
+  }
+>;
+
+freeTournamentTickets?: number;
+
+referralBadge?: string | null; // 🔥 IMPORTANT (tournament-qualified referrals)
   // personal
   country?: string;
   countryCode?: string;
@@ -136,12 +154,28 @@ type FirestoreUserDoc = {
   verifiedAt?: any;
 
   referredBy?: string | null;
-  referralCount?: number;
-  referralPoints?: number;
-  referralEarnings?: number;
-    validReferrals?: number;
-claimedRewards?: string[];
+
+referralCount?: number;
+pendingReferrals?: number;
+activeReferrals?: number;
+validReferrals?: number;
+
+referralPoints?: number;
+referralEarnings?: number;
+
+coins?: number;
+
+claimedRewards?: Record<
+  string,
+  {
+    claimedAt: any;
+    reward: any;
+  }
+>;
+
 freeTournamentTickets?: number;
+
+referralBadge?: string | null;
 
   // 🔐 admin / roles
   isAdmin?: boolean;
@@ -198,7 +232,19 @@ setAppReady: (value: boolean) => void;
   profileLoaded: boolean;
   profileSubmitted: boolean;
 setProfileSubmitted: React.Dispatch<React.SetStateAction<boolean>>;
+referrals: {
+  referralCount: number;
+  pendingReferrals: number;
+  activeReferrals: number;
+  validReferrals: number;
+  referralPoints: number;
+  referralEarnings: number;
+  coins: number;
+  freeTournamentTickets: number;
+  referralBadge: string | null;
 
+  claimedRewards: Record<string, any>;
+};
 
   tournamentAccounts: TournamentAccount[];
   activeLeaderboardParticipants: Participant[];
@@ -285,12 +331,22 @@ setAppReady: () => {},
 
   balances: { demo: 1000, real: 0, tournament: 0 },
   activeBalance: 1000,
-
   profile: null,
   setProfile: () => {},          // ✅ ADD
   profileVerified: false,
   profileLoaded: false,
-
+referrals: {
+  referralCount: 0,
+  pendingReferrals: 0,
+  activeReferrals: 0,
+  validReferrals: 0,
+  referralPoints: 0,
+  referralEarnings: 0,
+  coins: 0,
+  freeTournamentTickets: 0,
+  referralBadge: null,
+  claimedRewards: {},
+},
   profileSubmitted: false,       // ✅ ADD
   setProfileSubmitted: () => {}, // ✅ ADD
 
@@ -355,6 +411,27 @@ const [leaderboardParticipants, setLeaderboardParticipants] = useState<
 
 const [demoBalance, setDemoBalance] = useState<number>(1000);
 
+const referrals = useMemo(() => ({
+  referralCount: userDoc?.referralCount ?? 0,
+  pendingReferrals: userDoc?.pendingReferrals ?? 0,
+  activeReferrals: userDoc?.activeReferrals ?? 0,
+  validReferrals: userDoc?.validReferrals ?? 0,
+
+  referralPoints: userDoc?.referralPoints ?? 0,
+  referralEarnings: userDoc?.referralEarnings ?? 0,
+
+  coins: userDoc?.coins ?? 0,
+
+  freeTournamentTickets:
+    userDoc?.freeTournamentTickets ?? 0,
+
+  referralBadge:
+    userDoc?.referralBadge ?? null,
+
+  claimedRewards:
+    userDoc?.claimedRewards ?? {},
+
+}), [userDoc]);
 
 const activeBalance = useMemo(() => {
   if (activeAccount.type === "demo") {
@@ -1101,7 +1178,7 @@ useEffect(() => {
   profileSubmitted,
   setProfileSubmitted,
   tournamentAccounts,
-
+referrals,
   joinedMap,
   leaderboardParticipants,
   participantBalances,
@@ -1139,7 +1216,7 @@ setOpenAccountSwitcher,
   tournamentAccounts,
   joinedMap,
   leaderboardParticipants,
-
+referrals,
   participantBalances,
 ]);
   return (

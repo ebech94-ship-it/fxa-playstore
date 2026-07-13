@@ -645,8 +645,9 @@ const [tradeToast, setTradeToast] = useState<{
     <TouchableOpacity
       style={styles.closeButton}
       onPress={() => setActivePage(null)}
+       hitSlop={15}
     >
-      <Text style={{ color: "red", fontSize: 24 }}>✕</Text>
+      <Text style={{ color: "red", fontSize: 28 }}>✕</Text>
     </TouchableOpacity>
 
     <View style={styles.pageContent}>
@@ -1004,7 +1005,7 @@ const styles = StyleSheet.create({
   
   overlay: { position: "absolute", top: 80, left: "12.5%", width: "84%", height: "80%", backgroundColor: "#333",
  borderRadius: 4,  zIndex: 100,  padding: 6, },
-  closeButton: { position: "absolute", top: 7, right: 10, zIndex: 10 },
+  closeButton: { position: "absolute", top: 7, right: 10,  elevation: 10, zIndex: 999 },
   pageContent: { flex: 1, marginTop: 0 },
   profitGlowBlue: { shadowColor: "#00aaff", shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.9, shadowRadius: 20,
   elevation: 15,},

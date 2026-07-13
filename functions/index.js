@@ -8,7 +8,197 @@ if (!admin.apps.length) {
 function computeRankingScore(balance, startingBalance, rebuyInjectedTotal) {
   return balance - startingBalance - rebuyInjectedTotal;
 }
+ const REFERRAL_REWARDS = [
+  {
+    target: 3,
+    key: "3_referrals",
+    reward: {
+      freeTournamentTickets: 1,
+      referralPoints: 100,
+    },
+  },
+  {
+    target: 5,
+    key: "5_referrals",
+    reward: {
+      walletBonus: 5,
+      referralPoints: 250,
+    },
+  },
+  {
+    target: 10,
+    key: "10_referrals",
+    reward: {
+      badge: "Bronze",
+      referralPoints: 400,
+    },
+  },
+  {
+    target: 15,
+    key: "15_referrals",
+    reward: {
+      freeTournamentTickets: 2,
+      referralPoints: 600,
+    },
+  },
+  {
+    target: 20,
+    key: "20_referrals",
+    reward: {
+      badge: "Silver",
+      referralPoints: 900,
+    },
+  },
+  {
+    target: 30,
+    key: "30_referrals",
+    reward: {
+      walletBonus: 10,
+      referralPoints: 1500,
+    },
+  },
+  {
+    target: 50,
+    key: "50_referrals",
+    reward: {
+      badge: "VIP",
+      referralPoints: 2000,
+    },
+  },
+  {
+    target: 75,
+    key: "75_referrals",
+    reward: {
+      profileFrame: "Premium",
+      referralPoints: 3500,
+    },
+  },
+  {
+    target: 100,
+    key: "100_referrals",
+    reward: {
+      badge: "Gold",
+      referralPoints: 5000,
+    },
+  },
+  {
+    target: 150,
+    key: "150_referrals",
+    reward: {
+      walletBonus: 15,
+      referralPoints: 10000,
+    },
+  },
+  {
+    target: 250,
+    key: "250_referrals",
+    reward: {
+      ambassadorStatus: "Elite Ambassador",
+      referralPoints: 15000,
+    },
+  },
+  {
+    target: 500,
+    key: "500_referrals",
+    reward: {
+      ambassadorStatus: "GodSpeed Ambassador",
+      referralPoints: 50000,
+    },
+  },
+  {
+    target: 750,
+    key: "750_referrals",
+    reward: {
+      leaderRecognition: true,
+      referralPoints: 75000,
+    },
+  },
+  {
+    target: 1000,
+    key: "1000_referrals",
+    reward: {
+      partnerEligibility: true,
+      referralPoints: 100000,
+    },
+  },
+];
+async function processReferralRewards(uid, db) {
 
+  const userRef = db.doc(`users/${uid}`);
+  const snap = await userRef.get();
+
+  if (!snap.exists) return;
+
+  const user = snap.data();
+
+  const validReferrals = user.validReferrals || 0;
+ const claimed = [...(user.claimedRewards || [])];
+
+  const updates = {};
+
+  for (const item of REFERRAL_REWARDS) {
+
+    if (
+      validReferrals >= item.target &&
+      !claimed.includes(item.key)
+    ) {
+
+      claimed.push(item.key);
+
+      if (item.reward.freeTournamentTickets) {
+        updates.freeTournamentTickets =
+          admin.firestore.FieldValue.increment(
+            item.reward.freeTournamentTickets
+          );
+      }
+
+      if (item.reward.referralPoints) {
+        updates.referralPoints =
+          admin.firestore.FieldValue.increment(
+            item.reward.referralPoints
+          );
+      }
+
+      if (item.reward.walletBonus) {
+        updates["accounts.real.balance"] =
+          admin.firestore.FieldValue.increment(
+            item.reward.walletBonus
+          );
+      }
+
+      if (item.reward.badge) {
+        updates.referralBadge = item.reward.badge;
+      }
+if (item.reward.profileFrame) {
+  updates.profileFrame = item.reward.profileFrame;
+}
+
+if (item.reward.ambassadorStatus) {
+  updates.ambassadorStatus = item.reward.ambassadorStatus;
+}
+
+if (item.reward.leaderRecognition) {
+  updates.leaderRecognition = true;
+}
+
+if (item.reward.partnerEligibility) {
+  updates.partnerEligibility = true;
+}
+      await db.doc(`users/${uid}/activities/${item.key}`).set({
+  id: item.key,
+  text: `${item.key} reward unlocked 🎁`,
+  createdAt: admin.firestore.FieldValue.serverTimestamp(),
+});
+    }
+  }
+
+  if (claimed.length !== (user.claimedRewards || []).length) {
+
+    updates.claimedRewards = claimed;
+
+    await userRef.update(updates);
+  }
+}
 /* =========================================================
    1. AUTH TRIGGER → CREATE USER PROFILE
    ========================================================= */
@@ -57,7 +247,7 @@ exports.onAuthUserCreate = functions.auth.user().onCreate(async (user) => {
 
         claimedRewards: [],
         freeTournamentTickets: 0,
-
+referralBadge: null,
         profileCompleted: false,
         verified: false,
         verifiedAt: null,
@@ -144,6 +334,9 @@ exports.onTournamentJoin = functions.firestore
       referralPoints: admin.firestore.FieldValue.increment(50),
       coins: admin.firestore.FieldValue.increment(50),
     });
+// CHECK REFERRAL MILESTONE REWARDS
+await processReferralRewards(referrerId, db);
+
 
     await db.doc(`users/${referrerId}/activities/${uid}`).set({
       id: uid,
@@ -320,8 +513,6 @@ tx.update(participantRef, {
   rankingScore,
   updatedAt: admin.firestore.FieldValue.serverTimestamp(),
 });
-
-
     tx.set(closedTradeRef, {
       ...trade,
       result,
