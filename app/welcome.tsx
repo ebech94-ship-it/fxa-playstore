@@ -917,8 +917,7 @@ const handleLinkPassword = async () => {
       value={name}
       onChangeText={setName}
     />
-
-   {/* Phone Row */}
+{/* Phone Row */}
 <View
   style={{
     flexDirection: "row",
@@ -960,15 +959,14 @@ const handleLinkPassword = async () => {
     </Text>
   </TouchableOpacity>
 
-
   {/* PHONE INPUT */}
   <TextInput
     style={[
       styles.input,
       {
         flex: 1,
-        fontSize: 18,
         height: 52,
+        fontSize: 18,
       },
     ]}
     placeholder="Phone number"
@@ -984,7 +982,9 @@ const handleLinkPassword = async () => {
       setPhone(cleaned.replace(/[^0-9]/g, ""));
     }}
   />
-  <PasswordInput
+</View>
+
+<PasswordInput
   value={password}
   onChangeText={setPassword}
   placeholder="Enter password (min 6 characters)"
@@ -995,7 +995,6 @@ const handleLinkPassword = async () => {
   onChangeText={setConfirmPassword}
   placeholder="Confirm password"
 />
-</View>
 
 
 {/* SEND OTP */}
