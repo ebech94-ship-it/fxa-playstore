@@ -30,7 +30,10 @@ const admin = require("firebase-admin");
  global.fetch = fetch;
 
 // routes
-const payinRoutes = require("./routes/payin");
+const {
+  router: payinRoutes,
+  payinWebhookHandler,
+} = require("./routes/payin");
 
 const {
   router: payoutRoutes,
@@ -644,15 +647,19 @@ app.get("/admin/activity-history", authenticate, requireAdmin, async (req, res) 
 // ----------------------
 app.post("/api/webhook", async (req, res) => {
 
-  const event = req.body?.event;
+  const transactionId =
+    req.body?.data?.data?.attributes?.transaction_id;
 
-  console.log("🔥 Unified webhook:", event);
+  console.log("🔥 Unified webhook:", transactionId);
 
-  if (event === "payout_status_updated") {
+
+  if (transactionId?.startsWith("PAYOUT_")) {
     return payoutWebhookHandler(req, res);
   }
 
-  return payinRoutes(req, res);
+
+  return payinWebhookHandler(req, res);
+
 });
 
 app.use("/api/payin", payinRoutes);

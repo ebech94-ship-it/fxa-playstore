@@ -1124,13 +1124,15 @@ tx.status==="PENDING"
   <>
     <ActivityIndicator color="#fff" />
     <Text
-      style={[
-        styles.modalButtonText,
-        { marginLeft: 8 }
-      ]}
-    >
-      Sending withdrawal request...
-    </Text>
+  style={[
+    styles.modalButtonText,
+    { marginLeft: 8 }
+  ]}
+>
+  {isDeposit
+    ? "Creating payment session..."
+    : "Sending withdrawal request..."}
+</Text>
   </>
 ) : (
   <Text style={styles.modalButtonText}>
@@ -1230,7 +1232,9 @@ Amount: {Number(formData.amount).toFixed(2)}
   onPress={confirmAndSend}
   disabled={loading}
 >
-          <Text style={styles.modalButtonText}>{t.confirm}</Text>
+         <Text style={styles.modalButtonText}>
+  {isDeposit ? "Confirm Deposit" : "Confirm Withdrawal"}
+</Text>
         </TouchableOpacity>
       </View>
     </View>

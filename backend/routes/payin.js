@@ -176,7 +176,7 @@ originalAmount: amountNum,
 // ----------------------
 // WEBHOOK (PRODUCTION SAFE + AUDIT READY)
 // ----------------------
-router.post("/webhook", async (req, res) => {
+async function payinWebhookHandler(req,res){
 
   console.log("🔥🔥🔥 SWYCHR WEBHOOK HIT 🔥🔥🔥");
   console.log("Headers:", req.headers);
@@ -472,5 +472,5 @@ console.error(error.stack);
   received: true,
 });
   }
-});
+}
 module.exports = router;
