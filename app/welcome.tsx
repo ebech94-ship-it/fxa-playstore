@@ -83,7 +83,6 @@ const [showSetPassword, setShowSetPassword] = useState(false);
 const [linkPassword, setLinkPassword] = useState("");
 const [linkConfirmPassword, setLinkConfirmPassword] = useState("");
 const [pendingGoogleUser, setPendingGoogleUser] = useState<any>(null);
-const [pendingAuthUser, setPendingAuthUser] = useState<any>(null);
 
 const { setActiveAccount, setProfile } = useApp();
 
@@ -100,9 +99,7 @@ const normalizePhone = (phone:string) => {
 
 // Web: use proxy
 // Mobile: use scheme
-const redirectUri = makeRedirectUri({
-  scheme: "forextournamentsarena",
-});
+const redirectUri = makeRedirectUri();
 
 console.log("REDIRECT URI:", redirectUri);
 
@@ -217,6 +214,15 @@ const sendOTP = async () => {
   }
   if (!phone.trim()) {
   alert("Enter phone number");
+  return;
+}
+if (!isValidPassword(password)) {
+  alert("Password must be at least 6 characters");
+  return;
+}
+
+if (password !== confirmPassword) {
+  alert("Passwords do not match");
   return;
 }
 
@@ -589,55 +595,8 @@ if (!resolvedEmail) {
     setLoading(false);
   }
 };
-const handleCreatePhonePassword = async () => {
-  if (!isValidPassword(linkPassword)) {
-    return alert("Password must be at least 6 characters");
-  }
 
-  if (linkPassword !== linkConfirmPassword) {
-    return alert("Passwords do not match");
-  }
 
-  try {
-    setLoading(true);
-
-    const user = auth.currentUser;
-
-    if (!user) {
-      return alert("No user found");
-    }
-
-    const fakeEmail = `${callingCode}${phone}@fxarena.phone`;
-
-    const credential = EmailAuthProvider.credential(
-      fakeEmail,
-      linkPassword.trim()
-    );
-
-    await linkWithCredential(user, credential);
-
-    await setDoc(
-      doc(db, "users", user.uid),
-      {
-        passwordCreated: true,
-      },
-      { merge: true }
-    );
-
-    alert("Password created successfully 🎉");
-
-    setShowSetPassword(false);
-
-    await AsyncStorage.setItem("isLoggedIn", "true");
-
-    router.replace("/tradinglayout");
-
-  } catch (e) {
-    alert((e as Error).message);
-  } finally {
-    setLoading(false);
-  }
-};
 const handleLinkPassword = async () => {
   if (!isValidPassword(linkPassword)) {
     return alert("Password must be at least 6 characters. Example: 123456");
@@ -795,25 +754,22 @@ const handleLinkPassword = async () => {
     </TouchableOpacity>
 
     {/* GOOGLE SIGN IN */}
-   <TouchableOpacity
+  <TouchableOpacity
   style={[
     styles.button,
-    { backgroundColor: "#DB4437", opacity: accepted && !loading ? 1 : 0.4 },
+    {
+      backgroundColor: "#777",
+      opacity: 0.5,
+    },
   ]}
-onPress={() => accepted && !loading && request && promptAsync()}
-  disabled={!accepted || loading || !request}
+  disabled={true}
 >
-  {!request ? (
-    <ActivityIndicator color="#fff" />
-  ) : (
-    <>
-      <AntDesign name="google" size={16} color="white" />
-      <Text style={[styles.buttonText, { marginLeft: 8 }]}>
-        {loading ? "Processing..." : "Continue with Google"}
-      </Text>
-    </>
-  )}
+  <AntDesign name="google" size={16} color="white" />
+  <Text style={[styles.buttonText, { marginLeft: 8 }]}>
+    Google Sign Up Temporarily Disabled
+  </Text>
 </TouchableOpacity>
+
 
 
     {/* LOGIN */}
@@ -876,12 +832,7 @@ onPress={() => accepted && !loading && request && promptAsync()}
 />
     <TouchableOpacity
   style={[styles.button, { opacity: !loading ? 1 : 0.4 }]}
-  onPress={() =>
-    !loading &&
-    (pendingGoogleUser
-      ? handleLinkPassword()
-      : handleCreatePhonePassword())
-  }
+ onPress={() => !loading && handleLinkPassword()}
   disabled={loading}
 >
   <Text style={styles.buttonText}>
@@ -1033,6 +984,17 @@ onPress={() => accepted && !loading && request && promptAsync()}
       setPhone(cleaned.replace(/[^0-9]/g, ""));
     }}
   />
+  <PasswordInput
+  value={password}
+  onChangeText={setPassword}
+  placeholder="Enter password (min 6 characters)"
+/>
+
+<PasswordInput
+  value={confirmPassword}
+  onChangeText={setConfirmPassword}
+  placeholder="Confirm password"
+/>
 </View>
 
 
@@ -1091,10 +1053,10 @@ onPress={async () => {
 
     if (!user) {
       const result = await createUserWithEmailAndPassword(
-        auth,
-        `${callingCode}${phone}@fxarena.phone`,
-        Math.random().toString(36).slice(-8)
-      );
+  auth,
+  `${callingCode}${phone}@fxarena.phone`,
+  password.trim()
+);
 
       user = result.user;
     }
@@ -1112,16 +1074,15 @@ await setDoc(
  },
  {merge:true}
 );
+// Reset OTP UI
+setOtpFailed(false);
+setConfirmationResult(null);
+setOtp("");
+setPhone("");
 
-    setPendingAuthUser(user);
+await AsyncStorage.setItem("isLoggedIn", "true");
 
-    // Reset OTP UI
-    setOtpFailed(false);
-    setConfirmationResult(null);
-    setOtp("");
-    setPhone("");
-
-    setShowSetPassword(true);
+router.replace("/tradinglayout");
 
   } catch (e) {
     console.error("Phone fallback signup:", e);
