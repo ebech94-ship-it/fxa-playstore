@@ -2,7 +2,7 @@ import "dotenv/config";
 
 export default {
   expo: {
-    name: "Forex Tournaments Arena",
+    name: "FX-ARENA",
     slug: "forex-tournaments-arena",
     owner: "ebeh",
 

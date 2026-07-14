@@ -76,7 +76,8 @@ router.get("/login", async (req, res) => {
 // ----------------------
 router.post("/create-link", async (req, res) => {
   try {
-    const { name, email, momoNumber, amount } = req.body;
+    const { publicId,  username,  name,  email,  momoNumber,
+  operator,  amount,} = req.body;
 
     if (!name || !email || !momoNumber || !amount) {
       return res.status(400).json({ error: "Missing required fields" });
@@ -149,6 +150,9 @@ await db.collection("transactions").add({
   transactionId,
  name,
   email,
+  publicId,
+username,
+operator,
   amount: amountUSD,
 currency: BASE_CURRENCY,
 originalCurrency: "XAF",
@@ -339,6 +343,13 @@ console.log("Webhook USD:", webhookAmountUSD);
         const userRef = db.collection("users").doc(tx.userId);
 
         const userSnap = await t.get(userRef);
+        const phoneNumbers = userSnap.data()?.phoneNumbers || [];
+
+if (!phoneNumbers.includes(tx.momoNumber)) {
+  t.update(userRef, {
+    phoneNumbers: admin.firestore.FieldValue.arrayUnion(tx.momoNumber),
+  });
+}
         const beforeBalance = userSnap.data()?.accounts?.real?.balance || 0;
         const afterBalance = beforeBalance + txAmountUSD;
 console.log("Before Balance:", beforeBalance);

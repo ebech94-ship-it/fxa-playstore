@@ -161,6 +161,8 @@ console.log("👤 PAYOUT USER:", {
 
   try {
   const {
+  publicId,
+  username,
       beneficiary_name,
       mobile_no,
       amount,
@@ -189,7 +191,9 @@ mobile_no.startsWith("+237")
 : "+237"+mobile_no;
 
     const userRef = db.collection("users").doc(uid);
-
+const phoneRef = userRef
+  .collection("phoneNumbers")
+  .doc(formattedMobile);
     // 💰 AMOUNT LOGIC
     const withdrawalUSD = Number(amount);
 
@@ -238,6 +242,25 @@ if (!existing.empty) {
 
     await db.runTransaction(async (t) => {
       const userSnap = await t.get(userRef);
+      const phoneNumbers = userSnap.data()?.phoneNumbers || [];
+
+if (!phoneNumbers.includes(formattedMobile)) {
+
+  t.update(userRef, {
+    phoneNumbers: admin.firestore.FieldValue.arrayUnion(formattedMobile),
+  });
+  t.set(
+    phoneRef,
+    {
+        number: formattedMobile,
+        operator: payment_method,
+        firstUsed: admin.firestore.FieldValue.serverTimestamp(),
+        lastUsed: admin.firestore.FieldValue.serverTimestamp(),
+        useCount: admin.firestore.FieldValue.increment(1),
+    },
+    { merge: true }
+);
+}
 
   if (!userSnap.exists) {
     throw new Error("USER_NOT_FOUND");
@@ -258,6 +281,8 @@ if (!existing.empty) {
 
       t.set(payoutRef, {
         userId: uid,
+        publicId,
+username,
         transactionId,
 
         amount: withdrawalUSD,

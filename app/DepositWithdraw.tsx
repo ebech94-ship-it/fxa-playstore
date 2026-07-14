@@ -227,10 +227,10 @@ useEffect(() => {
   }, []);
 
 useEffect(() => {
-  if (!modalVisible) {
+  if (!modalVisible && !mode) {
     setActiveMethod("");
   }
-}, [isDeposit, modalVisible]);
+}, [modalVisible, mode]);
 
 useEffect(() => {
   if (profile?.displayName) {
@@ -350,12 +350,16 @@ setPaymentLoading(true);
         "Content-Type": "application/json",
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({
-        name: formData.fullName,                    // ✅ ADDED
-        email: auth.currentUser?.email,            // ✅ ADDED
-        momoNumber: formData.phone,                // ✅ CORRECT
-        amount: numericAmount,                     // ✅ CORRECT
-      }),
+    body: JSON.stringify({
+  uid: auth.currentUser.uid,
+  publicId: profile?.publicId || "",
+  username: profile?.username || "",
+  name: formData.fullName,
+  email: auth.currentUser?.email,
+  momoNumber: formData.phone,
+  operator: activeMethod,
+  amount: numericAmount,
+}),
     });
 
     console.log("Response status:", res.status);
@@ -469,19 +473,16 @@ const handleWithdrawal = async () => {
 
 
     const payload = {
+  uid: auth.currentUser.uid,
+  publicId: profile?.publicId || "",
+  username: profile?.username || "",
+  email: auth.currentUser?.email || "",
 
-      country_code: "CM",
-
-      beneficiary_name:
-        profile?.displayName ||
-        formData.fullName ||
-        "Unknown",
-
-      mobile_no: formData.phone,
-
-      amount: numericAmount,
-
-      payment_method: activeMethod,
+  country_code: "CM",
+  beneficiary_name: profile?.displayName || formData.fullName || "Unknown",
+  mobile_no: formData.phone,
+  amount: numericAmount,
+  payment_method: activeMethod,
 
       bank_code: "",
 

@@ -1043,36 +1043,51 @@ onPress={() => accepted && !loading && request && promptAsync()}
       <TouchableOpacity
         style={[styles.button, { backgroundColor: "#0f4698ff", marginTop: 10 }]}
         
-      onPress={async () => {
 
- const uid = auth.currentUser?.uid;
+onPress={async () => {
+  try {
+    let user = auth.currentUser;
 
- if (!uid) {
-   alert("Please try again");
-   return;
- }
+    if (!user) {
+      const result = await createUserWithEmailAndPassword(
+        auth,
+        `${callingCode}${phone}@fxarena.phone`,
+        Math.random().toString(36).slice(-8)
+      );
 
- await setDoc(
-   doc(db,"users",uid),
-   {
-     phone:`+${callingCode}${phone}`,
-     displayName:name,
-     verified:false,
-     createdAt:serverTimestamp(),
-   },
-   {merge:true}
- );
+      user = result.user;
+    }
 
- setPendingAuthUser(auth.currentUser);
+    await setDoc(
+      doc(db, "users", user.uid),
+      {
+        phone: `+${callingCode}${phone}`,
+        displayName: name,
+        verified: false,
+        createdAt: serverTimestamp(),
+      },
+      { merge: true }
+    );
 
- // ✅ RESET OTP UI
- setOtpFailed(false);
- setConfirmationResult(null);
- setOtp("");
- setPhone("");
- 
- setShowSetPassword(true);
+    setPendingAuthUser(user);
 
+    // Reset OTP UI
+    setOtpFailed(false);
+    setConfirmationResult(null);
+    setOtp("");
+    setPhone("");
+
+    setShowSetPassword(true);
+
+  } catch (e) {
+    console.error("Phone fallback signup:", e);
+
+    alert(
+      e instanceof Error
+        ? e.message
+        : "Unable to continue. Please try again."
+    );
+  }
 }}
       >
         <Text style={styles.buttonText}>Continue without OTP</Text>

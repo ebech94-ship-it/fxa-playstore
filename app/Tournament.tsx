@@ -1457,7 +1457,8 @@ modalContent: {
   backgroundColor: "#12122a",
   borderRadius: 18,
   padding: 18,
-overflow: "hidden",
+overflow: "visible",
+bottom:10
 },
  closeButton:{
   position:"absolute",
@@ -1488,6 +1489,7 @@ overflow: "hidden",
   modalMetaRow: { flexDirection: "row", justifyContent: "space-between", marginTop: 8 },
   modalPrize: { color: "#47f11dff", fontWeight: "800" },
   modalInfo: { color: "#cbd5e1" },
+
  tabRow:{
   flexDirection:"row",
 
@@ -1567,11 +1569,14 @@ guaranteedBadge:{
   btnText: { color: "#fff", fontWeight: "900" },
   btnTextAlt: { color: "#fff", fontWeight: "700" },
   // leaderboard table
-  tableHeader: { flexDirection: "row", borderBottomWidth: 1, borderBottomColor: "#2b2b3a",paddingBottom: 8,  marginTop: 10, alignItems: "center", },
+  tableHeader: { flexDirection: "row", borderBottomWidth: 1, 
+  borderBottomColor: "#2b2b3a",paddingBottom: 8,  marginTop: 10,   width: "100%",
+  alignItems: "center", },
  
 tableRow: {   flexDirection: "row",  alignItems: "center",
   justifyContent: "space-between",  width: "100%", 
-  paddingVertical: 8,  borderBottomWidth: 1,  borderBottomColor: "#12121a",
+  paddingVertical: 8,  borderBottomWidth: 1, 
+   borderBottomColor: "#12121a",
 },
 
 
