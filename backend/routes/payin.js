@@ -473,4 +473,9 @@ console.error(error.stack);
 });
   }
 }
-module.exports = router;
+router.post("/webhook", payinWebhookHandler);
+
+module.exports = {
+  router,
+  payinWebhookHandler,
+};
