@@ -305,8 +305,8 @@ console.log("REGISTER RESPONSE:", text);
 Alert.alert(
   "Registration Successful 🎉",
   `You have successfully registered for "${tour.name}".\n\nWe 
-  are opening your Account Switcher so you can switch to your
-   Tournament Account to join the conpetition.`
+have opened your Account Switcher so you can switch to your
+   Tournament Account to join the conpetition. Close this section completely!`
 );
 
 setTournamentCounts(prev => ({

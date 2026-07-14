@@ -10,8 +10,8 @@ import * as Google from "expo-auth-session/providers/google";
 
 import { useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
+import { DocumentData, QuerySnapshot } from "firebase/firestore";
 import { useApp } from "../app/AppContext";
-import { QuerySnapshot, DocumentData } from "firebase/firestore";
 
 import {
   createUserWithEmailAndPassword,

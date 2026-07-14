@@ -330,7 +330,8 @@ const serverBalance =
   participantBalances[tournamentId] ?? 0;
 
 if (serverBalance < stake) {
-  alert("Not enough tournament balance");
+  alert( "⚡ Not Enough Tournament Balance\n\n" +
+   "🔥 You can REBUY another chance from the Tournament Cards Section.");
   return;
 }
   try {
@@ -590,8 +591,61 @@ useEffect(() => {
 
   return () => unsub();
 }, [activeTournament, tournamentMeta]);
+// 🔥 TOURNAMENT REBUY DETECTION
+useEffect(() => {
+  if (
+    activeAccount.type !== "tournament" ||
+    !activeAccount.tournamentId
+  ) {
+    return;
+  }
+
+  const tournamentId = activeAccount.tournamentId;
+
+  const tournamentInfo = tournamentAccounts.find(
+    (t) => t.tournamentId === tournamentId
+  );
+
+  if (!tournamentInfo) return;
 
 
+  const startBalance = Number(
+    tournamentInfo.startingBalance || 0
+  );
+
+  const currentBalance =
+    participantBalances[tournamentId] ?? 0;
+
+
+  if (!startBalance) return;
+
+
+  const rebuyThreshold = startBalance * 0.5;
+
+
+  if (
+    currentBalance <= rebuyThreshold &&
+    !rebuyAlertShown.current[tournamentId]
+  ) {
+
+    rebuyAlertShown.current[tournamentId] = true;
+
+    alert(
+      "🏆 FX ARENA REBUY UNLOCKED\n\n" +
+      "Your tournament balance has dropped below 50% of the starting balance.\n\n" +
+      "🔥 The REBUY button is now ENABLED in the Tournament Card section.\n\n" +
+      "Reload your battle account and continue your climb on the leaderboard!"
+    );
+  }
+
+}, [
+  activeAccount,
+  participantBalances,
+  tournamentAccounts
+]);
+
+const [showRebuyAlert, setShowRebuyAlert] = useState(false);
+const rebuyAlertShown = useRef<Record<string, boolean>>({});
 
   
 const [tradeToast, setTradeToast] = useState<{
@@ -601,6 +655,9 @@ const [tradeToast, setTradeToast] = useState<{
   symbol: string;
   expiration: string;
 } | null>(null);
+
+
+
   // Menu
   const menuItems: { icon: string; label: string; color: string }[] = [
     { icon: "person-outline", label: "Profile", color: "#00FF00" },
