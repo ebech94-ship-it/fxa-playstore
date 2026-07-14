@@ -11,6 +11,7 @@ import * as Google from "expo-auth-session/providers/google";
 import { useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import { useApp } from "../app/AppContext";
+import { QuerySnapshot, DocumentData } from "firebase/firestore";
 
 import {
   createUserWithEmailAndPassword,
@@ -86,9 +87,16 @@ const [pendingAuthUser, setPendingAuthUser] = useState<any>(null);
 
 const { setActiveAccount, setProfile } = useApp();
 
-// 🔐 GOOGLE LOGIN SETUP (MOBILE / NATIVE)
-// 🔐 GOOGLE LOGIN SETUP (WEB COMPATIBLE)
 
+const normalizePhone = (phone:string) => {
+  let number = phone.replace(/\s+/g,"");
+
+  if (!number.startsWith("+")) {
+    number = `+${callingCode}${number}`;
+  }
+
+  return number;
+};
 
 // Web: use proxy
 // Mobile: use scheme
@@ -260,19 +268,36 @@ const verifyOTP = async () => {
     // OPTIONAL: save referral for phone users (IMPORTANT FIX)
     const user = auth.currentUser;
 
-    if (user && inviteRef) {
-      await setDoc(
-        doc(db, "users", user.uid),
-        {
-          referredBy: inviteRef,
-        },
-        { merge: true }
-      );
-    }
+if (user) {
+  const normalizedPhone = `+${callingCode}${phone}`;
 
-    await AsyncStorage.setItem("isLoggedIn", "true");
+  await setDoc(
+    doc(db, "users", user.uid),
+    {
+      phone: normalizedPhone,
+      displayName: name,
+      verified: true,
+      verifiedAt: serverTimestamp(),
+      createdAt: serverTimestamp(),
+    },
+    { merge: true }
+  );
 
-    router.replace("/tradinglayout");
+  // Save referral if exists
+  if (inviteRef) {
+    await setDoc(
+      doc(db, "users", user.uid),
+      {
+        referredBy: inviteRef,
+      },
+      { merge: true }
+    );
+  }
+}
+
+await AsyncStorage.setItem("isLoggedIn", "true");
+
+router.replace("/tradinglayout");
 
   } catch (error) {
     alert("Invalid OTP");
@@ -500,26 +525,42 @@ const handleLogin = async () => {
       // 2️⃣ OTHERWISE → LOOK UP USER IN FIRESTORE
      let q;
 
-if(identifier.startsWith("+") || /^[0-9]+$/.test(identifier)){
- q = query(
-  collection(db,"users"),
-  where("phone","==",identifier)
- );
-}else{
- q = query(
-  collection(db,"users"),
-  where("publicId","==",identifier)
- );
+if (identifier.includes("@")) {
+  resolvedEmail = identifier;
+} else {
+
+let snap: QuerySnapshot<DocumentData>;
+
+  // Try Public ID first
+  snap = await getDocs(
+    query(
+      collection(db, "users"),
+      where("publicId", "==", identifier.toUpperCase())
+    )
+  );
+
+  // If not found, try phone
+  if (snap.empty) {
+
+   let phoneNumber = normalizePhone(identifier);
+
+    snap = await getDocs(
+      query(
+        collection(db, "users"),
+        where("phone", "==", phoneNumber)
+      )
+    );
+  }
+
+  if (snap.empty) {
+    alert("User not found");
+    return;
+  }
+
+  resolvedEmail = snap.docs[0].data().email;
 }
 
-      const snap = await getDocs(q);
 
-      if (snap.empty) {
-        alert("User not found");
-        return;
-      }
-
-      resolvedEmail = snap.docs[0].data().email;
     }
 if (!resolvedEmail) {
   alert("Could not resolve email for this user");
@@ -1058,16 +1099,19 @@ onPress={async () => {
       user = result.user;
     }
 
-    await setDoc(
-      doc(db, "users", user.uid),
-      {
-        phone: `+${callingCode}${phone}`,
-        displayName: name,
-        verified: false,
-        createdAt: serverTimestamp(),
-      },
-      { merge: true }
-    );
+   const fakeEmail = `${callingCode}${phone}@fxarena.phone`;
+
+await setDoc(
+ doc(db, "users", user.uid),
+ {
+   phone: normalizePhone(phone),
+   email: fakeEmail,
+   displayName: name,
+   verified:false,
+   createdAt: serverTimestamp(),
+ },
+ {merge:true}
+);
 
     setPendingAuthUser(user);
 
