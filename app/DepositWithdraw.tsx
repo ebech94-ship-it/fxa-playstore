@@ -1269,6 +1269,8 @@ Amount: {Number(formData.amount).toFixed(2)}
        onPress={() => {
   setPaymentVisible(false);
   setDepositSuccessVisible(true);
+  setConfirmVisible(false);
+  setModalVisible(false);
 }}
       >
         <Text
@@ -1283,7 +1285,20 @@ Amount: {Number(formData.amount).toFixed(2)}
     </View>
 
     <WebView
-  source={{ uri: paymentUrl }}
+ source={{ uri: paymentUrl }}
+
+ onNavigationStateChange={(navState) => {
+   console.log("Payment URL:", navState.url);
+
+   if (
+     navState.url.includes("success") ||
+     navState.url.includes("completed") ||
+     navState.url.includes("callback")
+   ) {
+     setPaymentVisible(false);
+     setDepositSuccessVisible(true);
+   }
+ }}
   startInLoadingState
   javaScriptEnabled
   domStorageEnabled
@@ -1533,7 +1548,25 @@ Your payment request has been received.
 style={styles.confirmButton}
 onPress={() => {
   setDepositSuccessVisible(false);
-  router.push("/AccountSwitcher"); // or your wallet screen
+
+  setFormData({
+    fullName: profile?.displayName || "",
+    phone: "",
+    amount: "",
+    currency: "XAF",
+    code: "",
+    cardNumber: "",
+    expiry: "",
+    cvv: "",
+    walletAddress: "",
+    note: "",
+    operator: "",
+  });
+
+  setActiveMethod("");
+  setPaymentUrl("");
+
+  router.push("/AccountSwitcher");
 }}
 >
 
