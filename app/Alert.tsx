@@ -1,9 +1,14 @@
 import { useRouter } from "expo-router";
 import {
-  collection, doc,
-
+    collection,
+  doc,
+  getDocs,
   onSnapshot,
-  orderBy, query, setDoc, updateDoc
+  orderBy,
+  query,
+  setDoc,
+  updateDoc,
+  where,
 } from "firebase/firestore";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -41,23 +46,36 @@ const loadAlerts = useCallback(() => {
     orderBy("createdAt", "desc")
   );
 
- const unsub = onSnapshot(q, (snap) => {
-  const alertData: Alert[] = snap.docs.map((d) => ({
+const unsub = onSnapshot(q, async (snap) => {
+ 
+ const alertData: Alert[] = snap.docs.map((d) => ({
   id: d.id,
   ...(d.data() as Omit<Alert, "id">),
   createdAt: d.data().createdAt?.toDate?.() || new Date(),
 }));
 
-  const filtered = alertData.filter(
-  (a) => !a.deleted
+// 🔥 Load this user's deleted alerts
+const deletedSnap = await getDocs(
+  query(
+    collection(db, "userAlerts"),
+    where("userId", "==", authUser.uid),
+    where("deleted", "==", true)
+  )
 );
+
+const deletedIds = new Set(
+  deletedSnap.docs.map((d) => d.data().alertId)
+);
+
+// Hide deleted alerts
+const filtered = alertData.filter((a) => !deletedIds.has(a.id));
 
 setAlerts(filtered);
 
-  const unread = alertData.filter((a) => !a.read).length;
-  setUnreadCount(unread);
+const unread = filtered.filter((a) => !a.read).length;
+setUnreadCount(unread);
 
-  setLoading(false);
+setLoading(false);
 });
 
   return unsub;

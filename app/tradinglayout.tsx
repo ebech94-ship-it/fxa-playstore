@@ -1071,7 +1071,7 @@ profitGlowRed: { shadowColor: "#ff2222",  shadowOffset: { width: 0, height: 0 },
   // New switcher container: fixed height so AccountSwitcher doesn't jump.
   switcherContainer: { width: "100%", minHeight: 120,
     maxHeight: 160,  marginBottom: 12,
-    justifyContent: "center", flexDirection: "row", },
+    justifyContent: "center", flexDirection: "row",right: 0 },
 
 controlPanelSpacing:{
   paddingTop:35,

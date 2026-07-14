@@ -363,7 +363,7 @@ const styles = StyleSheet.create({
 container:{
     position:"absolute",
     top:8,
-    right:8,
+    right:2,
     zIndex:100,
     alignItems:"flex-end",
 },
