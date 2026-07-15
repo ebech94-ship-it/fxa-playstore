@@ -34,7 +34,7 @@ const {
   router: payinRoutes,
   payinWebhookHandler,
 } = require("./routes/payin");
-
+const settingsRoutes = require("./routes/settings");
 const {
   router: payoutRoutes,
   payoutWebhookHandler,
@@ -63,6 +63,7 @@ app.use(express.json({
     req.rawBody = buf.toString();
   }
 }));
+app.use("/api/settings", settingsRoutes);
 
 // Middleware to verify Firebase ID token
 const authenticate = async (req, res, next) => {
@@ -144,7 +145,7 @@ app.get("/invite", (req, res) => {
   const deepLink = `forextournamentsarena://welcome?ref=${ref}`;
 
   // Fallback URL (Vercel download page)
- const fallbackUrl = `https://forexarena.vercel.app/download?ref=${ref}`;
+ const fallbackUrl = `https://www.republic.beauty/download?ref=${ref}`;
   // Serve a simple HTML page that tries deep link first
   res.send(`
     <html>

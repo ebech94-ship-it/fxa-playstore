@@ -6,6 +6,8 @@ const fetch = require("node-fetch");
 
 
 const { XAF_TO_USD, BASE_CURRENCY } = require("../config/currency");
+const {  withdrawal } = require("../config/fees");
+
 // ----------------------
 // FIREBASE AUTH FOR PAYOUT
 // ----------------------
@@ -201,15 +203,33 @@ const phoneRef = userRef
       throw new Error("INVALID_AMOUNT");
     }
 
-    if (withdrawalUSD < 1) {
-      throw new Error("MIN_WITHDRAWAL_1_USD");
-    }
+    if (withdrawalUSD < withdrawal.minimumWithdrawalUSD) {
+  throw new Error("MIN_WITHDRAWAL_USD");
+}
 
     // 🔄 CONVERSION
     const grossXAF = Math.round(withdrawalUSD * XAF_TO_USD);
 
-    const feeUSD = Number((withdrawalUSD * 0.01).toFixed(2)); // 1%
-    const feeXAF = Math.round(feeUSD * XAF_TO_USD);
+   // 💰 FX ARENA WITHDRAWAL FEE
+
+let feeXAF;
+
+if (grossXAF <= withdrawal.percentageThresholdXAF) {
+
+  feeXAF = withdrawal.minimumFeeXAF;
+
+} else {
+
+  feeXAF = Math.round(
+    grossXAF * withdrawal.percentageFee
+  );
+
+}
+
+
+const feeUSD = Number(
+  (feeXAF / XAF_TO_USD).toFixed(2)
+);
 
     const netXAF = grossXAF - feeXAF;
 
@@ -241,30 +261,32 @@ if (!existing.empty) {
     let payoutRef;
 
     await db.runTransaction(async (t) => {
-      const userSnap = await t.get(userRef);
-      const phoneNumbers = userSnap.data()?.phoneNumbers || [];
+    const userSnap = await t.get(userRef);
+
+if (!userSnap.exists) {
+  throw new Error("USER_NOT_FOUND");
+}
+
+const phoneNumbers = userSnap.data()?.phoneNumbers || [];
 
 if (!phoneNumbers.includes(formattedMobile)) {
 
   t.update(userRef, {
     phoneNumbers: admin.firestore.FieldValue.arrayUnion(formattedMobile),
   });
+
   t.set(
     phoneRef,
     {
-        number: formattedMobile,
-        operator: payment_method,
-        firstUsed: admin.firestore.FieldValue.serverTimestamp(),
-        lastUsed: admin.firestore.FieldValue.serverTimestamp(),
-        useCount: admin.firestore.FieldValue.increment(1),
+      number: formattedMobile,
+      operator: payment_method,
+      firstUsed: admin.firestore.FieldValue.serverTimestamp(),
+      lastUsed: admin.firestore.FieldValue.serverTimestamp(),
+      useCount: admin.firestore.FieldValue.increment(1),
     },
     { merge: true }
-);
+  );
 }
-
-  if (!userSnap.exists) {
-    throw new Error("USER_NOT_FOUND");
-  }
       const balance = userSnap.data()?.accounts?.real?.balance || 0;
 
       if (balance < withdrawalUSD) {
@@ -287,8 +309,8 @@ username,
 
         amount: withdrawalUSD,
         fee: feeUSD,
-        netAmount: withdrawalUSD - feeUSD,
-        
+        netAmountUSD: withdrawalUSD - feeUSD,
+        netAmountXAF: netXAF,
          currency: BASE_CURRENCY, 
         payoutAmount: netXAF,
         payoutCurrency: "XAF",
@@ -317,7 +339,7 @@ accountpeMethod,
       t.set(
         treasuryRef,
         {
-          balance: admin.firestore.FieldValue.increment(feeUSD),
+        balance: admin.firestore.FieldValue.increment(withdrawalUSD),
           totalFees: admin.firestore.FieldValue.increment(feeUSD),
           lastUpdated:admin.firestore.FieldValue.serverTimestamp(),
         },
@@ -438,9 +460,9 @@ if (error.message === "PAYOUT_ALREADY_PROCESSING") {
     error: "You already have a withdrawal being processed."
   });
 }
-if (error.message === "MIN_WITHDRAWAL_1_USD") {
+if (error.message === "MIN_WITHDRAWAL_USD") {
   return res.status(400).json({
-    error: "Minimum withdrawal is 1 USD."
+    error: `Minimum withdrawal is ${withdrawal.minimumWithdrawalUSD} USD.`
   });
 }
    
@@ -658,28 +680,21 @@ console.log("ENTERED COMPLETED BLOCK");
 console.log("⚠️ Duplicate payout webhook ignored:", transaction_id);
           return;
         }
-
-
-
         const userRef =
           db.collection("users")
           .doc(payout.userId);
 
-
-
         const userSnap =
-          await t.get(userRef);
+  await t.get(userRef);
 
+if (!userSnap.exists) {
+  throw new Error("USER_NOT_FOUND");
+}
 
-
-        const user=userSnap.data();
-
-
+const user = userSnap.data();
 
         const beforeBalance =
           user?.accounts?.real?.balance || 0;
-
-
 
         // UPDATE PAYOUT
 
@@ -804,10 +819,14 @@ console.log("ENTERED FAILED/REFUND BLOCK");
           db.collection("users")
           .doc(payout.userId);
 
-        const userSnap =
-          await t.get(userRef);
+       const userSnap =
+  await t.get(userRef);
 
-        const user=userSnap.data();
+if (!userSnap.exists) {
+  throw new Error("USER_NOT_FOUND");
+}
+
+const user = userSnap.data();
 
         const beforeBalance =
           user?.accounts?.real?.balance || 0;

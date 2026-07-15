@@ -7,7 +7,7 @@ const { db } = require("../firebaseAdmin");
 const admin = require("firebase-admin");
 
 const { XAF_TO_USD, BASE_CURRENCY } = require("../config/currency");
-
+const { deposit } = require("../config/fees");
 // ----------------------
 // TOKEN CACHE
 // ----------------------
@@ -98,6 +98,12 @@ const amountNum = Number(amount);
 if (!amountNum || amountNum <= 0) {
   return res.status(400).json({ error: "Invalid amount" });
 }
+
+if (amountNum < deposit.minimumDepositXAF) {
+  return res.status(400).json({
+    error: `Minimum deposit is ${deposit.minimumDepositXAF} XAF`
+  });
+}
 const cleanPhone = String(momoNumber).replace(/\s/g, "");
 
 if (!/^(237)?6\d{8}$/.test(cleanPhone)) {
@@ -143,7 +149,13 @@ console.log("Callback URL:", process.env.PAYIN_WEBHOOK_URL);
   throw new Error("Payment link missing from provider response");
 }
 
-const amountUSD = amountNum / XAF_TO_USD;
+const providerFeeXAF = Math.round(
+  amountNum * deposit.providerFeePercentage
+);
+
+const netDepositXAF = amountNum - providerFeeXAF;
+
+const amountUSD = netDepositXAF / XAF_TO_USD;
 
 await db.collection("transactions").add({
   userId: uid,
@@ -155,8 +167,13 @@ username,
 operator,
   amount: amountUSD,
 currency: BASE_CURRENCY,
+
 originalCurrency: "XAF",
 originalAmount: amountNum,
+
+providerFeeXAF,
+providerFeePercentage: deposit.providerFeePercentage,
+netDepositXAF,
   momoNumber: cleanPhone,
   status: "pending",
   type: "deposit",
@@ -342,15 +359,19 @@ console.log("Webhook USD:", webhookAmountUSD);
 
         const userRef = db.collection("users").doc(tx.userId);
 
-        const userSnap = await t.get(userRef);
-        const phoneNumbers = userSnap.data()?.phoneNumbers || [];
+const userSnap = await t.get(userRef);
 
+if (!userSnap.exists) {
+  throw new Error("USER_NOT_FOUND");
+}
+
+const phoneNumbers = userSnap.data()?.phoneNumbers || [];
 if (!phoneNumbers.includes(tx.momoNumber)) {
   t.update(userRef, {
     phoneNumbers: admin.firestore.FieldValue.arrayUnion(tx.momoNumber),
   });
 }
-        const beforeBalance = userSnap.data()?.accounts?.real?.balance || 0;
+        const beforeBalance = userSnap.data().accounts?.real?.balance || 0;
         const afterBalance = beforeBalance + txAmountUSD;
 console.log("Before Balance:", beforeBalance);
 console.log("Deposit:", txAmountUSD);

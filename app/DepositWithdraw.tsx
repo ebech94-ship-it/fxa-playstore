@@ -53,7 +53,7 @@ const LIMITS = {
       max: 500000,
     },
     withdraw: { 
-      min: 600,
+      min: 3000,
     },
   },
   card: {
@@ -165,9 +165,15 @@ const { appSettings, profile } = useApp();
     note: "",
     operator: "",  
   });
-
+const [feeSettings, setFeeSettings] = useState({
+  minimumWithdrawalUSD: 10,
+  minimumFeeXAF: 600,
+  percentageThresholdXAF: 30000,
+  percentageFee: 0.02,
+});
   const isMobileMoney =
   activeMethod === "MTN" || activeMethod === "Orange";
+
 
 const methodLimits = LIMITS.mobile;
 const [lang, setLang] = useState<"en" | "fr">("en");
@@ -184,7 +190,25 @@ const convert = (amount: number, from: Currency, to: Currency) => {
   }));
 };
 
+useEffect(() => {
+  const loadFeeSettings = async () => {
+    try {
+      const API_BASE = process.env.EXPO_PUBLIC_API_BASE_URL;
+      if (!API_BASE) return;
 
+      const res = await fetch(`${API_BASE}/api/fees`);
+      const data = await res.json();
+
+      if (data?.withdrawal) {
+        setFeeSettings(data.withdrawal);
+      }
+    } catch (err) {
+      console.log("Using default fee settings", err);
+    }
+  };
+
+  loadFeeSettings();
+}, []);
 useEffect(() => {
   if (!currentUser) return;
 
@@ -695,21 +719,27 @@ setFormData({
   }
 };
 
-const minWithdrawDisplay = convert(
-  LIMITS.mobile.withdraw.min,
-  "XAF",
-  "USD"
-);
+const minWithdrawDisplay = feeSettings.minimumWithdrawalUSD;
 
   const t = TEXT[lang];
-const FEE_RATE = 0.01;
 
-// FRONTEND MIRROR OF BACKEND LOGIC
+
+// FRONTEND DISPLAY ONLY (MATCH BACKEND FEE LOGIC)
 const amount = Number(formData.amount || 0);
+// -------------------- Deposit Preview --------------------
+const depositProviderFee = Math.round(amount * 0.025 * 100) / 100;
+const depositTotalPay = amount + depositProviderFee;
 
 const grossXAF = Math.round(convert(amount, "USD", "XAF"));
-const feeXAF = Math.round(grossXAF * FEE_RATE);
+
+const feeXAF =
+  grossXAF <= feeSettings.percentageThresholdXAF
+    ? feeSettings.minimumFeeXAF
+    : Math.round(grossXAF * feeSettings.percentageFee);
+
 const netXAF = grossXAF - feeXAF;
+
+
 const getConvertedAmount = (amount: number) => {
   if (isDeposit) return convert(amount, "XAF", "USD");
   return convert(amount, "USD", "XAF");
@@ -999,10 +1029,10 @@ tx.status==="PENDING"
     </Text>
 
     <Text style={styles.amountValue}>
-      Fee (1%):
-      {" "}
-      -{feeXAF.toLocaleString()} XAF
-    </Text>
+  Fee:
+  {" "}
+  -{feeXAF.toLocaleString()} XAF
+</Text>
 
     <Text style={styles.amountValue}>
       You will receive:
@@ -1019,12 +1049,22 @@ tx.status==="PENDING"
       Deposit Preview
     </Text>
 
-   <Text style={styles.amountValue}>
-  You are paying:
+  <Text style={styles.amountValue}>
+  Deposit Amount: {amount.toLocaleString()} XAF
 </Text>
 
 <Text style={styles.amountValue}>
-  {Number(formData.amount).toLocaleString()} XAF
+  Payment Provider Fee (2.5%): {depositProviderFee.toLocaleString()} XAF
+</Text>
+
+<Text
+  style={{
+    color: "#FACC15",
+    fontWeight: "bold",
+    marginTop: 4,
+  }}
+>
+  Total You Pay: {depositTotalPay.toLocaleString()} XAF
 </Text>
 
 <Text
@@ -1035,8 +1075,17 @@ tx.status==="PENDING"
     marginTop: 8,
   }}
 >
-  You will receive ≈{" "}
-  {getConvertedAmount(Number(formData.amount)).toFixed(2)} USD
+  Wallet Credit: {amount.toLocaleString()} XAF
+</Text>
+
+<Text
+  style={{
+    color: "#9CA3AF",
+    marginTop: 6,
+    fontSize: 12,
+  }}
+>
+  ≈ {getConvertedAmount(amount).toFixed(2)} USD
 </Text>
   </View>
 )}
@@ -1067,7 +1116,7 @@ tx.status==="PENDING"
 <Text style={styles.amountHighlight}>
   {isMobileMoney
     ? `$${minWithdrawDisplay.toFixed(2)} (≈ ${methodLimits.withdraw.min.toLocaleString()} XAF)`
-    : `$${methodLimits.withdraw.min.toFixed(2)} USD`}
+    : `$${feeSettings.minimumWithdrawalUSD.toFixed(2)} USD`}
 </Text>
     </>
   )}
@@ -1168,8 +1217,9 @@ Amount: {Number(formData.amount).toFixed(2)}
     </Text>
 
     <Text style={{ color: "#FB7185", marginBottom: 10 }}>
-      Fee (1%): -{feeXAF.toLocaleString()} XAF
-    </Text>
+  Fee:
+  -{feeXAF.toLocaleString()} XAF
+</Text>
 
     <Text style={{ color: "#00ff99", marginBottom: 10 }}>
       You receive: {netXAF.toLocaleString()} XAF
@@ -1178,10 +1228,23 @@ Amount: {Number(formData.amount).toFixed(2)}
 )}
 
 {isDeposit && (
-  <Text style={{ color: "#00ff99", marginBottom: 10 }}>
-  You receive ≈{" "}
-  {getConvertedAmount(Number(formData.amount || 0)).toFixed(2)} USD
-</Text>
+  <>
+    <Text style={{ color: "#fff", marginBottom: 6 }}>
+      Deposit Amount: {amount.toLocaleString()} XAF
+    </Text>
+
+    <Text style={{ color: "#FB7185", marginBottom: 6 }}>
+      Payment Provider Fee (2.5%): {depositProviderFee.toLocaleString()} XAF
+    </Text>
+
+    <Text style={{ color: "#FACC15", marginBottom: 6 }}>
+      Total to Pay: {depositTotalPay.toLocaleString()} XAF
+    </Text>
+
+    <Text style={{ color: "#00ff99", marginBottom: 10 }}>
+      Wallet Credit: {amount.toLocaleString()} XAF
+    </Text>
+  </>
 )}
 
       <Text style={{ color: "#fff", marginBottom: 10 }}>
@@ -1196,8 +1259,13 @@ Amount: {Number(formData.amount).toFixed(2)}
       lineHeight: 18,
     }}
   >
-    After confirmation a secure payment page will open.
-    Complete the Mobile Money payment to fund your account.
+    After confirmation, a secure payment page will open. 
+    Complete your Mobile Money payment to fund your account.
+    
+Once your payment has been completed, you can close this window 
+and check your wallet balance or transaction history. 
+Your balance will update automatically after the payment
+ provider confirms your transaction.
   </Text>
 ) : (
   <Text

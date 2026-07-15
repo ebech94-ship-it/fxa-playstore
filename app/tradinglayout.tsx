@@ -158,7 +158,7 @@ const expiryPanResponder = useRef(
 
   const [expiration, setExpiration] = useState<string>("15s");
 
-  const expirationOptions: string[] = ["5s","8s","10s", "12s", "15s","20s","25s",  "30s", "1m", "5m", "15m", "30m", "1h"];
+  const expirationOptions: string[] = ["5s","10s", "12s", "15s","20s","25s",  "30s", "1m", "5m", "15m", "30m", "1h","2h", "4h"];
  
 
   const [profitPercent] = useState<number>(PAYOUT);
