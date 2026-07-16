@@ -1558,7 +1558,7 @@ Your balance will update automatically after the payment
   What happens next?
   {"\n\n"}
 
-  ✓ Funds have been reserved from your account
+  ✓ Funds have been deducted from your account
   {"\n"}
 
   ✓ Payment provider is processing your Mobile Money transfer
@@ -1567,7 +1567,7 @@ Your balance will update automatically after the payment
   ✓ You will receive confirmation when completed
   {"\n\n"}
 
-  You can safely close this page.
+  You can safely close this page and wait for a while, then check your account.
 </Text>
 
      <TouchableOpacity
@@ -1580,7 +1580,7 @@ Your balance will update automatically after the payment
   }}
 >
   <Text style={styles.confirmButtonText}>
-    Check Wallet
+    CLOSE
   </Text>
 </TouchableOpacity>
 
@@ -1636,7 +1636,8 @@ Your payment request has been received.
 {"\n"}
 ✓ Your wallet balance will increase automatically once the payment is confirmed.
 {"\n"}
-✓ You can now close this page and check your wallet or transaction history in a few moments.
+✓ You can now close  and leave this entire section, 
+then check your wallet after about 5 minutes time.
 </Text>
 
 
@@ -1668,7 +1669,7 @@ setOpenAccountSwitcher(true);
 >
 
 <Text style={styles.confirmButtonText}>
-Check Wallet
+CLOSE
 </Text>
 
 </TouchableOpacity>
