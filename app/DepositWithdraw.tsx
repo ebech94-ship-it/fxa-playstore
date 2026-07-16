@@ -150,7 +150,12 @@ const [depositSuccessVisible, setDepositSuccessVisible] = useState(false);
   const [confirmVisible, setConfirmVisible] = useState(false);
   const [loading, setLoading] = useState(false);
   const [transactions, setTransactions] = useState<any[]>([]);
-const { appSettings, profile } = useApp();
+const {
+  appSettings,
+  profile,
+  setOpenAccountSwitcher,
+  setSwitcherHintTournamentId,
+} = useApp();
 
   /* -------------------- Form State -------------------- */
   const [formData, setFormData] = useState({
@@ -1566,14 +1571,19 @@ Your balance will update automatically after the payment
   You can safely close this page.
 </Text>
 
-      <TouchableOpacity
-        style={styles.confirmButton}
-        onPress={() => setWithdrawalSuccessVisible(false)}
-      >
-        <Text style={styles.confirmButtonText}>
-          Done
-        </Text>
-      </TouchableOpacity>
+     <TouchableOpacity
+  style={styles.confirmButton}
+  onPress={() => {
+    setWithdrawalSuccessVisible(false);
+
+    setSwitcherHintTournamentId(null);
+    setOpenAccountSwitcher(true);
+  }}
+>
+  <Text style={styles.confirmButtonText}>
+    Check Wallet
+  </Text>
+</TouchableOpacity>
 
     </View>
   </View>
@@ -1653,7 +1663,8 @@ onPress={() => {
   setActiveMethod("");
   setPaymentUrl("");
 
-  router.push("/AccountSwitcher");
+ setSwitcherHintTournamentId(null);
+setOpenAccountSwitcher(true);
 }}
 >
 
