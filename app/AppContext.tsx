@@ -747,6 +747,7 @@ collectedFunds: Number(data.collectedFunds ?? 0),
 
   return unsub;
 }, []);
+
 useEffect(() => {
   if (tournaments.length === 0) return;
 
