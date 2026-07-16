@@ -187,10 +187,9 @@ await getPayoutMethodId(
 
 const uid = req.user.uid;
  
-const formattedMobile =
-mobile_no.startsWith("+237")
-? mobile_no
-: "+237"+mobile_no;
+const formattedMobile = mobile_no
+  .replace(/^\+237/, "")
+  .replace(/^237/, "");
 
     const userRef = db.collection("users").doc(uid);
 const phoneRef = userRef
@@ -234,10 +233,10 @@ const feeUSD = Number(
     const netXAF = grossXAF - feeXAF;
 
     // 🆔 TRANSACTION ID
- transactionId = `PAYOUT_${Date.now()}_${Math.random()
-.toString(36)
-.substring(2, 8)
-.toUpperCase()}`;
+transactionId = `W${Date.now()}${Math.random()
+  .toString(36)
+  .substring(2, 6)
+  .toUpperCase()}`;
 
     // 🚫 PREVENT DUPLICATE PROCESSING (MOVED UP - SAFE)
    const existing = await db
@@ -355,7 +354,7 @@ t.set(userTxRef, {
       t.set(
         treasuryRef,
         {
-        balance: admin.firestore.FieldValue.increment(withdrawalUSD),
+        balance: admin.firestore.FieldValue.increment(-withdrawalUSD),
           totalFees: admin.firestore.FieldValue.increment(feeUSD),
           lastUpdated:admin.firestore.FieldValue.serverTimestamp(),
         },
@@ -572,7 +571,7 @@ console.log("Expected Signature:", process.env.SWYCHR_WEBHOOK_SECRET);
 
     console.log("========== PAYOUT ATTRIBUTES ==========");
     console.log({
-     webhookStatus,
+   
   providerStatusCode,
       transaction_id,
       amount

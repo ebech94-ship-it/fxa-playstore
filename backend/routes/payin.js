@@ -257,18 +257,21 @@ console.log("✅ Webhook hash verified");
       return res.status(200).json({ received: true });
     }
 
-    const { status, transaction_id, amount } =
-      payload.data.data.attributes;
+   const {
+  status: providerStatusCode,
+  transaction_id,
+  amount, } = payload.data.data.attributes;
+
       console.log("========== WEBHOOK ATTRIBUTES ==========");
 console.log(JSON.stringify(payload.data.data.attributes, null, 2));
 console.log("=======================================");
 console.log({
-  webhookStatus,
+ 
   providerStatusCode,
   transaction_id,
   amount,
 });
-const providerStatus = Number(status);
+const providerStatus = Number(providerStatusCode);
 
 const mappedStatus =
   providerStatus === 0 ? "pending" :
@@ -279,7 +282,11 @@ const mappedStatus =
   providerStatus === 5 ? "declined" :
   providerStatus === 6 ? "rejected" :
   "unknown";
-    console.log("🔥 WEBHOOK:", { transaction_id, status });
+   console.log("🔥 WEBHOOK:", {
+  transaction_id,
+  providerStatusCode,
+  mappedStatus,
+});
 const snapshot = await db
   .collection("transactions")
   .where("transactionId", "==", transaction_id)
@@ -380,7 +387,7 @@ console.log("Deposit:", txAmountUSD.toFixed(2));
 console.log("After Balance:", afterBalance);
         // UPDATE USER
        t.update(userRef, {
-  "accounts.real.balance": admin.firestore.FieldValue.increment(txAmountUSD),
+  "accounts.real.balance": admin.firestore.FieldValue.increment(Number(txAmountUSD.toFixed(2))),
 });
 
         // UPDATE TREASURY
@@ -389,7 +396,7 @@ console.log("After Balance:", afterBalance);
         t.set(
           treasuryRef,
           {
-            balance: admin.firestore.FieldValue.increment(txAmountUSD),
+            balance: admin.firestore.FieldValue.increment(Number(txAmountUSD.toFixed(2))),
             lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
           },
           { merge: true }

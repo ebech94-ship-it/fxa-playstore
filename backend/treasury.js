@@ -55,14 +55,14 @@ const prizeModel = tournament.prizeModel || "sponsored";
     
 
     t.set(treasuryRef, {
-      balance: admin.firestore.FieldValue.increment(entryFee),
+      balance: admin.firestore.FieldValue.increment(Number(entryFee.toFixed(2))),
       lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
     }, { merge: true });
 
    t.set(cofferRef, {
   registration: {
     count: admin.firestore.FieldValue.increment(1),
-    totalAmount: admin.firestore.FieldValue.increment(entryFee),
+    totalAmount: admin.firestore.FieldValue.increment(Number(entryFee.toFixed(2)))
   },
   prizeModel,
   lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
@@ -73,12 +73,12 @@ if (prizeModel === "dynamic") {
 
 
     prizePool:
-      admin.firestore.FieldValue.increment(entryFee),
+      admin.firestore.FieldValue.increment(Number(entryFee.toFixed(2))),
   });
 }
   // tournament global update
   t.update(tournamentRef, {
-    collectedFunds: admin.firestore.FieldValue.increment(entryFee),
+    collectedFunds: admin.firestore.FieldValue.increment(Number(entryFee.toFixed(2))),
     lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
   });
 
@@ -229,7 +229,7 @@ if (rebuyFee > 0) {
 
   t.set(treasuryRef, {
     balance:
-      admin.firestore.FieldValue.increment(rebuyFee),
+      admin.firestore.FieldValue.increment(Number(rebuyFee.toFixed(2))),
     lastUpdated:
       admin.firestore.FieldValue.serverTimestamp(),
   }, { merge: true });
@@ -239,7 +239,7 @@ if (rebuyFee > 0) {
       count:
         admin.firestore.FieldValue.increment(1),
       totalAmount:
-        admin.firestore.FieldValue.increment(rebuyFee),
+        admin.firestore.FieldValue.increment(Number(rebuyFee.toFixed(2))),
     },
     lastUpdated:
       admin.firestore.FieldValue.serverTimestamp(),
