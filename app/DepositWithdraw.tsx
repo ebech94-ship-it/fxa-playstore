@@ -874,24 +874,46 @@ You can navigate and explore the app safely without making any real transactions
           </TouchableOpacity>
         ))}
       </View>
+
 <View style={styles.historyCard}>
 
 <Text style={styles.historyTitle}>
 Recent Transactions
 </Text>
 
+
+<ScrollView
+horizontal
+showsHorizontalScrollIndicator={false}
+>
+
+<View style={{minWidth:650}}>
+
+
 <View style={styles.tableHeader}>
 
-<Text style={[styles.col, {flex:2}]}>Type</Text>
+<Text style={[styles.col,{width:100}]}>
+Type
+</Text>
 
-<Text style={styles.col}>Method</Text>
+<Text style={[styles.col,{width:100}]}>
+Method
+</Text>
 
-<Text style={styles.col}>Amount</Text>
+<Text style={[styles.col,{width:100}]}>
+Amount
+</Text>
 
-<Text style={styles.col}>Status</Text>
-<Text style={[styles.col,{flex:1.4}]}>Time</Text>
+<Text style={[styles.col,{width:140}]}>
+Status
+</Text>
+
+<Text style={[styles.col,{width:140}]}>
+Time
+</Text>
 
 </View>
+
 
 {transactions.length === 0 ? (
 
@@ -901,75 +923,69 @@ No transactions yet.
 
 ) : (
 
-transactions.map(tx => (
+transactions.map(tx=>(
 
 <View
 key={tx.id}
 style={styles.tableRow}
 >
 
-<Text
-style={[
-styles.col,
-{flex:2},
-{
-color:
-tx.type==="deposit"
-? "#22c55e"
-: "#f87171"
-}
-]}
->
 
+<Text style={[styles.col,{width:100}]}>
 {tx.type?.toUpperCase()}
-
 </Text>
 
-<Text style={styles.col}>
+
+<Text style={[styles.col,{width:100}]}>
 {tx.method}
 </Text>
 
-<Text style={styles.col}>
+
+<Text style={[styles.col,{width:100}]}>
 {tx.amount}
 </Text>
 
-<Text
-style={[
+
+<Text style={[
 styles.col,
 {
+width:140,
 color:
 tx.status==="SUCCESS"
-? "#22c55e"
+?"#22c55e"
 :
 tx.status==="PENDING"
-? "#facc15"
-:
-"#ef4444"
+?"#facc15"
+:"#ef4444"
 }
-]}
->
-
+]}>
 {tx.status}
+</Text>
 
+
+<Text style={[styles.col,{width:140,fontSize:10}]}>
+{tx.createdAt?.toDate
+?
+tx.createdAt.toDate()
+.toLocaleString([],{
+day:"2-digit",
+month:"2-digit",
+hour:"2-digit",
+minute:"2-digit"
+})
+:"--"}
 </Text>
-<Text style={[styles.col,{flex:1.6,fontSize:10}]}>
-  {tx.createdAt?.toDate
-    ? tx.createdAt
-        .toDate()
-        .toLocaleString([], {
-          day: "2-digit",
-          month: "2-digit",
-          hour: "2-digit",
-          minute: "2-digit",
-        })
-    : "--"}
-</Text>
+
 
 </View>
 
 ))
 
 )}
+
+</View>
+
+</ScrollView>
 
 </View>
       {/* -------------------- MODAL -------------------- */}
@@ -1883,7 +1899,7 @@ borderBottomColor:"#222",
 },
 
 col:{
-flex:1,
+
 fontSize:11,
 color:"#ddd",
 textAlign:"center",

@@ -686,13 +686,29 @@ console.log("ABOUT TO CHECK MAPPED STATUS:", mappedStatus);
 console.log("🟡 ENTERED PENDING/PROCESSING UPDATE");
 
 await payoutRef.update({
-
-  status:mappedStatus,
-
-  lastUpdated:
-    admin.firestore.FieldValue.serverTimestamp(),
-
+  status: mappedStatus,
+  lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
 });
+
+await db
+  .collection("users")
+  .doc(payoutDataDebug.userId)
+  .collection("transactions")
+  .doc(transaction_id)
+  .set({
+    status:mappedStatus.toUpperCase(),
+    lastUpdated:admin.firestore.FieldValue.serverTimestamp(),
+  }, {merge:true});
+
+await db
+  .collection("users")
+  .doc(doc.data().userId)
+  .collection("transactions")
+  .doc(doc.id)
+  .set({
+    status: mappedStatus.toUpperCase(),
+    lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+  }, { merge: true });
 
 console.log("🟢 PAYOUT STATUS UPDATED TO:", mappedStatus);
 

@@ -410,21 +410,14 @@ console.log("After Balance:", afterBalance);
           processedWebhook: true,
         });
         
-        await db
-.collection("users")
-.doc(tx.userId)
-.collection("transactions")
-.doc(doc.id)
-.update({
-  status: "SUCCESS",
-  completedAt: admin.firestore.FieldValue.serverTimestamp(),
-});
+
+
 console.log("Updating transaction:", transaction_id);
         // PREPARE LEDGER DATA
         ledgerData = {
           userId: tx.userId,
           type: "deposit",
-          amount: txAmountUSD,
+          amount: Number(txAmountUSD.toFixed(2)),
           currency: "USD",
           beforeBalance,
           afterBalance,
@@ -433,11 +426,19 @@ console.log("Updating transaction:", transaction_id);
 
         treasuryData = {
           type: "deposit",
-          amount: txAmountUSD,
+         amount: Number(txAmountUSD.toFixed(2)),
           reference: transaction_id,
         };
       });
-
+  await db
+.collection("users")
+.doc(tx.userId)
+.collection("transactions")
+.doc(doc.id)
+.set({
+  status: "SUCCESS",
+  completedAt: admin.firestore.FieldValue.serverTimestamp(),
+}, { merge:true });
       // OUTSIDE TRANSACTION → SAFE LOGGING
 
       await db.collection("webhook_logs").add({
@@ -489,6 +490,16 @@ console.log("Final status:", verify.data().status);
     status: "failed",
     failedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
+  await db
+  .collection("users")
+  .doc(doc.data().userId)
+  .collection("transactions")
+ 
+  .doc(doc.id)
+  .set({
+    status:"FAILED",
+    failedAt: admin.firestore.FieldValue.serverTimestamp(),
+  }, {merge:true});
 
       await db.collection("webhook_logs").add({
         transactionId: transaction_id,

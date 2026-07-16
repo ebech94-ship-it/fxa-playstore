@@ -174,7 +174,7 @@ useEffect(() => {
   if (!user) return;
 
   const q = query(
-    collection(db, "users", user.uid, "deposits"),
+    collection(db, "users", user.uid, "transactions"),
     orderBy("createdAt", "desc")
   );
 
