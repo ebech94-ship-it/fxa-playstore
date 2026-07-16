@@ -151,26 +151,40 @@ console.log("Callback URL:", process.env.PAYIN_WEBHOOK_URL);
 
 const amountUSD = amountNum / XAF_TO_USD;
 
-await db.collection("transactions").add({
+const txRef = await db.collection("transactions").add({
   userId: uid,
   transactionId,
- name,
+  name,
   email,
   publicId,
-username,
-operator,
+  username,
+  operator,
   amount: Number(amountUSD.toFixed(2)),
-currency: BASE_CURRENCY,
-
-originalCurrency: "XAF",
-originalAmount: amountNum,
-
-providerFeeXAF,
-providerFeePercentage: deposit.providerFeePercentage,
-netDepositXAF,
+  currency: BASE_CURRENCY,
+  originalCurrency: "XAF",
+  originalAmount: amountNum,
   momoNumber: cleanPhone,
   status: "pending",
   type: "deposit",
+  createdAt: admin.firestore.FieldValue.serverTimestamp(),
+});
+
+
+// 🔥 USER TRANSACTION HISTORY FOR WALLET SCREEN
+await db
+.collection("users")
+.doc(uid)
+.collection("transactions")
+.doc(txRef.id)
+.set({
+  transactionId,
+  type: "deposit",
+  method: operator,
+  amount: Number(amountUSD.toFixed(2)),
+  currency: "USD",
+  originalAmount: amountNum,
+  originalCurrency: "XAF",
+  status: "PENDING",
   createdAt: admin.firestore.FieldValue.serverTimestamp(),
 });
 
@@ -387,6 +401,16 @@ console.log("After Balance:", afterBalance);
           completedAt: admin.firestore.FieldValue.serverTimestamp(),
           processedWebhook: true,
         });
+        
+        await db
+.collection("users")
+.doc(tx.userId)
+.collection("transactions")
+.doc(doc.id)
+.update({
+  status: "SUCCESS",
+  completedAt: admin.firestore.FieldValue.serverTimestamp(),
+});
 console.log("Updating transaction:", transaction_id);
         // PREPARE LEDGER DATA
         ledgerData = {

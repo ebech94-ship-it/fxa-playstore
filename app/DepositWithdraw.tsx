@@ -643,7 +643,6 @@ const submitForm = async () => {
     }
   } else {
    const grossXAF = convert(amount, "USD", "XAF");
-const netXAF = grossXAF * 0.99;
 
 const normalizedAmount = isMobileMoney
   ? netXAF
@@ -1111,7 +1110,7 @@ tx.status==="PENDING"
 {formData.amount !== "" &&
 (isDeposit
   ? Number(formData.amount) < methodLimits.deposit.min
-  : netXAF < methodLimits.withdraw.min) && (
+  : grossXAF < methodLimits.withdraw.min) && (
    <Text style={styles.amountError}>
   {t.belowMin}
 </Text>

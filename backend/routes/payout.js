@@ -333,6 +333,22 @@ accountpeMethod,
         processedWebhook:false,
       });
 
+      // 🔥 USER TRANSACTION HISTORY
+const userTxRef = db
+  .collection("users")
+  .doc(uid)
+  .collection("transactions")
+  .doc(transactionId);
+
+t.set(userTxRef, {
+  transactionId,
+  type: "withdraw",
+  method: payment_method,
+  amount: withdrawalUSD,
+  currency: "USD",
+  status: "PENDING",
+  createdAt: admin.firestore.FieldValue.serverTimestamp(),
+});
       // 💰 Treasury update
       const treasuryRef = db.collection("treasury").doc("main");
 
@@ -424,6 +440,8 @@ if (
       },
       { merge: true }
     );
+    console.log("Removing Treasury Fee:", payout.fee);
+console.log("===== END REFUND DEBUG =====");
 
   });
 
@@ -708,6 +726,16 @@ const user = userSnap.data();
             admin.firestore.FieldValue.serverTimestamp(),
 
         });
+t.update(
+  db.collection("users")
+  .doc(payout.userId)
+  .collection("transactions")
+  .doc(transaction_id),
+{
+  status:"SUCCESS",
+  completedAt:
+    admin.firestore.FieldValue.serverTimestamp(),
+});
 
 
 
@@ -807,14 +835,21 @@ console.log("ENTERED FAILED/REFUND BLOCK");
         const snap =
           await t.get(payoutRef);
 
-        const payout=snap.data();
+       const payout = snap.data();
 
-        if(!payout) return;
+if (!payout) return;
 
-        if(payout.processedWebhook){
+console.log("===== REFUND DEBUG =====");
+console.log("Webhook Status:", mappedStatus);
+console.log("Processed Webhook:", payout.processedWebhook);
+console.log("Payout Amount (USD):", payout.amount);
+console.log("Payout Fee (USD):", payout.fee);
+console.log("Payout Status Before:", payout.status);
 
-          return;
-        }
+if (payout.processedWebhook) {
+  console.log("Already processed. Ignoring.");
+  return;
+}
         const userRef =
           db.collection("users")
           .doc(payout.userId);
@@ -830,7 +865,7 @@ const user = userSnap.data();
 
         const beforeBalance =
           user?.accounts?.real?.balance || 0;
-
+console.log("User Balance Before Refund:", beforeBalance);
           // REFUND USER
 
         t.update(userRef,{
@@ -840,7 +875,7 @@ const user = userSnap.data();
               payout.amount
             ),
         });
-
+console.log("Refunding User:", payout.amount);
         // UPDATE PAYOUT
 
         t.update(payoutRef,{
@@ -849,6 +884,16 @@ const user = userSnap.data();
           refundedAt:
             admin.firestore.FieldValue.serverTimestamp(),
         });
+        t.update(
+  db.collection("users")
+  .doc(payout.userId)
+  .collection("transactions")
+  .doc(transaction_id),
+{
+  status:"FAILED",
+  updatedAt:
+    admin.firestore.FieldValue.serverTimestamp(),
+});
 
         // REMOVE RESERVED FEE
 
