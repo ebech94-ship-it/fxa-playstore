@@ -583,10 +583,10 @@ console.log("Expected Signature:", process.env.SWYCHR_WEBHOOK_SECRET);
 
     const providerStatus = Number(status);
 
-    const mappedStatus =
+   const mappedStatus =
   providerStatus === 0 ? "pending" :
   providerStatus === 1 ? "completed" :
-  providerStatus === 2 ? "failed" :
+  providerStatus === 2 ? "processing" :
   providerStatus === 3 ? "expired" :
   providerStatus === 4 ? "processing" :
   providerStatus === 5 ? "declined" :
