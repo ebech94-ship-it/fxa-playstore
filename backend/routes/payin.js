@@ -263,7 +263,8 @@ console.log("✅ Webhook hash verified");
 console.log(JSON.stringify(payload.data.data.attributes, null, 2));
 console.log("=======================================");
 console.log({
-  status,
+  webhookStatus,
+  providerStatusCode,
   transaction_id,
   amount,
 });

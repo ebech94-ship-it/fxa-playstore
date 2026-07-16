@@ -422,6 +422,19 @@ if (
     failedAt: admin.firestore.FieldValue.serverTimestamp(),
   });
 
+
+await db.collection("webhook_logs").add({
+  type: "provider_rejected",
+
+  transactionId,
+
+  providerResponse: payoutData,
+
+  providerHttpStatus: response.status,
+
+  receivedAt:
+    admin.firestore.FieldValue.serverTimestamp(),
+});
   await db.runTransaction(async (t) => {
 
     t.update(userRef, {
@@ -434,13 +447,13 @@ if (
     t.set(
       treasuryRef,
       {
-        balance: admin.firestore.FieldValue.increment(-feeUSD),
+        balance: admin.firestore.FieldValue.increment(-withdrawalUSD),
         totalFees: admin.firestore.FieldValue.increment(-feeUSD),
         lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
       },
       { merge: true }
     );
-    console.log("Removing Treasury Fee:", payout.fee);
+    console.log("Removing Treasury Fee:", feeUSD);
 console.log("===== END REFUND DEBUG =====");
 
   });
@@ -551,16 +564,16 @@ console.log("Expected Signature:", process.env.SWYCHR_WEBHOOK_SECRET);
     }
 
 
-    const {
-      status,
-      transaction_id,
-      amount
-    } = payload.data.data.attributes;
-
+ const {
+  status: providerStatusCode,
+  transaction_id,
+  amount,
+} = payload.data.data.attributes;
 
     console.log("========== PAYOUT ATTRIBUTES ==========");
     console.log({
-      status,
+     webhookStatus,
+  providerStatusCode,
       transaction_id,
       amount
     });
@@ -581,19 +594,39 @@ console.log("Expected Signature:", process.env.SWYCHR_WEBHOOK_SECRET);
     // SAME STYLE AS PAYIN
     // ----------------------
 
-    const providerStatus = Number(status);
+  let mappedStatus;
 
-   const mappedStatus =
-  providerStatus === 0 ? "pending" :
-  providerStatus === 1 ? "completed" :
-  providerStatus === 2 ? "processing" :
-  providerStatus === 3 ? "expired" :
-  providerStatus === 4 ? "processing" :
-  providerStatus === 5 ? "declined" :
-  providerStatus === 6 ? "rejected" :
-  "unknown";
+const providerStatus = Number(providerStatusCode);
 
-console.log("Provider Status:", providerStatus);
+if (
+  providerStatus === 0
+) {
+  mappedStatus = "pending";
+}
+else if (
+  providerStatus === 1
+) {
+  mappedStatus = "completed";
+}
+else if (
+  providerStatus === 2
+) {
+  mappedStatus = "processing";
+}
+else if (
+  providerStatus === 5 ||
+  providerStatus === 6
+) {
+  mappedStatus = "failed";
+}
+else {
+  mappedStatus = webhookStatus?.toLowerCase() || "unknown";
+}
+
+
+
+
+console.log("Provider Status Code:", providerStatusCode);
 console.log("Mapped Status:", mappedStatus);
     console.log("🔥 PAYOUT STATUS:", {
       transaction_id,
@@ -875,10 +908,12 @@ console.log("User Balance Before Refund:", beforeBalance);
               payout.amount
             ),
         });
+       
 console.log("Refunding User:", payout.amount);
         // UPDATE PAYOUT
 
         t.update(payoutRef,{
+        transactionId:transaction_id,
           status:mappedStatus,
           processedWebhook:true,
           refundedAt:
@@ -905,7 +940,7 @@ console.log("Refunding User:", payout.amount);
           {
             balance:
               admin.firestore.FieldValue.increment(
-                -payout.fee
+                -payout.amount
               ),
             totalFees:
               admin.firestore.FieldValue.increment(
@@ -942,13 +977,28 @@ console.log("Refunding User:", payout.amount);
       });
     }
 
-    await db.collection("webhook_logs").add({
-      transactionId:transaction_id,
-      status:mappedStatus,
-      rawPayload:payload,
-      receivedAt:
-        admin.firestore.FieldValue.serverTimestamp(),
-    });
+   await db.collection("webhook_logs").add({
+  transactionId: transaction_id,
+
+  providerStatusCode,
+
+  mappedStatus,
+
+  payoutStatusBefore: payoutDataDebug.status,
+
+  processedWebhook: payoutDataDebug.processedWebhook,
+
+  userId: payoutDataDebug.userId,
+
+  amount: payoutDataDebug.amount,
+
+  fee: payoutDataDebug.fee,
+
+  rawPayload: payload,
+
+  receivedAt:
+    admin.firestore.FieldValue.serverTimestamp(),
+});
 
     return res.status(200).json({
       received:true
