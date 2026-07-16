@@ -149,13 +149,7 @@ console.log("Callback URL:", process.env.PAYIN_WEBHOOK_URL);
   throw new Error("Payment link missing from provider response");
 }
 
-const providerFeeXAF = Math.round(
-  amountNum * deposit.providerFeePercentage
-);
-
-const netDepositXAF = amountNum - providerFeeXAF;
-
-const amountUSD = netDepositXAF / XAF_TO_USD;
+const amountUSD = amountNum / XAF_TO_USD;
 
 await db.collection("transactions").add({
   userId: uid,
