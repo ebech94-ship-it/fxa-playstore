@@ -645,7 +645,7 @@ const submitForm = async () => {
    const grossXAF = convert(amount, "USD", "XAF");
 
 const normalizedAmount = isMobileMoney
-  ? netXAF
+  ? grossXAF
   : amount;
 
 if (normalizedAmount < methodLimits.withdraw.min) {
