@@ -165,7 +165,7 @@ await db.collection("transactions").add({
   publicId,
 username,
 operator,
-  amount: amountUSD,
+  amount: Number(amountUSD.toFixed(2)),
 currency: BASE_CURRENCY,
 
 originalCurrency: "XAF",
@@ -337,25 +337,18 @@ console.log(tx);
         if (tx.processedWebhook) return;
 
         const txAmountUSD = Number(tx.amount);
-        const webhookAmountUSD = Number(amount) / XAF_TO_USD;
-console.log("Stored USD:", tx.amount);
+
+console.log("Stored USD:", txAmountUSD.toFixed(2));
 console.log("Stored XAF:", tx.originalAmount);
 console.log("Webhook XAF:", amount);
-console.log("Webhook USD:", webhookAmountUSD);
-        // VALIDATION
-        if (
-          tx.originalAmount &&
-          Math.abs(Number(amount) - Number(tx.originalAmount)) > 1
-        ) {
-          throw new Error("XAF amount mismatch");
-        }
 
-        if (
-          tx.amount &&
-          Math.abs(webhookAmountUSD - txAmountUSD) > 0.01
-        ) {
-          throw new Error("USD amount mismatch");
-        }
+// Validate ONLY the XAF amount
+if (
+  tx.originalAmount &&
+  Math.abs(Number(amount) - Number(tx.originalAmount)) > 1
+) {
+  throw new Error("XAF amount mismatch");
+}
 
         const userRef = db.collection("users").doc(tx.userId);
 
@@ -374,7 +367,7 @@ if (!phoneNumbers.includes(tx.momoNumber)) {
         const beforeBalance = userSnap.data().accounts?.real?.balance || 0;
         const afterBalance = beforeBalance + txAmountUSD;
 console.log("Before Balance:", beforeBalance);
-console.log("Deposit:", txAmountUSD);
+console.log("Deposit:", txAmountUSD.toFixed(2));
 console.log("After Balance:", afterBalance);
         // UPDATE USER
        t.update(userRef, {

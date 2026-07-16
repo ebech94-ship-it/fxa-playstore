@@ -54,6 +54,7 @@ const LIMITS = {
     },
     withdraw: { 
       min: 3000,
+      max: 500000,
     },
   },
   card: {
@@ -166,7 +167,7 @@ const { appSettings, profile } = useApp();
     operator: "",  
   });
 const [feeSettings, setFeeSettings] = useState({
-  minimumWithdrawalUSD: 10,
+  minimumWithdrawalUSD: 5,
   minimumFeeXAF: 600,
   percentageThresholdXAF: 30000,
   percentageFee: 0.02,
@@ -650,6 +651,13 @@ if (normalizedAmount < methodLimits.withdraw.min) {
   );
   return;
 }
+if (normalizedAmount > methodLimits.withdraw.max) {
+  Alert.alert(
+    "Maximum Withdrawal",
+    `Maximum withdrawal is ${methodLimits.withdraw.max.toLocaleString()} ${methodLimits.currency}`
+  );
+  return;
+}
   }
 
   // 📱 Phone validation
@@ -1023,7 +1031,7 @@ tx.status==="PENDING"
     </Text>
 
     <Text style={styles.amountValue}>
-      Gross:
+     Amount Deducted:
       {" "}
       {grossXAF.toLocaleString()} XAF
     </Text>
@@ -1034,11 +1042,16 @@ tx.status==="PENDING"
   -{feeXAF.toLocaleString()} XAF
 </Text>
 
-    <Text style={styles.amountValue}>
-      You will receive:
-      {" "}
-      {netXAF.toLocaleString()} XAF
-    </Text>
+   <Text
+  style={{
+    color: "#00ff99",
+    fontSize: 18,
+    fontWeight: "bold",
+    marginTop: 8,
+  }}
+>
+  You Will Receive: {netXAF.toLocaleString()} XAF
+</Text>
   </View>
 )}
 
@@ -1112,11 +1125,17 @@ tx.status==="PENDING"
     </>
   ) : (
     <>
-  {t.minWithdraw}:{" "}
+{t.minWithdraw}:{" "}
 <Text style={styles.amountHighlight}>
-  {isMobileMoney
-    ? `$${minWithdrawDisplay.toFixed(2)} (≈ ${methodLimits.withdraw.min.toLocaleString()} XAF)`
-    : `$${feeSettings.minimumWithdrawalUSD.toFixed(2)} USD`}
+  USD{minWithdrawDisplay.toFixed(2)}
+  {" "}
+  (≈ {methodLimits.withdraw.min.toLocaleString()} XAF)
+</Text>
+
+{" • "}
+
+<Text style={styles.amountHighlight}>
+  Max: {methodLimits.withdraw.max.toLocaleString()} XAF
 </Text>
     </>
   )}
@@ -1213,7 +1232,7 @@ Amount: {Number(formData.amount).toFixed(2)}
 {!isDeposit && (
   <>
     <Text style={{ color: "#00ffff", marginBottom: 10 }}>
-      Gross: {grossXAF.toLocaleString()} XAF
+      Withdrawal Amount: {grossXAF.toLocaleString()} XAF
     </Text>
 
     <Text style={{ color: "#FB7185", marginBottom: 10 }}>

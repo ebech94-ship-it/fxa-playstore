@@ -188,7 +188,7 @@ async processRebuy(t, userId, tournamentId) {
   const rebuyFee = Number(tournament.rebuyFee || 0);
   const wallet = user.accounts?.real?.balance || 0;
 
-  if (rebuyFee <= 0) throw new Error("Invalid rebuy fee");
+  if (rebuyFee < 0) throw new Error("Invalid rebuy fee");
 
   const currentBalance = Number(participant.balance || 0);
   const startingBalance = Number(participant.startingBalance || tournament.startingBalance || 0);
@@ -219,24 +219,33 @@ const newRebuys = [
 ];
 
   // wallet deduction
+ // wallet deduction + treasury + coffer (ONLY IF REBUY HAS A FEE)
+if (rebuyFee > 0) {
+
   t.update(userRef, {
-    "accounts.real.balance": admin.firestore.FieldValue.increment(-rebuyFee),
+    "accounts.real.balance":
+      admin.firestore.FieldValue.increment(-rebuyFee),
   });
 
-  // treasury
   t.set(treasuryRef, {
-    balance: admin.firestore.FieldValue.increment(rebuyFee),
-    lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+    balance:
+      admin.firestore.FieldValue.increment(rebuyFee),
+    lastUpdated:
+      admin.firestore.FieldValue.serverTimestamp(),
   }, { merge: true });
 
-  // coffer
   t.set(cofferRef, {
     rebuys: {
-      count: admin.firestore.FieldValue.increment(1),
-      totalAmount: admin.firestore.FieldValue.increment(rebuyFee),
+      count:
+        admin.firestore.FieldValue.increment(1),
+      totalAmount:
+        admin.firestore.FieldValue.increment(rebuyFee),
     },
-    lastUpdated: admin.firestore.FieldValue.serverTimestamp(),
+    lastUpdated:
+      admin.firestore.FieldValue.serverTimestamp(),
   }, { merge: true });
+
+}
 
   // 🟡 PARTICIPANT CACHE (UI ONLY)
  t.set(participantRef, {
