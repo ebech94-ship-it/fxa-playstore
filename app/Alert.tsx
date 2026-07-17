@@ -12,20 +12,22 @@ import {
 } from "firebase/firestore";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  ActivityIndicator, Animated, Easing, FlatList, StyleSheet, Text, TouchableOpacity,
+  ActivityIndicator,  Image, Animated, Easing, FlatList, StyleSheet, Text, TouchableOpacity,
   View,
 } from "react-native";
 import { useApp } from "../app/AppContext";
 import { db } from "../firebaseConfig";
 
 type Alert = {
-  id: string;
-  message?: string;
-  deleted?: boolean;
-  type?: string;
-  tournamentId?: string;
-  read?: boolean;
-  createdAt?: any;
+  id:string;
+  message?:string;
+  imageUrl?:string;   // <-- attachment
+  title?:string;
+  deleted?:boolean;
+  type?:string;
+  tournamentId?:string;
+  read?:boolean;
+  createdAt?:any;
 };
 
 export default function AlertScreen() {
@@ -247,16 +249,23 @@ const AlertCard = ({ item, router, expanded, onToggle, onRead, onDelete }: any) 
         <Text style={styles.msg} numberOfLines={expanded ? undefined : 2}>
           {item.message}
         </Text>
-
-        <Text style={styles.date}>
-          {item.createdAt?.toDate?.().toLocaleString?.() || "—"}
-        </Text>
+{item.imageUrl && (
+  <Image
+    source={{ uri: item.imageUrl }}
+    style={styles.attachmentImage}
+  />
+)}
+     
 
         {item.type !== "tournament" && (
           <Text style={styles.expandHint}>
             Tap to read
           </Text>
         )}
+        <View style={styles.footerRow}>
+      <Text style={styles.date}>
+  Sent: {item.createdAt?.toLocaleString?.() || "—"}
+</Text>  
      <TouchableOpacity
   onPress={() => onDelete(item.id)}
   style={{ marginTop: 10 }}
@@ -265,6 +274,8 @@ const AlertCard = ({ item, router, expanded, onToggle, onRead, onDelete }: any) 
     Delete
   </Text>
 </TouchableOpacity>
+</View>
+
       </TouchableOpacity>
      
     </View>
@@ -294,8 +305,12 @@ const styles = StyleSheet.create({
 
   msg: { color: "#fff", marginTop: 6, fontSize: 15 },
 
-  date: { color: "#aaa", marginTop: 6, fontSize: 12 },
-
+date:{
+  color:"#888",
+  marginTop:8,
+  fontSize:12,
+  fontStyle:"italic",
+},
   expandHint: {
     color: "#777",
     fontSize: 11,
@@ -320,4 +335,28 @@ const styles = StyleSheet.create({
     color: "#777",
     fontSize: 16,
   },
+  attachmentImage:{
+  width:"100%",
+  height:200,
+  borderRadius:14,
+  marginTop:12,
+  backgroundColor:"#222",
+},
+footerRow:{
+  flexDirection:"row",
+  justifyContent:"space-between",
+  alignItems:"center",
+  marginTop:10,
+},
+
+deleteBtn:{
+  paddingHorizontal:12,
+  paddingVertical:5,
+},
+
+deleteText:{
+  color:"#ff4d67",
+  fontSize:13,
+  fontWeight:"600",
+},
 });
