@@ -122,6 +122,20 @@ function computeRankingScore(balance, startingBalance, rebuyInjectedTotal) {
     },
   },
 ];
+async function getUserByPublicId(db, publicId) {
+  if (!publicId || typeof publicId !== "string") return null;
+
+  const snap = await db
+    .collection("users")
+    .where("publicId", "==", publicId)
+    .limit(1)
+    .get();
+
+  if (snap.empty) return null;
+
+  return snap.docs[0];
+}
+
 async function processReferralRewards(uid, db) {
 
   const userRef = db.doc(`users/${uid}`);
@@ -282,18 +296,20 @@ exports.onUserDocumentCreate = functions.firestore
     if (referredBy === uid) return;
     if (typeof referredBy !== "string") return;
 
-    const activityRef = db.doc(`users/${referredBy}/activities/${uid}`);
+  const refUserSnap = await getUserByPublicId(db, referredBy);
 
+if (!refUserSnap) return;
+
+const refUserRef = refUserSnap.ref;
+
+const activityRef = db.doc(
+  `users/${refUserRef.id}/activities/${uid}`
+);
     await activityRef.set({
       id: uid,
       text: "New user joined using your link",
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
-
-    const refUserRef = db.doc(`users/${referredBy}`);
-    const refUserSnap = await refUserRef.get();
-
-    if (!refUserSnap.exists) return;
 
     const refData = refUserSnap.data();
 
@@ -320,13 +336,14 @@ exports.onTournamentJoin = functions.firestore
     const referrerId = data?.referrerId;
 
     if (!referrerId) return;
-    if (referrerId === uid) return;
-    if (typeof referrerId !== "string") return;
+   if (referrerId === uid) return;
+if (typeof referrerId !== "string") return;
 
-    const refUserRef = db.doc(`users/${referrerId}`);
-    const refUserSnap = await refUserRef.get();
+const refUserSnap = await getUserByPublicId(db, referrerId);
 
-    if (!refUserSnap.exists) return;
+if (!refUserSnap) return;
+
+const refUserRef = refUserSnap.ref;
 
     await refUserRef.update({
       validReferrals: admin.firestore.FieldValue.increment(1),
@@ -335,10 +352,10 @@ exports.onTournamentJoin = functions.firestore
       coins: admin.firestore.FieldValue.increment(50),
     });
 // CHECK REFERRAL MILESTONE REWARDS
-await processReferralRewards(referrerId, db);
+await processReferralRewards(refUserRef.id, db);
 
 
-    await db.doc(`users/${referrerId}/activities/${uid}`).set({
+   await db.doc(`users/${refUserRef.id}/activities/${uid}`).set({
       id: uid,
       text: "Referral joined first tournament 🎯",
       createdAt: admin.firestore.FieldValue.serverTimestamp(),

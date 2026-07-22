@@ -1,8 +1,10 @@
 import { getAuth } from "firebase/auth";
-import { useState } from "react";
+import { useState, useEffect  } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { claimReward } from "../../services/rewardService";
 import RewardBagsStrip from "./RewardBagsStrip";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "../../firebaseConfig";
 
 type Props = {
   validReferrals: number;
@@ -93,6 +95,32 @@ const rewards = [
     target: 1000,
   },
 ];
+useEffect(() => {
+
+ if(!uid) return;
+
+ const loadClaims = async()=>{
+
+  const snap = await getDoc(doc(db,"users",uid));
+
+  if(snap.exists()){
+
+    const data=snap.data();
+
+    const map:any={};
+
+    (data.claimedRewards || []).forEach((item:string)=>{
+      map[item]=true;
+    });
+
+    setClaimed(map);
+  }
+
+ };
+
+ loadClaims();
+
+},[uid]);
 
   const handleClaim = async (item: any) => {
     if (!uid) return;

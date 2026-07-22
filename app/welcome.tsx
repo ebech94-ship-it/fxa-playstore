@@ -1069,6 +1069,7 @@ await setDoc(
    email: fakeEmail,
    displayName: name,
    verified:false,
+    referredBy: inviteRef || null,
    createdAt: serverTimestamp(),
  },
  {merge:true}
