@@ -1002,16 +1002,14 @@ flexShrink: 1,
   }}
   behavior={Platform.OS === "ios" ? "padding" : "height"}
 >
-  <ScrollView
-    contentContainerStyle={{
-      flexGrow: 1,
-      justifyContent: "center",
-      alignItems: "center",
-      padding: 10,
-    }}
-    showsVerticalScrollIndicator={false}
-    bounces={false}
-  >
+<View
+  style={{
+    flex:1,
+    justifyContent:"center",
+    alignItems:"center",
+    padding:10,
+  }}
+>
 
     <Pressable
       style={styles.modalContent}
@@ -1030,12 +1028,12 @@ flexShrink: 1,
           <Ionicons name="close" size={26} color="#fff" />
         </Pressable>
 
-      {selectedTournament && (
+    
+{selectedTournament && (
 <View
   style={{
-    flex: 1,
- 
-    width: "100%",
+     width: "100%",
+     flex:1,
   }}
 >
 
@@ -1127,18 +1125,26 @@ flexShrink: 1,
   {/* ONLY THIS AREA SCROLLS */}
 <View
   style={{
-    flex: 1,
-   
-    width: "100%",
+    flex:1,
+    width:"100%",
+    minHeight:0,
   }}
 >
 
    {viewTab === "info" ? (
 
+<ScrollView
+  style={{width:"100%"}}
+  contentContainerStyle={{
+    paddingBottom:40,
+  }}
+  showsVerticalScrollIndicator={true}
+>
+
   <View
     style={{
-      width: "100%",
-      paddingVertical: 12,
+      width:"100%",
+      paddingVertical:12,
       paddingHorizontal: 4,
       paddingBottom: 30,
     }}
@@ -1202,7 +1208,7 @@ flexShrink: 1,
 
             <View style={styles.rankHeaderRow}>
               <Text
-                style={[
+                style={[ styles.rankCell,
                   styles.rankHeaderCol,
                   { flex: 1 },
                 ]}
@@ -1211,7 +1217,7 @@ flexShrink: 1,
               </Text>
 
               <Text
-                style={[
+                style={[styles.rankLevel,
                   styles.rankHeaderCol,
                   { flex: 2 },
                 ]}
@@ -1223,6 +1229,7 @@ flexShrink: 1,
 
               <Text
                 style={[
+                 styles.rankPrize,
                   styles.rankHeaderCol,
                   { flex: 1 },
                 ]}
@@ -1281,17 +1288,21 @@ flexShrink: 1,
           </>
         )}
 <View style={{ height: 32 }} />
+
     </View>
+
+</ScrollView>
 
     ) : (
 
 <View style={{ width: "100%" }}>
-  <ScrollView
-    horizontal
-    showsHorizontalScrollIndicator={true}
-    nestedScrollEnabled
-    directionalLockEnabled={false}
-  >
+ <ScrollView
+  horizontal
+  showsHorizontalScrollIndicator={true}
+  nestedScrollEnabled={true}
+  directionalLockEnabled={true}
+  bounces={false}
+>
 
     <View style={{ minWidth: 750 }}>
 
@@ -1307,7 +1318,7 @@ flexShrink: 1,
           <>
             {renderPinnedUserRow(sortedLeaderboard)}
 
-            <View style={styles.tableHeader}>
+            <View style={styles.tableRow}>
               <Text style={[styles.tableColSmall, styles.headerText]}>#</Text>
               <Text style={[styles.tableColName, styles.headerText]}>
                 Participant
@@ -1415,7 +1426,7 @@ flexShrink: 1,
 )}
             </Pressable>
 
-    </ScrollView>
+    </View>
 
   </KeyboardAvoidingView>
 </Pressable>
@@ -1452,14 +1463,14 @@ disabledBtn: { opacity: 0.45 },
   justifyContent: "center", alignItems: "center" },
 modalContent: {
   width: "96%",
-  height: "92%",
+  height: "85%",
   maxWidth: 650,
   backgroundColor: "#12122a",
   borderRadius: 18,
-  padding: 18,
-overflow: "visible",
-bottom:10
+  padding: 12,
+  overflow:"hidden",
 },
+
  closeButton:{
   position:"absolute",
   top:12,
@@ -1518,11 +1529,13 @@ bottom:10
 rankCell:{
     color:"#fff",
     fontWeight:"700",
+    textAlign:"center",
 },
 
 rankLevel:{
     color:"#facc15",
     fontWeight:"800",
+    textAlign:"center",
 },
 
 rankPrize:{
@@ -1636,13 +1649,13 @@ rankHeaderRow: {
   borderBottomWidth: 1,
   borderBottomColor: '#2b2b3a',
   alignItems: 'center',
-  justifyContent: 'space-between',
+  justifyContent: 'flex-start',
 },
 
 rankHeaderCol: {
   color: '#cbd5e1',
   fontWeight: '900',
-  textAlign: 'center',
+
   flex: 1, // make column flexible by default
 },
 cardStatsRow: {

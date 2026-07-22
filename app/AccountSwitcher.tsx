@@ -1,7 +1,8 @@
 // components/AccountSwitcher.tsx
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useEffect, useState } from "react";
+import { useEffect,useContext, useState } from "react";
+
 import type { AccountType, TournamentAccount } from "./AppContext"; // keep type imports separate if you want
 import { useApp } from "./AppContext";
 // AccountSwitcher.tsx
@@ -351,7 +352,7 @@ const t = tournamentAccounts.find(
           </Text>
         </View>
       )}
-    </View>
+   </View>
   );
 }
 const { width: SCREEN_WIDTH } = Dimensions.get("window");

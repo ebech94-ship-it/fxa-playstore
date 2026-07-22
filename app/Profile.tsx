@@ -2,7 +2,10 @@ import { Ionicons } from "@expo/vector-icons";
   
 
 import { useApp } from "@/app/AppContext";
+import Constants from "expo-constants";
 import * as ImagePicker from "expo-image-picker";
+import * as Updates from "expo-updates";
+
 import { useRouter } from "expo-router";
 
 import { deleteUser, getAuth } from "firebase/auth";
@@ -116,6 +119,9 @@ const [profileLocked, setProfileLocked] = useState(false);
   });
 
   const [saving, setSaving] = useState(false);
+const [checkingUpdate, setCheckingUpdate] = useState(false);
+const [updateStatus, setUpdateStatus] = useState("");
+const [updateProgress, setUpdateProgress] = useState(0);
 
 const formHydratedRef = useRef(false);
 
@@ -138,7 +144,10 @@ useEffect(() => {
 
   setForm({
     displayName: safeProfile.displayName,
-    username: safeProfile.username,
+    username:
+  safeProfile.username === "New User"
+    ? ""
+    : safeProfile.username,
     email: user?.email ?? "",
     phone: safeProfile.phone,
     country: safeProfile.country,
@@ -446,6 +455,146 @@ router.replace("/welcome");
   }
 };
 
+const checkForUpdates = async () => {
+  if (checkingUpdate) return;
+
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+  try {
+    setCheckingUpdate(true);
+    setUpdateProgress(0);
+    setUpdateStatus("🔍 Checking for updates...");
+
+     // Allow WebView testing without blocking
+    if (__DEV__) {
+      console.log("Development mode: OTA check skipped");
+
+      setTimeout(() => {
+        setCheckingUpdate(false);
+        setUpdateStatus("");
+        Alert.alert(
+          "App Up To Date",
+          "No updates available in development mode."
+        );
+      }, 2000);
+
+      return;
+    }
+
+    const update = await Promise.race([
+      Updates.checkForUpdateAsync(),
+
+      new Promise((_, reject) => {
+        timeoutId = setTimeout(() => {
+          reject(new Error("timeout"));
+        }, 30000);
+      }),
+    ]) as Updates.UpdateCheckResult;
+
+
+    if (timeoutId) clearTimeout(timeoutId);
+
+
+    // No update found
+    if (!update.isAvailable) {
+      setUpdateStatus("");
+      setUpdateProgress(0);
+
+      Alert.alert(
+        "App Up To Date",
+        "You're already using the latest version of FX ARENA."
+      );
+
+      return;
+    }
+
+
+    setUpdateStatus(
+      "⬇️ Downloading latest FX ARENA update..."
+    );
+
+
+    let progress = 0;
+
+    const timer = setInterval(() => {
+      progress += 10;
+
+      if (progress >= 90) {
+        clearInterval(timer);
+        return;
+      }
+
+      setUpdateProgress(progress);
+
+    }, 500);
+
+
+    await Updates.fetchUpdateAsync();
+
+
+    clearInterval(timer);
+
+    setUpdateProgress(100);
+
+    setUpdateStatus(
+      "⚙️ Update installed. Ready to restart."
+    );
+
+
+    Alert.alert(
+      "Update Ready",
+      "New FX ARENA improvements have been downloaded.",
+      [
+        {
+          text: "Later",
+          style: "cancel",
+        },
+        {
+          text: "Restart Now",
+          onPress: async () => {
+            await Updates.reloadAsync();
+          },
+        },
+      ]
+    );
+
+
+  } catch (error) {
+
+    console.log("Update check error:", error);
+
+
+    if (timeoutId) clearTimeout(timeoutId);
+
+
+    setUpdateStatus("");
+    setUpdateProgress(0);
+
+
+    // Treat timeout as no update available
+    if (error instanceof Error && error.message === "timeout") {
+
+      Alert.alert(
+        "App Up To Date",
+        "No new updates are available right now."
+      );
+
+    } else {
+
+      Alert.alert(
+        "Update Error",
+        "Unable to check for updates."
+      );
+
+    }
+
+
+  } finally {
+
+    setCheckingUpdate(false);
+
+  }
+};
 
 // handleSupportSend
 const handleSupportSend = async () => {
@@ -1067,7 +1216,192 @@ if (!profileLoaded) {
  </ScrollView>
   </KeyboardAvoidingView>
 )}
+{/* ---------- APP UPDATES ---------- */}
 
+<Text style={[styles.sectionTitle, { marginTop: 25 }]}>
+  App Updates
+</Text>
+
+<View
+  style={{
+    backgroundColor: "#0f3460",
+    borderRadius: 14,
+    padding: 16,
+    marginTop: 8,
+    marginBottom: 20,
+    borderWidth: 1,
+    borderColor: "#1f4b75",
+  }}
+>
+  <View
+    style={{
+      flexDirection: "row",
+      alignItems: "center",
+      marginBottom: 10,
+    }}
+  >
+    <Ionicons
+      name="cloud-download-outline"
+      size={24}
+      color="#21e6c1"
+    />
+
+    <Text
+      style={{
+        color: "white",
+        fontSize: 17,
+        fontWeight: "700",
+        marginLeft: 10,
+      }}
+    >
+      Check for Updates
+    </Text>
+  </View>
+
+<Text
+  style={{
+    color:"#21e6c1",
+    fontSize:14,
+    fontWeight:"700",
+    marginBottom:8
+  }}
+>
+  Current Version: {Constants.expoConfig?.version ?? "1.0.0"}
+</Text>
+  <Text
+    style={{
+      color: "#b7c6d9",
+      fontSize: 13,
+      marginBottom: 15,
+      lineHeight: 20,
+    }}
+  >
+    Download the latest improvements, bug fixes and new features without
+    reinstalling the app.
+  </Text>
+
+  <TouchableOpacity
+    onPress={checkForUpdates}
+    disabled={checkingUpdate}
+    style={{
+      backgroundColor: checkingUpdate ? "#3a506b" : "#21e6c1",
+      borderRadius: 10,
+      paddingVertical: 13,
+      alignItems: "center",
+      flexDirection: "row",
+      justifyContent: "center",
+    }}
+  >
+    {checkingUpdate ? (
+      <>
+        <ActivityIndicator color="#16213e" />
+
+        <Text
+          style={{
+            color: "#16213e",
+            fontWeight: "700",
+            marginLeft: 10,
+          }}
+        >
+          Checking...
+        </Text>
+      </>
+    ) : (
+      <>
+        <Ionicons
+          name="refresh"
+          size={18}
+          color="#16213e"
+        />
+
+        <Text
+          style={{
+            color: "#16213e",
+            fontWeight: "bold",
+            marginLeft: 8,
+          }}
+        >
+         Check Updates
+        </Text>
+      </>
+    )}
+  </TouchableOpacity>
+
+  {!!updateStatus && (
+
+<View
+style={{
+ marginTop:15,
+ padding:15,
+ borderRadius:12,
+ backgroundColor:"#081c33",
+ alignItems:"center"
+}}
+>
+
+
+<ActivityIndicator
+size="large"
+color="#21e6c1"
+/>
+
+
+<Text
+style={{
+color:"#21e6c1",
+marginTop:10,
+fontWeight:"700",
+textAlign:"center"
+}}
+>
+{updateStatus}
+</Text>
+
+
+{updateProgress > 0 && (
+
+<View
+style={{
+width:"100%",
+height:8,
+backgroundColor:"#23395d",
+borderRadius:10,
+marginTop:15,
+overflow:"hidden"
+}}
+>
+
+<View
+style={{
+width:`${updateProgress}%`,
+height:"100%",
+backgroundColor:"#21e6c1"
+}}
+/>
+
+</View>
+
+)}
+
+
+{updateProgress > 0 && (
+
+<Text
+style={{
+color:"white",
+marginTop:8
+}}
+>
+{updateProgress}% completed
+</Text>
+
+)}
+
+
+</View>
+
+)}
+</View>
 
 {/*  DELETE ACCOUNT MODAL */}
 {showDeleteModal && (

@@ -857,7 +857,7 @@ demoBalance={demoBalance}
       </View>
 
       {/* Expiration */}
-      <View style={[styles.inputRow]}>
+     <View style={[styles.inputRow, { marginTop: -8 }]}>
         <Text style={styles.label}>Expiration</Text>
        <TouchableOpacity
   style={styles.expiryButton}
@@ -1028,6 +1028,7 @@ demoBalance={demoBalance}
     <Text style={{ color: "#fff" }}>{tradeToast.expiration}</Text>
   </Animated.View>
 )}
+
   </View> 
 );
 }
@@ -1052,12 +1053,13 @@ const styles = StyleSheet.create({
    marginRight: 6, },
   expButtonActive: { backgroundColor: "blue" },
   expButtonText: { color: "#fff", fontSize: 14 },
-  profitBox: { backgroundColor: "rgba(255,255,0,0.1)",  borderColor: "gold", borderWidth: 1, borderRadius: 8,
- padding: 8,  marginBottom: 0, alignItems: "center",  bottom: 9, },
+  profitBox: { backgroundColor: "rgba(255,255,0,0.1)",  borderColor: "gold",
+   borderWidth: 1, borderRadius: 8,
+ padding: 8,  marginBottom: 0, alignItems: "center",  bottom: 14, },
   profitText: { color: "darkgoldenrod", fontWeight: "bold", fontSize: 16 },
 
   actionButton: { padding: 14,  marginVertical: 4,  borderRadius: 14, 
-   bottom: 20,  alignItems: "center", },
+   bottom: 30,  alignItems: "center", },
   actionText: { color: "white", fontWeight: "bold",fontSize: 14 },
   
   overlay: { position: "absolute", top: 80, left: "12.5%", width: "84%", height: "80%", backgroundColor: "#333",
@@ -1122,10 +1124,10 @@ expiryKeyText: {
   fontWeight: "bold",
 },
 payoutBox: {
-  marginTop: 12,
+  marginTop: 10,
   backgroundColor: "rgba(255,255,0,0.1)", 
-   borderColor: "gold", borderWidth: 1, borderRadius: 8,
- padding: 8,  marginBottom: 0, alignItems: "center",
+   borderColor: "gold", borderWidth: 1, borderRadius: 6,
+ padding: 6,  marginBottom: 0, alignItems: "center",
    bottom: 1, // 👈 keeps it small, not full width
 },
 

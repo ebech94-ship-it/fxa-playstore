@@ -5,6 +5,7 @@ import {
   DefaultTheme,
   ThemeProvider,
 } from "expo-router";
+
 import * as Linking from "expo-linking";
 import { Stack, useRouter } from "expo-router";
 import { StatusBar } from "expo-status-bar";
@@ -137,8 +138,11 @@ const tournamentBalances = tournamentAccounts;
    =============================== */
 export default function RootLayout() {
   return (
-    <AppProvider>
-      <InnerApp />
-    </AppProvider>
+    
+  <AppProvider>
+    <InnerApp />
+   
+  </AppProvider>
+
   );
 }
