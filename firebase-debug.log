@@ -1,0 +1,16 @@
+[debug] [2026-07-22T19:55:50.216Z] ----------------------------------------------------------------------
+[debug] [2026-07-22T19:55:50.246Z] Command:       C:\nvm4w\nodejs\node.exe C:\Users\LENOVO\AppData\Roaming\npm\node_modules\firebase-tools\lib\bin\firebase.js deploy --only functions
+[debug] [2026-07-22T19:55:50.249Z] CLI Version:   15.4.0
+[debug] [2026-07-22T19:55:50.251Z] Platform:      win32
+[debug] [2026-07-22T19:55:50.251Z] Node Version:  v20.20.2
+[debug] [2026-07-22T19:55:50.252Z] Time:          Wed Jul 22 2026 20:55:50 GMT+0100 (West Africa Time)
+[debug] [2026-07-22T19:55:50.254Z] ----------------------------------------------------------------------
+[debug] 
+[debug] [2026-07-22T19:56:06.284Z] > command requires scopes: ["email","openid","https://www.googleapis.com/auth/cloudplatformprojects.readonly","https://www.googleapis.com/auth/firebase","https://www.googleapis.com/auth/cloud-platform"]
+[debug] [2026-07-22T19:56:06.292Z] > authorizing via signed-in user (ekokobechem09@gmail.com)
+[debug] [2026-07-22T19:56:06.293Z] [iam] checking project forex-tournaments-arena for permissions ["cloudfunctions.functions.create","cloudfunctions.functions.delete","cloudfunctions.functions.get","cloudfunctions.functions.list","cloudfunctions.functions.update","cloudfunctions.operations.get","firebase.projects.get"]
+[debug] [2026-07-22T19:56:06.306Z] Checked if tokens are valid: true, expires at: 1784752113342
+[debug] [2026-07-22T19:56:06.307Z] Checked if tokens are valid: true, expires at: 1784752113342
+[debug] [2026-07-22T19:56:06.316Z] >>> [apiv2][query] POST https://cloudresourcemanager.googleapis.com/v1/projects/forex-tournaments-arena:testIamPermissions [none]
+[debug] [2026-07-22T19:56:06.317Z] >>> [apiv2][(partial)header] POST https://cloudresourcemanager.googleapis.com/v1/projects/forex-tournaments-arena:testIamPermissions x-goog-quota-user=projects/forex-tournaments-arena
+[debug] [2026-07-22T19:56:06.318Z] >>> [apiv2][body] POST https://cloudresourcemanager.googleapis.com/v1/projects/forex-tournaments-arena:testIamPermissions {"permissions":["cloudfunctions.functions.create","cloudfunctions.functions.delete","cloudfunctions.functions.get","cloudfunctions.functions.list","cloudfunctions.functions.update","cloudfunctions.operations.get","firebase.projects.get"]}

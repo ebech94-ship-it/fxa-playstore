@@ -110,23 +110,24 @@ type TournamentMeta = {
 };
 
 // FIRESTORE DEMO HELPERS
-const updateDemoBalance = async (uid: string, newBalance: number) => {
+const updateDemoBalance = async (
+  uid: string,
+  newBalance: number
+) => {
   if (!uid) return;
 
   try {
-    const demoRef = doc(db, "demoBalances", uid);
+    const userRef = doc(db, "users", uid);
 
-    await setDoc(
-      demoRef,
-      {
-        balance: newBalance,
-        updatedAt: serverTimestamp(),
-      },
-      { merge: true }
-    );
+    await updateDoc(userRef, {
+      "accounts.demo.balance": newBalance,
+      "accounts.demo.updatedAt": serverTimestamp(),
+    });
+
+    console.log("✅ Demo balance synced:", newBalance);
 
   } catch (e) {
-    console.error("❌ Failed to update demo balance:", e);
+    console.error("❌ Failed demo balance update:", e);
   }
 };
 // ------------------------ MAIN COMPONENT ------------------------
