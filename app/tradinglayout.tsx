@@ -292,10 +292,7 @@ const buildAccountPayload = (account: AccountType): AccountType => {
 
 const handleTrade = async (type: "buy" | "sell") => {
   // 🔐 PREVIEW MODE GUARD
-  if (profile?.preview) {
-    alert("Preview mode: trading is disabled");
-    return;
-  }
+  
  if (activeAccount.type === "real") {
     alert("Real account trading is temporarily disabled. Use Demo or Tournament accounts.");
     return; // ⚠ Only blocks trading, not deposits/withdrawals

@@ -42,14 +42,42 @@ export default function InviteEarnScreen() {
   } = useReferralLeaderboard();
 
   if (!user) {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.text}>
-          Please log in to invite friends
-        </Text>
-      </View>
-    );
-  }
+  return (
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={styles.content}
+    >
+      <Text style={styles.text}>
+        Referral Program Preview
+      </Text>
+
+      <Text
+        style={{
+          color: "#9CA3AF",
+          textAlign: "center",
+          marginTop: 12,
+          lineHeight: 20,
+        }}
+      >
+        Explore how our referral rewards system works.
+        {"\n\n"}
+        Sign in to generate your personal invite link,
+        track referrals, earn points, and access the leaderboard.
+      </Text>
+      <Text
+style={{
+color:"#9CA3AF",
+fontSize:12,
+textAlign:"center",
+marginTop:15,
+}}
+>
+Referral rewards are promotional benefits provided by Forex Tournaments Arena.
+Eligibility and rewards may vary based on program rules.
+</Text>
+    </ScrollView>
+  );
+}
 
   if (loading || leaderboardLoading) {
     return (

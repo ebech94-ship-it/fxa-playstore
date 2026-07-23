@@ -248,13 +248,7 @@ const leaderboard = useMemo(() => {
 
 // ---------- REGISTER USER TO TOURNAMENT ----------
 const handleRegister = async (tournamentId: string) => {
-  if (profile?.preview) {
-    Alert.alert(
-      "Preview Mode",
-      "You are in preview mode. Registration will not affect real accounts."
-    );
-    return;
-  }
+
 
   if (loadingActions[tournamentId]?.register) return;
 

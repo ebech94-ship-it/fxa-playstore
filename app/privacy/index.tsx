@@ -16,7 +16,7 @@ export default function PrivacyPolicyScreen() {
 
       <ScrollView style={styles.container}>
         <Text style={styles.title}>Privacy Policy</Text>
-        <Text style={styles.subtitle}>Last Updated: November 2025</Text>
+        <Text style={styles.subtitle}>Last Updated: July 2026</Text>
 
         <Text style={styles.sectionTitle}>1. Introduction</Text>
         <Text style={styles.paragraph}>
@@ -31,7 +31,10 @@ export default function PrivacyPolicyScreen() {
           We may collect the following information when you use the App:
         </Text>
         <Text style={styles.paragraph}>
-          • Account details (name, email, profile image if uploaded){'\n'}
+          • Account details (such as your name, email address, phone number, and optional profile image){'\n'}
+          • Payment-related information necessary to process tournament registrations and prize payouts
+           through our trusted third-party payment provider.
+           We do not store your mobile money or payment credentials.
           • Device and app usage information{'\n'}
           • Tournament performance data (scores, win/loss records){'\n'}
           • Optional data you choose to provide (bio, avatar, etc.)
@@ -54,6 +57,9 @@ export default function PrivacyPolicyScreen() {
           All data is stored securely using encrypted and industry-standard
           methods. We take reasonable steps to prevent unauthorized access,
           misuse, loss, or alteration of your data.
+          User account data is securely stored using cloud infrastructure and 
+          authentication services. Payment transactions are securely processed by our 
+          trusted third-party payment provider, Swychr Technology Africa Limited.
         </Text>
 
         <Text style={styles.sectionTitle}>5. Sharing Your Information</Text>
@@ -66,6 +72,8 @@ export default function PrivacyPolicyScreen() {
           • To protect the rights and safety of users{'\n'}
           • To enforce Terms & Conditions{'\n'}
           • With service providers strictly necessary for app functionality
+          • With trusted third-party service providers that help operate the App, including 
+          authentication, cloud hosting, analytics, and payment processing.
         </Text>
 
         <Text style={styles.sectionTitle}>6. Use of Synthetic Charts</Text>
@@ -97,19 +105,26 @@ export default function PrivacyPolicyScreen() {
           collect data from children under 13.
         </Text>
 
-        <Text style={styles.sectionTitle}>10. Third-Party Services</Text>
-        <Text style={styles.paragraph}>
-          Some features may link to third-party libraries (e.g., authentication
-          or analytics). Their privacy practices are separate and governed by
-          their own policies.
-        </Text>
+      <Text style={styles.sectionTitle}>10. Third-Party Services</Text>
 
 <Text style={styles.paragraph}>
-  Please note that this app does not collect financial trading data 
-  or execute real-money trades. All competitions are simulated.
+The App relies on trusted third-party service providers to deliver certain
+features, including authentication, cloud storage, notifications, analytics,
+and payment processing. These providers process data only as necessary to
+perform their services and are governed by their own privacy policies.
 </Text>
 
+<Text style={styles.paragraph}>
+Tournament registration fees and eligible prize payouts are securely processed
+by Swychr Technology Africa Limited. FX Arena does not store users' mobile
+money credentials or payment account passwords.
+</Text>
 
+<Text style={styles.paragraph}>
+The App does not execute real-money forex trades or provide brokerage,
+investment, or financial advisory services. All trading activities and
+competitions are simulated.
+</Text>
         <Text style={styles.sectionTitle}>11. Changes to This Policy</Text>
         <Text style={styles.paragraph}>
           We may update this Privacy Policy periodically. Continued use of the
@@ -118,8 +133,8 @@ export default function PrivacyPolicyScreen() {
 
         <Text style={styles.sectionTitle}>12. Contact Us</Text>
         <Text style={styles.paragraph}>
-          For concerns or inquiries about this Privacy Policy, visit the Help
-          Center inside the App or contact our support email.
+          For concerns regarding this Privacy Policy, visit the Help Center 
+          within the App or contact us at ebech@republic.beauty.
         </Text>
 
         <View style={{ height: 80 }} />

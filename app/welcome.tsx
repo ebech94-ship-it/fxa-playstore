@@ -53,7 +53,8 @@ WebBrowser.maybeCompleteAuthSession();
 // ✅ Validate 5-digit numeric password
 // ✅ Firebase requires minimum 6 characters
 const isValidPassword = (pwd: string) => pwd.length >= 6;
-
+// ✅ Production flag
+const ENABLE_PHONE_FALLBACK = false;
 
 export default function Welcome() {
   const router = useRouter();
@@ -671,7 +672,11 @@ const handleLinkPassword = async () => {
   </View>
 )}
           <Text style={styles.desc}>
-          Compete in simulated Forex tournaments with rewards and rankings based on virtual account performance.
+          Learn and compete using virtual forex trading accounts.
+           Users may optionally register for competitive tournaments using
+            virtual trading balances. 
+          FX Arena does not provide real forex trading, brokerage,
+           or investment services.
           </Text>
 
 {/* AGREEMENT CHECKBOX */}
@@ -805,7 +810,7 @@ const handleLinkPassword = async () => {
   router.replace("/tradinglayout");
 }}
 >
-  <Text style={styles.buttonText}>👀 Preview Mode</Text>
+  <Text style={styles.buttonText}>👀 Evaluation Mode</Text>
   <Text style={{ color: "#5f79eeff", fontSize: 12, marginTop: 4 }}>
   No signup required! 
 </Text>
@@ -1041,7 +1046,8 @@ const handleLinkPassword = async () => {
     )}
 
     {/* 🔥 FALLBACK ALWAYS VISIBLE WHEN OTP FAILS */}
-    {otpFailed && (
+   {/* 🔥 FALLBACK (disabled for production) */}
+{ENABLE_PHONE_FALLBACK && otpFailed && (
       <TouchableOpacity
         style={[styles.button, { backgroundColor: "#0f4698ff", marginTop: 10 }]}
         
@@ -1214,7 +1220,9 @@ router.replace("/tradinglayout");
             </View>
           )}
 {/* FINAL LEGAL FOOTER */}
+{/* FINAL LEGAL FOOTER */}
 <View style={{ width: "90%", marginTop: 30, alignItems: "center" }}>
+
   <Text
     style={{
       color: "#888",
@@ -1224,9 +1232,24 @@ router.replace("/tradinglayout");
       marginBottom: 8,
     }}
   >
-    This app offers trading simulations, and educational tournaments. It does NOT provide real trading,
-     investment, brokerage, or financial advisory services. All results shown inside the app are virtual
-      and participation is for training purposes and entertainment only.
+    FX Arena is an educational forex trading simulator. It does not provide
+    real forex trading, brokerage, investment, financial advisory, or exchange
+    services. All trading activities and tournament balances are virtual and
+    exist solely for learning and competition.
+  </Text>
+
+  <Text
+    style={{
+      color: "#777",
+      fontSize: 11,
+      textAlign: "center",
+      lineHeight: 16,
+      marginBottom: 8,
+    }}
+  >
+    Tournament registration is optional. Payments are optional and are used only for eligible
+    platform services such as tournament participation and  reward payouts where applicable.
+    Payments are securely processed by by trusted third-party payment provider. FX Arena does not hold customer funds.
   </Text>
 
   <Text
@@ -1238,8 +1261,8 @@ router.replace("/tradinglayout");
       marginBottom: 12,
     }}
   >
-    Trading carries risk. Performance in the app does not represent real
-    market profitability.
+    Trading involves risk. Performance achieved using virtual funds does not
+    represent or guarantee real-world trading results.
   </Text>
 
   {/* Links Row */}

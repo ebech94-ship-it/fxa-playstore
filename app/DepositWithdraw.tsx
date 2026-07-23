@@ -790,25 +790,32 @@ if (profile?.preview) {
           marginBottom: 10,
         }}
       >
-        Preview Mode
+        Preview Account
       </Text>
 
       <Text
-        style={{
-          color: "#ccc",
-          textAlign: "center",
-          marginBottom: 20,
-        }}
-      >
-     Deposits and withdrawals are not available in this version.
-You can navigate and explore the app safely without making any real transactions.
-      </Text>
+  style={{
+    color: "#9CA3AF",
+    textAlign: "center",
+    marginBottom: 20,
+  }}
+>
+  Deposits and withdrawals are currently unavailable for preview accounts.
+
+  {"\n\n"}
+
+  This preview account allows you to explore the application's features without making deposits or withdrawals.
+
+  {"\n\n"}
+
+  Live payment features become available only after registering a personal account and completing verification where required.
+</Text>
 
       <TouchableOpacity
         style={styles.confirmButton}
         onPress={() => router.back()}
       >
-        <Text style={styles.confirmButtonText}>Go Back</Text>
+        <Text style={styles.confirmButtonText}> Back </Text>
       </TouchableOpacity>
     </View>
   );
@@ -849,6 +856,16 @@ You can navigate and explore the app safely without making any real transactions
 </View>
 
       <Text style={styles.methodHeader}>{t.selectMethod}</Text>
+      <Text
+  style={{
+    color: "#9CA3AF",
+    textAlign: "center",
+    marginBottom: 12,
+    fontSize: 12,
+  }}
+>
+  Supported payment methods may vary by country and account eligibility.
+</Text>
       <View style={styles.methodsContainer}>
         {paymentMethods.map((m, i) => (
           <TouchableOpacity
