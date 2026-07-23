@@ -860,7 +860,7 @@ demoBalance={demoBalance}
       </View>
 
       {/* Expiration */}
-     <View style={[styles.inputRow, { marginTop: -8 }]}>
+     <View style={[styles.inputRow, { marginTop: -10 }]}>
         <Text style={styles.label}>Expiration</Text>
        <TouchableOpacity
   style={styles.expiryButton}
@@ -1051,8 +1051,8 @@ const styles = StyleSheet.create({
  panelSection: { marginVertical: 1 }, label: { color: "#ccc", marginBottom: 2, fontSize: 14, bottom: 2 },
   input: {  backgroundColor: "rgba(255,255,255,0.1)", borderColor: "#666",  borderWidth: 1,  borderRadius: 6, 
    padding: 5, color: "#fff", fontSize: 14, },
-  inputRow: { marginVertical: 6 },
-  expiryButton: { paddingVertical: 6, paddingHorizontal: 12, backgroundColor: "rgba(255,255,255,0.1)", borderRadius: 3,
+  inputRow: { marginVertical: 3 },
+  expiryButton: { paddingVertical: 4, paddingHorizontal: 10, backgroundColor: "rgba(255,255,255,0.1)", borderRadius: 3,
    marginRight: 6, },
   expButtonActive: { backgroundColor: "blue" },
   expButtonText: { color: "#fff", fontSize: 14 },
@@ -1061,7 +1061,7 @@ const styles = StyleSheet.create({
  padding: 8,  marginBottom: 0, alignItems: "center",  bottom: 14, },
   profitText: { color: "darkgoldenrod", fontWeight: "bold", fontSize: 16 },
 
-  actionButton: { padding: 14,  marginVertical: 4,  borderRadius: 14, 
+  actionButton: { padding: 14,  marginVertical: 2,  borderRadius: 14, 
    bottom: 30,  alignItems: "center", },
   actionText: { color: "white", fontWeight: "bold",fontSize: 14 },
   
@@ -1127,16 +1127,16 @@ expiryKeyText: {
   fontWeight: "bold",
 },
 payoutBox: {
-  marginTop: 10,
+  marginTop: 4,
   backgroundColor: "rgba(255,255,0,0.1)", 
-   borderColor: "gold", borderWidth: 1, borderRadius: 6,
- padding: 6,  marginBottom: 0, alignItems: "center",
+   borderColor: "gold", borderWidth: 1, borderRadius: 4,
+ padding: 4,  marginBottom: 0, alignItems: "center",
    bottom: 1, // 👈 keeps it small, not full width
 },
 
-payoutLabel: {  color: "#ccc",  fontSize: 14,},
+payoutLabel: {  color: "#ccc",  fontSize: 12,},
 
-payoutValue: {  color: "gold",  fontSize: 14,  fontWeight: "bold",
+payoutValue: {  color: "gold",  fontSize: 12,  fontWeight: "bold",
 },
 
 });
