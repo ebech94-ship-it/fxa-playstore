@@ -10,12 +10,10 @@ import type { ChartViewHandle } from "./ChartView";
 
 import {
   doc,
-
   increment,
   onSnapshot,
-  serverTimestamp,
   setDoc,
-  updateDoc,
+  updateDoc
 } from "firebase/firestore";
 import { getFunctions, httpsCallable } from "firebase/functions";
 import { useEffect, useRef, useState } from "react";
@@ -117,17 +115,23 @@ const updateDemoBalance = async (
   if (!uid) return;
 
   try {
-    const userRef = doc(db, "users", uid);
 
-    await updateDoc(userRef, {
+    const userRef = doc(db,"users",uid);
+
+    await updateDoc(userRef,{
       "accounts.demo.balance": newBalance,
-      "accounts.demo.updatedAt": serverTimestamp(),
     });
 
-    console.log("✅ Demo balance synced:", newBalance);
+    console.log(
+      "✅ Demo balance saved to user doc:",
+      newBalance
+    );
 
-  } catch (e) {
-    console.error("❌ Failed demo balance update:", e);
+  } catch(e){
+    console.error(
+      "❌ Demo balance update failed:",
+      e
+    );
   }
 };
 // ------------------------ MAIN COMPONENT ------------------------
@@ -546,6 +550,7 @@ useEffect(() => {
     };
     animate();
   }, [scrollAnim, screenWidth]);
+
 
 
 useEffect(() => {

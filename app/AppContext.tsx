@@ -463,7 +463,9 @@ const activeBalance = useMemo(() => {
 
 const balancesState = useMemo(
   () => ({
-    demo: demoBalance,
+   demo:
+ userDoc?.accounts?.demo?.balance ??
+ demoBalance,
     real: userDoc?.accounts?.real?.balance ?? 0,
     tournament: activeTournament
       ? participantBalances[activeTournament.tournamentId] ??
