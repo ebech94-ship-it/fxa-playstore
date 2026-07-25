@@ -177,14 +177,14 @@ const t = tournamentAccounts.find(
   ]}
 >
 {activeAccount.type === "demo"
-  ? `Demo • $${balances.demo.toFixed(2)}`
+  ? `Demo • $${balances.demo.toFixed(1)}`
   : activeAccount.type === "real"
   ? `Real • $${balances.real.toFixed(2)}`
   : `${
       tournamentAccounts.find(
         t => t.tournamentId === activeAccount.tournamentId
       )?.name ?? "Tournament"
-    } • $${displayBalance.toFixed(2)}`
+    } • $${displayBalance.toFixed(1)}`
 }
 </Text>
 
@@ -208,7 +208,7 @@ const t = tournamentAccounts.find(
   Demo Account
 </Text>
               <Text style={[styles.balance, { color: "#60a5fa" }]}>
-                ${balances.demo.toFixed(2)}
+                ${balances.demo.toFixed(1)}
               </Text>
             </TouchableOpacity>
 

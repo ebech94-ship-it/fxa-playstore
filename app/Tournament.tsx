@@ -240,10 +240,10 @@ useEffect(() => {
 
 // ---------- GLOBAL LEADERBOARD ----------
 const leaderboard = useMemo(() => {
-  if (!selectedTournament?.id) return [];
+  if (!selectedTournament?.tournamentId) return [];
 
-  return leaderboardParticipants[selectedTournament.id] ?? [];
-}, [leaderboardParticipants, selectedTournament?.id]);
+  return leaderboardParticipants[selectedTournament.tournamentId] ?? [];
+}, [leaderboardParticipants, selectedTournament?.tournamentId]);
 
 
 // ---------- REGISTER USER TO TOURNAMENT ----------
@@ -1028,6 +1028,7 @@ flexShrink: 1,
   style={{
      width: "100%",
      flex:1,
+      minHeight:0,
   }}
 >
 
@@ -1129,10 +1130,16 @@ flexShrink: 1,
 
 <ScrollView
   style={{width:"100%"}}
-  contentContainerStyle={{
-    paddingBottom:40,
-  }}
+
+  nestedScrollEnabled={true}
+
+  keyboardShouldPersistTaps="handled"
+
   showsVerticalScrollIndicator={true}
+
+  contentContainerStyle={{
+    paddingBottom:80,
+  }}
 >
 
   <View
@@ -1289,127 +1296,166 @@ flexShrink: 1,
 
     ) : (
 
-<View style={{ width: "100%" }}>
- <ScrollView
+<View
+  style={{
+    flex: 1,
+    width: "100%",
+  }}
+>
+
+<ScrollView
   horizontal
   showsHorizontalScrollIndicator={true}
   nestedScrollEnabled={true}
-  directionalLockEnabled={true}
-  bounces={false}
 >
+  <View style={{ width: 750 }}>
 
-    <View style={{ minWidth: 750 }}>
+    <FlatList
+      data={sortedLeaderboard}
+      keyExtractor={(item) => item.id}
 
-      <FlatList
-        data={sortedLeaderboard}
-        keyExtractor={(item) => item.id}
-        nestedScrollEnabled
-        showsVerticalScrollIndicator
-        contentContainerStyle={{
-          paddingBottom: 40,
-        }}
-        ListHeaderComponent={
-          <>
-            {renderPinnedUserRow(sortedLeaderboard)}
+      nestedScrollEnabled={true}
 
-            <View style={styles.tableRow}>
-              <Text style={[styles.tableColSmall, styles.headerText]}>#</Text>
-              <Text style={[styles.tableColName, styles.headerText]}>
-                Participant
-              </Text>
-              <Text style={[styles.tableColBalance, styles.headerText]}>
-                Balance
-              </Text>
-              <Text style={[styles.tableColPerformance, styles.headerText]}>
-                Performance
-              </Text>
-              <Text style={[styles.tableColTier, styles.headerText]}>
-                Level
-              </Text>
-              <Text style={[styles.tableColPrize, styles.headerText]}>
-                Prize
-              </Text>
-            </View>
-          </>
-        }
-    renderItem={({ item, index }) => {
-      const prize = selectedTournament
-        ? getPrizeForRank(index + 1, selectedTournament)
-        : null;
+      showsVerticalScrollIndicator={true}
 
-      return (
-        <View
-          style={[
-            styles.tableRow,
-            item.id === currentUser?.uid &&
+      contentContainerStyle={{
+        paddingBottom: 40,
+      }}
+
+      ListHeaderComponent={
+        <>
+          {renderPinnedUserRow(sortedLeaderboard)}
+
+          <View style={styles.tableRow}>
+
+            <Text style={[styles.tableColSmall, styles.headerText]}>
+              #
+            </Text>
+
+            <Text style={[styles.tableColName, styles.headerText]}>
+              Participant
+            </Text>
+
+            <Text style={[styles.tableColBalance, styles.headerText]}>
+              Balance
+            </Text>
+
+            <Text style={[styles.tableColPerformance, styles.headerText]}>
+              Performance
+            </Text>
+
+            <Text style={[styles.tableColTier, styles.headerText]}>
+              Level
+            </Text>
+
+            <Text style={[styles.tableColPrize, styles.headerText]}>
+              Prize
+            </Text>
+
+          </View>
+        </>
+      }
+
+
+      renderItem={({item,index}) => {
+
+        const prize = selectedTournament
+          ? getPrizeForRank(index + 1, selectedTournament)
+          : null;
+
+
+        return (
+
+          <View
+            style={[
+              styles.tableRow,
+              {
+                width:750
+              },
+              item.id === currentUser?.uid &&
               styles.currentRowHighlight,
-          ]}
-        >
-          <Text style={styles.tableColSmall}>
-            {index === 0
+            ]}
+          >
+
+            <Text style={styles.tableColSmall}>
+              {index === 0
               ? "🥇"
               : index === 1
               ? "🥈"
               : index === 2
               ? "🥉"
               : index + 1}
-          </Text>
+            </Text>
 
-          <View style={styles.tableColName}>
-            <NameWithFlag
-              username={item.username || "Player"}
-              countryCode={item.countryCode}
-            />
+
+            <View style={styles.tableColName}>
+              <NameWithFlag
+                username={item.username || "Player"}
+                countryCode={item.countryCode}
+              />
+            </View>
+
+
+            <Text style={styles.tableColBalance}>
+              {formatNum(item.balance)}T
+            </Text>
+
+
+            <Text
+              style={[
+                styles.tableColPerformance,
+                {
+                  color:
+                  (
+                  (item.balance ?? 0)
+                  -
+                  (selectedTournament?.startingBalance ?? 0)
+                  -
+                  (item.rebuyInjectedTotal ?? 0)
+                  )
+                  >=0
+                  ? "#22c55e"
+                  :"#ef4444"
+                }
+              ]}
+            >
+
+              {formatNum(
+                (item.balance ?? 0)
+                -
+                (selectedTournament?.startingBalance ?? 0)
+                -
+                (item.rebuyInjectedTotal ?? 0)
+              )}T
+
+            </Text>
+
+
+            <Text style={styles.tableColTier}>
+              {getTierForRank(index+1)}
+            </Text>
+
+
+            <Text style={styles.tableColPrize}>
+              {prize !== null
+              ? `${formatNum(prize)} $`
+              : "-"
+              }
+            </Text>
+
+
           </View>
 
-          <Text style={styles.tableColBalance}>
-            {formatNum(item.balance)}T
-          </Text>
+        );
 
-          <Text
-            style={[
-              styles.tableColPerformance,
-              {
-                color:
-                  (
-                    (item.balance ?? 0) -
-                    (selectedTournament?.startingBalance ?? 0) -
-                    (item.rebuyInjectedTotal ?? 0)
-                  ) >= 0
-                    ? "#22c55e"
-                    : "#ef4444",
-              },
-            ]}
-          >
-            {(
-              (item.balance ?? 0) -
-              (selectedTournament?.startingBalance ?? 0) -
-              (item.rebuyInjectedTotal ?? 0)
-            ) >= 0
-              ? "+"
-              : ""}
-            {formatNum(
-              (item.balance ?? 0) -
-                (selectedTournament?.startingBalance ?? 0) -
-                (item.rebuyInjectedTotal ?? 0)
-            )}T
-          </Text>
+      }}
 
-          <Text style={styles.tableColTier}>
-            {getTierForRank(index + 1)}
-          </Text>
+    />
 
-          <Text style={styles.tableColPrize}>
-            {prize !== null ? `${formatNum(prize)} $` : "-"}
-          </Text>
-        </View>
-      );
-    }}
-  />
+  </View>
 
-    </View>
+</ScrollView>
 
-  </ScrollView>
 </View>
 
     )}

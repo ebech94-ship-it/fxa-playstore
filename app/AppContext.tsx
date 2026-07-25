@@ -248,6 +248,7 @@ referrals: {
 
   tournamentAccounts: TournamentAccount[];
   activeLeaderboardParticipants: Participant[];
+  addLeaderboardUser: (user: Participant) => void;
  
   joinedMap: Record<string, boolean>;
   leaderboardParticipants: Record<string, Participant[]>;
@@ -259,6 +260,8 @@ export type Participant = {
   id: string;
   username?: string;
   balance?: number;
+   email?: string;
+  publicId?: string;
   startingBalance?: number;
   avatar?: string;
   countryCode?: string;
@@ -316,7 +319,8 @@ const AppContext = createContext<AppContextType>({
   activeAccount: { type: "demo" },
   activeTournament: null,
   activeLeaderboardParticipants: [],
- 
+ addLeaderboardUser: () => {},
+
   setActiveAccount: () => {},
   setActiveTournament: () => {},
 
@@ -408,6 +412,15 @@ const [tournamentMeta, setTournamentMeta] = useState<
 const [leaderboardParticipants, setLeaderboardParticipants] = useState<
   Record<string, Participant[]>
 >({});
+const addLeaderboardUser = (user: Participant) => {
+  setLeaderboardParticipants(prev => ({
+    ...prev,
+    demo: [
+      user,
+      ...(prev.demo ?? []).filter(p => p.id !== user.id)
+    ]
+  }));
+};
 
 const [demoBalance, setDemoBalance] = useState<number>(1000);
 
@@ -435,8 +448,8 @@ const referrals = useMemo(() => ({
 
 const activeBalance = useMemo(() => {
   if (activeAccount.type === "demo") {
-    return accounts?.demo?.balance ?? demoBalance ?? 1000;
-  }
+  return demoBalance ?? 1000;
+}
 
   if (activeAccount.type === "real") {
     return userDoc?.accounts?.real?.balance ?? 0;
@@ -749,6 +762,36 @@ collectedFunds: Number(data.collectedFunds ?? 0),
 
   return unsub;
 }, []);
+useEffect(() => {
+  const unsub = onSnapshot(collection(db, "users"), (snap) => {
+   console.log("USERS SNAPSHOT:", snap.size);
+   
+    const list = snap.docs.map((d) => {
+      const data: any = d.data();
+
+     return {
+  id: d.id,
+  username: data.username ?? data.displayName ?? "Player",
+  avatar: data.avatarUrl ?? "",
+  countryCode: data.countryCode ?? data.country ?? "CM",
+  balance: Number(data.accounts?.demo?.balance ?? 1000),
+ // ADD THESE
+  publicId: data.publicId,
+  email: data.email,
+};
+    });
+
+    list.sort((a, b) => (b.balance ?? 0) - (a.balance ?? 0));
+
+console.log("DEMO USERS:", list.length);
+    setLeaderboardParticipants(prev => ({
+      ...prev,
+      demo: list,
+    }));
+  });
+
+  return unsub;
+}, []);
 
 useEffect(() => {
   if (tournaments.length === 0) return;
@@ -773,6 +816,9 @@ useEffect(() => {
           balance: data.balance ?? 0,
           avatar: data.avatar,
           countryCode: data.countryCode,
+           // ADD THESE
+  publicId: data.publicId,
+  email: data.email,
           rankingScore: data.rankingScore ?? 0,
           startingBalance: data.startingBalance ?? 0,
         };
@@ -835,7 +881,7 @@ useEffect(() => {
 
     setParticipantBalances({});
     setParticipantDocs({});
-    setLeaderboardParticipants({});
+   
 
     setAuthUser(user);
 
@@ -855,18 +901,52 @@ useEffect(() => {
 useEffect(() => {
   if (!authUser?.uid) return;
 
-  const key = `demoBalance_${authUser.uid}`;
+  const userRef = doc(db, "users", authUser.uid);
 
-  AsyncStorage.getItem(key)
-    .then((val) => {
-      if (val !== null) {
-        setDemoBalance(parseFloat(val));
-      } else {
-        // First time user → default demo balance
-        setDemoBalance(1000);
-      }
-    })
-    .catch(console.error);
+  const unsub = onSnapshot(userRef, async (snap) => {
+    if (!snap.exists()) return;
+
+   const data = snap.data();
+
+setLeaderboardParticipants(prev => ({
+  ...prev,
+  demo: [
+    {
+      id: authUser.uid,
+      username: data.username ?? "Player",
+      avatar: data.avatarUrl ?? "",
+      countryCode: data.countryCode ?? data.country ?? "CM",
+      balance: data.accounts?.demo?.balance ?? 1000,
+      publicId: data.publicId,
+      email: data.email,
+    },
+    ...(prev.demo ?? []).filter(p => p.id !== authUser.uid)
+  ].sort((a, b) => (b.balance ?? 0) - (a.balance ?? 0))
+}));
+
+const firestoreBalance =
+  data.accounts?.demo?.balance;
+
+   if (typeof firestoreBalance === "number") {
+
+  // Only initialize if app has no local demo balance yet
+  setDemoBalance(prev => {
+    if (prev === 1000) {
+      return firestoreBalance;
+    }
+
+    return prev;
+  });
+
+  await AsyncStorage.setItem(
+    `demoBalance_${authUser.uid}`,
+    firestoreBalance.toString()
+  );
+}
+  });
+
+  return unsub;
+
 }, [authUser?.uid]);
 
 useEffect(() => {
@@ -916,7 +996,7 @@ useEffect(() => {
     // 🔥 RESET TOURNAMENT STATE
     setParticipantBalances({});
     setParticipantDocs({});
-    setLeaderboardParticipants({});
+   
     setTournamentMeta({});
    
 
@@ -945,48 +1025,15 @@ useEffect(() => {
     const acc: Accounts = data.accounts ?? {};
     setAccounts(acc);
 
+  
+
     setLoading(false);
   });
 
   return unsub;
 }, [authUser]);
 
-useEffect(() => {
-  if (!authUser?.uid) return;
 
-  const username = profile?.username ?? "You";
-  const countryCode = profile?.countryCode ?? "CM";
-
-  setLeaderboardParticipants(prev => {
-    const existing = prev.demo ?? [];
-
-    const updatedUser: Participant = {
-      id: authUser.uid,
-      username,
-      balance: demoBalance,
-      rankingScore: demoBalance, // IMPORTANT: tie ranking to balance
-      countryCode,
-    };
-
-    // merge user into existing list (replace user)
-    const filtered = existing.filter(p => p.id !== authUser.uid);
-
-    const newList = [...filtered, updatedUser];
-
-    // SORT (THIS CREATES THE “JUMPING” EFFECT)
-    newList.sort((a, b) => (b.balance ?? 0) - (a.balance ?? 0));
-
-    return {
-      ...prev,
-      demo: newList,
-    };
-  });
-}, [
-  authUser?.uid,
-  profile?.username,
-  profile?.countryCode,
-  demoBalance
-]);
 
 useEffect(() => {
   setTournaments(prev => {
@@ -1184,6 +1231,8 @@ useEffect(() => {
 referrals,
   joinedMap,
   leaderboardParticipants,
+  addLeaderboardUser,
+
   participantBalances,
 }), [
   appReady,
@@ -1199,6 +1248,7 @@ referrals,
  
   mergedTournaments,
 activeLeaderboardParticipants,
+addLeaderboardUser,
 
   activeAccount,
   activeTournament,
@@ -1219,6 +1269,8 @@ setOpenAccountSwitcher,
   tournamentAccounts,
   joinedMap,
   leaderboardParticipants,
+  addLeaderboardUser,
+
 referrals,
   participantBalances,
 ]);

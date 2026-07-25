@@ -115,23 +115,25 @@ const updateDemoBalance = async (
   if (!uid) return;
 
   try {
+    const userRef = doc(db, "users", uid);
 
-    const userRef = doc(db,"users",uid);
-
-    await updateDoc(userRef,{
-      "accounts.demo.balance": newBalance,
-    });
-
-    console.log(
-      "✅ Demo balance saved to user doc:",
-      newBalance
+    await setDoc(
+      userRef,
+      {
+        accounts: {
+          demo: {
+            balance: newBalance,
+            updatedAt: Date.now(),
+            type: "practice",
+          },
+        },
+      },
+      { merge: true }
     );
 
-  } catch(e){
-    console.error(
-      "❌ Demo balance update failed:",
-      e
-    );
+    console.log("✅ Demo synced:", uid, newBalance);
+  } catch (e) {
+    console.error("❌ Demo sync failed:", uid, e);
   }
 };
 // ------------------------ MAIN COMPONENT ------------------------
@@ -372,14 +374,11 @@ if (serverBalance < stake) {
 const uid = auth.currentUser?.uid;
 if (!uid) return;
 
-setDemoBalance((prev) => {
-  const newBalance = prev - stake;
+const newBalance = demoBalance - stake;
 
-  // ❗ Firestore update so leaderboard updates live
-  updateDemoBalance(uid, newBalance);
+setDemoBalance(newBalance);
 
-  return newBalance;
-});
+updateDemoBalance(uid, newBalance);
 }
  
 
@@ -492,16 +491,22 @@ useEffect(() => {
 }
 
         // 💰 DEMO balance update
-        if (isWin && t.account.type === "demo") {
-          const uid = auth.currentUser?.uid;
-          if (uid) {
-            setDemoBalance((prev) => {
-              const newBalance = prev + payout;
-              updateDemoBalance(uid, newBalance);
-              return newBalance;
-            });
-          }
-        }
+        // 💰 DEMO balance sync
+if (t.account.type === "demo") {
+  const uid = auth.currentUser?.uid;
+
+  if (uid) {
+    setDemoBalance(prev => {
+      const newBalance = isWin
+        ? prev + payout
+        : prev;
+
+      updateDemoBalance(uid, newBalance);
+
+      return newBalance;
+    });
+  }
+}
 
         // 💰 REAL account update
         if (isWin && t.account.type === "real") {
@@ -1066,7 +1071,7 @@ const styles = StyleSheet.create({
   actionText: { color: "white", fontWeight: "bold",fontSize: 14 },
   
   overlay: { position: "absolute", top: 80, left: "12.5%", width: "84%", height: "80%", backgroundColor: "#333",
- borderRadius: 4,  zIndex: 100,  padding: 6, },
+ borderRadius: 4,  zIndex: 100,  padding: 3, },
   closeButton: { position: "absolute", top: 7, right: 10,  elevation: 10, zIndex: 999 },
   pageContent: { flex: 1, marginTop: 0 },
   profitGlowBlue: { shadowColor: "#00aaff", shadowOffset: { width: 0, height: 0 }, shadowOpacity: 0.9, shadowRadius: 20,

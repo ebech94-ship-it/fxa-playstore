@@ -54,7 +54,7 @@ WebBrowser.maybeCompleteAuthSession();
 // ✅ Firebase requires minimum 6 characters
 const isValidPassword = (pwd: string) => pwd.length >= 6;
 // ✅ Production flag
-const ENABLE_PHONE_FALLBACK = false;
+const ENABLE_PHONE_FALLBACK = true;
 
 export default function Welcome() {
   const router = useRouter();

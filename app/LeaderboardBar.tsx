@@ -15,10 +15,18 @@ import { AccountType, useApp } from "./AppContext";
 
 
 export type Participant = {
-  id: string;  username?: string;  balance?: number;
-  avatar?: string;  countryCode?: string;
-  performance?: number;  rankingScore?: number;
-startingBalance?: number;
+  id: string;
+  username?: string;
+  avatar?: string;
+  balance?: number;
+  countryCode?: string;
+
+  publicId?: string;
+  email?: string;
+
+  performance?: number;
+  rankingScore?: number;
+  startingBalance?: number;
 };
 
 export type LeaderboardBarProps = {
@@ -149,8 +157,14 @@ const LeaderboardBar = ({
   tournamentBalance, demoBalance
 }: LeaderboardBarProps) => {
 
-const {  authUser,  profile,  activeAccount,  tournaments,  tournamentAccounts,} = useApp();
- 
+const {
+  authUser,
+  profile,
+  activeAccount,
+  tournaments,
+  tournamentAccounts,
+  leaderboardParticipants, activeLeaderboardParticipants,
+} = useApp();
 
 const activeTourney =
   activeAccount.type === "tournament"
@@ -180,7 +194,7 @@ const [mode, setMode] = useState<"real" | "demo" | "tournament">("real");
 const [showSharePreview, setShowSharePreview] = useState(false);
 const [liveParticipants, setLiveParticipants] = useState<Participant[]>([]);
 const [loadingLive, setLoadingLive] = useState(false);
-
+const [selectedUser, setSelectedUser] = useState<any>(null);
 
 const shareLeaderboard = async () => {
   try {
@@ -224,7 +238,12 @@ const displayParticipants = useMemo(() => {
 
    return {
       ...p,
-      balance: p.balance ?? 0, // still Firestore source of truth
+      balance:
+  mode === "demo" && isCurrent
+    ? (demoBalance ?? p.balance ?? 0)
+    : activeAccount.type === "tournament" && isCurrent
+    ? liveTournamentBalance
+    : (p.balance ?? 0), // still Firestore source of truth
     };
   });
 }, [participants, currentUser]);
@@ -275,75 +294,68 @@ useEffect(() => {
 
 }, [showFull]);
 
+
+
 useEffect(() => {
-  setLiveParticipants([]);
-  setLoadingLive(true);
 
   let unsub: (() => void) | undefined;
 
   // 🟡 DEMO LEADERBOARD
   if (mode === "demo") {
+    setLiveParticipants(activeLeaderboardParticipants);
+    setLoadingLive(false);
+    return;
+  }
+
+  setLiveParticipants([]);
+  setLoadingLive(true);
+
+  // 🟣 TOURNAMENT LEADERBOARD
+  if (mode === "tournament" && tournamentId) {
     const q = query(
-      collection(db, "demoBalances"),
+      collection(db, "tournaments", tournamentId, "participants"),
       orderBy("balance", "desc")
     );
 
     unsub = onSnapshot(q, (snap) => {
-     const data = snap.docs.map((d) => {
-  const docData = d.data() as Omit<Participant, "id">;
+      const data = snap.docs.map((d) => {
+        const dta = d.data() as any;
 
-  return {
-    id: d.id,
-    ...docData,
-  };
-});
+        return {
+          id: d.id,
+          ...dta,
+          balance: dta.balance ?? 0,
+        };
+      });
 
-      setLiveParticipants(data);
+      requestAnimationFrame(() => {
+        setLiveParticipants(data);
+      });
+
       setLoadingLive(false);
     });
   }
 
-  // 🟣 TOURNAMENT LEADERBOARD
-  else if (mode === "tournament" && tournamentId) {
-    const q = query(
-      collection(db, "tournaments", tournamentId, "participants"),
-        orderBy("balance", "desc")
-    );
-
-    unsub = onSnapshot(q, (snap) => {
-  const data = snap.docs.map((d) => {
-  const dta = d.data() as any;
-
-  return {
-    id: d.id,
-    ...dta,
-    balance: dta.balance ?? 0,
-  };
-});
-
-
-
-requestAnimationFrame(() => {
-  setLiveParticipants(data);
-});
-
-  setLoadingLive(false);
-});
-  }
-
-  // 🔵 REAL ACCOUNT (DEFAULT) 
+  // 🔵 REAL
   else {
-    setLiveParticipants([]); // or static leaderboard later
+    setLiveParticipants([]);
     setLoadingLive(false);
   }
-  return () => unsub?.();
-}, [
-  mode,
-  tournamentId,
-  startingTournamentBalance,
- 
-])
 
+  return () => unsub?.();
+
+}, [mode, tournamentId, activeLeaderboardParticipants]);
+
+useEffect(() => {
+  console.log(
+    "LeaderboardBar received:",
+    activeLeaderboardParticipants.length
+  );
+
+  if (mode === "demo") {
+    setLiveParticipants(activeLeaderboardParticipants);
+  }
+}, [activeLeaderboardParticipants, mode]);
 
 const chunkSize = isLandscape ? 1 : 2; // 1 row in landscape, 2 rows in portrait
 
@@ -430,10 +442,13 @@ return (
               }
             />
            <Text style={styles.balance}>
-  {`$${((activeAccount.type === "tournament" && isCurrent
-      ? liveTournamentBalance
-      : p.balance ?? 0
-    ).toFixed(1))}`}
+ {`$${(
+  mode === "demo" && isCurrent
+    ? (demoBalance ?? 0)
+    : activeAccount.type === "tournament" && isCurrent
+    ? liveTournamentBalance
+    : (p.balance ?? 0)
+).toFixed(1)}`}
 </Text>
           </View>
 
@@ -485,13 +500,15 @@ return (
         onRequestClose={() => setShowFull(false)}
       >
         <View
-          style={{
-            flex: 1,
-            backgroundColor:"rgba(15,23,39,0.95)",
-            padding: 10,
-            justifyContent: "center",
-          }}
-        >
+  style={{
+    flex: 1,
+    backgroundColor: "rgba(15,23,39,0.95)",
+    paddingHorizontal: 16,
+    paddingTop: 20,
+    paddingBottom: 20,
+    justifyContent: "flex-start",
+  }}
+>
           <Pressable
   onPress={() => setShowFull(false)}
   style={{
@@ -532,7 +549,7 @@ return (
 >
   <Text style={{ color: "white", fontWeight: "bold" }}>
     Share/Invite 
-  </Text>s
+  </Text>
 </TouchableOpacity>
          <FlatList
 data={sortedParticipants}                 // only the players for current page
@@ -543,10 +560,16 @@ data={sortedParticipants}                 // only the players for current page
   onEndReachedThreshold={0.5}             // trigger when near bottom
   renderItem={({ item, index }) => (
     <View style={[styles.player, { width: 120, marginBottom: 6 }]}>
-      <Image
-        source={{ uri: item.avatar || "https://via.placeholder.com/32" }}
-        style={styles.avatar}
-      />
+     <TouchableOpacity
+  onPress={() => setSelectedUser(item)}
+>
+  <Image
+    source={{
+      uri: item.avatar || "https://via.placeholder.com/32",
+    }}
+    style={styles.avatar}
+  />
+</TouchableOpacity>
       <View style={styles.info}>
         <ParticipantRow
           username={item.username || "Player"}
@@ -560,6 +583,52 @@ data={sortedParticipants}                 // only the players for current page
     </View>
   )}
 />
+
+  {selectedUser && (
+  <Pressable
+    style={styles.profileOverlay}
+    onPress={() => setSelectedUser(null)}
+  >
+    <Pressable
+      style={styles.profileCard}
+      onPress={() => {}}
+    >
+      <Image
+        source={{
+          uri:
+            selectedUser.avatar ||
+            "https://placehold.co/80x80",
+        }}
+        style={styles.profileAvatar}
+      />
+
+      <Text style={styles.profileName}>
+        {selectedUser.username}
+      </Text>
+
+      <Text style={styles.profileText}>
+        🆔 {selectedUser.publicId || "N/A"}
+      </Text>
+
+      <Text style={styles.profileText}>
+        📧 {selectedUser.email || "N/A"}
+      </Text>
+
+      <Text style={styles.profileText}>
+        💰 ${selectedUser.balance?.toFixed(2)}
+      </Text>
+
+      <TouchableOpacity
+        onPress={() => setSelectedUser(null)}
+        style={styles.closeButton}
+      >
+        <Text style={{ color: "#fff", fontWeight: "700" }}>
+          Close
+        </Text>
+      </TouchableOpacity>
+    </Pressable>
+  </Pressable>
+)}
         </View>
       </Modal>
     )}
@@ -699,6 +768,7 @@ data={sortedParticipants}                 // only the players for current page
       </TouchableOpacity>
 
     </View>
+  
   </Modal>
 )}
   </View>
@@ -761,4 +831,52 @@ paddingHorizontal: 6,
     borderWidth: 2,
     borderColor: "#22c55e",
   },
+ profileOverlay: {
+  position: "absolute",
+  top: 0,
+  right: 0,
+  bottom: 0,
+  left: 0,
+  backgroundColor: "rgba(0,0,0,0.45)",
+  justifyContent: "center",
+  alignItems: "center",
+},
+
+profileCard: {
+  width: 280,
+  backgroundColor: "#111827",
+  borderRadius: 15,
+  padding: 18,
+  alignItems: "center",
+  borderWidth: 1,
+  borderColor: "#374151",
+},
+
+profileAvatar: {
+  width: 70,
+  height: 70,
+  borderRadius: 35,
+  marginBottom: 10,
+},
+
+profileName: {
+  color: "#fff",
+  fontWeight: "700",
+  fontSize: 18,
+  marginBottom: 10,
+},
+
+profileText: {
+  color: "#d1d5db",
+  fontSize: 14,
+  marginVertical: 3,
+},
+
+closeButton: {
+  marginTop: 15,
+  backgroundColor: "#2563eb",
+  paddingHorizontal: 20,
+  paddingVertical: 8,
+  borderRadius: 8,
+},
 });

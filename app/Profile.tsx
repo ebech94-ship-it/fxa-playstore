@@ -2,7 +2,6 @@ import { Ionicons } from "@expo/vector-icons";
   
 
 import { useApp } from "@/app/AppContext";
-import Constants from "expo-constants";
 import * as ImagePicker from "expo-image-picker";
 import * as Updates from "expo-updates";
 
@@ -11,8 +10,10 @@ import { useRouter } from "expo-router";
 import { deleteUser, getAuth } from "firebase/auth";
 import {
   collection,
+  collectionGroup,
   deleteDoc,
   doc,
+  getDocs,
   onSnapshot,
   orderBy,
   query,
@@ -324,6 +325,66 @@ const uploadAvatarToCloudinary = async (uri: string) => {
   return json.secure_url;
 };
 
+const syncUserIdentity = async () => {
+  if (!user) return;
+
+  const newName = form.username || form.displayName;
+
+  try {
+    // 1. Update all tournament participant records
+    const participantsSnap = await getDocs(
+      collectionGroup(db, "participants")
+    );
+
+    for (const item of participantsSnap.docs) {
+      const data = item.data();
+
+      if (data.uid === user.uid || item.id === user.uid) {
+        await updateDoc(item.ref, {
+          name: newName,
+          username: newName,
+        });
+      }
+    }
+
+
+    // 2. Update leaderboard record
+    await updateDoc(
+      doc(db, "leaderboard", user.uid),
+      {
+        name: newName,
+        username: newName,
+      }
+    ).catch(() => {});
+
+
+    // 3. Update demo leaderboard / demo account record
+    await updateDoc(
+      doc(db, "demoAccounts", user.uid),
+      {
+        name: newName,
+        username: newName,
+      }
+    ).catch(() => {});
+
+
+    // 4. Update user profile references
+    await updateDoc(
+      doc(db, "users", user.uid),
+      {
+        displayName: form.displayName,
+        username: form.username,
+      }
+    );
+
+
+    console.log("✅ User identity synced everywhere");
+
+  } catch (error) {
+    console.log("❌ Identity sync error:", error);
+  }
+};
+
 // Save profile
 const saveProfile = async () => {
   if (!user) return;
@@ -355,6 +416,8 @@ const saveProfile = async () => {
 
     await updateDoc(doc(db, "users", user.uid), payload);
 
+// Update old fallback names everywhere
+await syncUserIdentity();
 // 🔥 UPDATE APP CONTEXT IMMEDIATELY
 setProfile((prev) => ({
   ...(prev ?? {}),
@@ -783,6 +846,20 @@ if (!profileLoaded) {
               <Ionicons name="settings-outline" size={20} color="white" />
               <Text style={styles.menuText}>Settings</Text>
             </TouchableOpacity>
+
+<TouchableOpacity
+  style={styles.menuItem}
+  onPress={() => setActiveSection("updates")}
+>
+  <Ionicons
+    name="cloud-download-outline"
+    size={20}
+    color="white"
+  />
+  <Text style={styles.menuText}>
+    Check for Updates
+  </Text>
+</TouchableOpacity>
 
             <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
       <Text style={styles.logoutText}>Log Out</Text>
@@ -1216,192 +1293,6 @@ if (!profileLoaded) {
  </ScrollView>
   </KeyboardAvoidingView>
 )}
-{/* ---------- APP UPDATES ---------- */}
-
-<Text style={[styles.sectionTitle, { marginTop: 25 }]}>
-  App Updates
-</Text>
-
-<View
-  style={{
-    backgroundColor: "#0f3460",
-    borderRadius: 14,
-    padding: 16,
-    marginTop: 8,
-    marginBottom: 20,
-    borderWidth: 1,
-    borderColor: "#1f4b75",
-  }}
->
-  <View
-    style={{
-      flexDirection: "row",
-      alignItems: "center",
-      marginBottom: 10,
-    }}
-  >
-    <Ionicons
-      name="cloud-download-outline"
-      size={24}
-      color="#21e6c1"
-    />
-
-    <Text
-      style={{
-        color: "white",
-        fontSize: 17,
-        fontWeight: "700",
-        marginLeft: 10,
-      }}
-    >
-      Check for Updates
-    </Text>
-  </View>
-
-<Text
-  style={{
-    color:"#21e6c1",
-    fontSize:14,
-    fontWeight:"700",
-    marginBottom:8
-  }}
->
-  Current Version: {Constants.expoConfig?.version ?? "1.0.0"}
-</Text>
-  <Text
-    style={{
-      color: "#b7c6d9",
-      fontSize: 13,
-      marginBottom: 15,
-      lineHeight: 20,
-    }}
-  >
-    Download the latest improvements, bug fixes and new features without
-    reinstalling the app.
-  </Text>
-
-  <TouchableOpacity
-    onPress={checkForUpdates}
-    disabled={checkingUpdate}
-    style={{
-      backgroundColor: checkingUpdate ? "#3a506b" : "#21e6c1",
-      borderRadius: 10,
-      paddingVertical: 13,
-      alignItems: "center",
-      flexDirection: "row",
-      justifyContent: "center",
-    }}
-  >
-    {checkingUpdate ? (
-      <>
-        <ActivityIndicator color="#16213e" />
-
-        <Text
-          style={{
-            color: "#16213e",
-            fontWeight: "700",
-            marginLeft: 10,
-          }}
-        >
-          Checking...
-        </Text>
-      </>
-    ) : (
-      <>
-        <Ionicons
-          name="refresh"
-          size={18}
-          color="#16213e"
-        />
-
-        <Text
-          style={{
-            color: "#16213e",
-            fontWeight: "bold",
-            marginLeft: 8,
-          }}
-        >
-         Check Updates
-        </Text>
-      </>
-    )}
-  </TouchableOpacity>
-
-  {!!updateStatus && (
-
-<View
-style={{
- marginTop:15,
- padding:15,
- borderRadius:12,
- backgroundColor:"#081c33",
- alignItems:"center"
-}}
->
-
-
-<ActivityIndicator
-size="large"
-color="#21e6c1"
-/>
-
-
-<Text
-style={{
-color:"#21e6c1",
-marginTop:10,
-fontWeight:"700",
-textAlign:"center"
-}}
->
-{updateStatus}
-</Text>
-
-
-{updateProgress > 0 && (
-
-<View
-style={{
-width:"100%",
-height:8,
-backgroundColor:"#23395d",
-borderRadius:10,
-marginTop:15,
-overflow:"hidden"
-}}
->
-
-<View
-style={{
-width:`${updateProgress}%`,
-height:"100%",
-backgroundColor:"#21e6c1"
-}}
-/>
-
-</View>
-
-)}
-
-
-{updateProgress > 0 && (
-
-<Text
-style={{
-color:"white",
-marginTop:8
-}}
->
-{updateProgress}% completed
-</Text>
-
-)}
-
-
-</View>
-
-)}
-</View>
 
 {/*  DELETE ACCOUNT MODAL */}
 {showDeleteModal && (
@@ -1567,7 +1458,144 @@ marginTop:8
     </TouchableOpacity>
   </ScrollView>
 )}
+{/* Update Section */}
+{activeSection === "updates" && (
+  <ScrollView
+    style={styles.section}
+    contentContainerStyle={{ paddingBottom: 80 }}
+  >
 
+    <Text style={styles.sectionTitle}>
+      FX ARENA Updates
+    </Text>
+
+
+    <View
+      style={{
+        backgroundColor:"#0f3460",
+        padding:20,
+        borderRadius:12,
+        alignItems:"center",
+        marginBottom:20
+      }}
+    >
+
+      <Ionicons
+        name="cloud-download-outline"
+        size={60}
+        color="#21e6c1"
+      />
+
+
+      <Text
+        style={{
+          color:"white",
+          fontSize:18,
+          fontWeight:"bold",
+          marginTop:15
+        }}
+      >
+        Version {Updates.runtimeVersion ?? "Current"}
+      </Text>
+
+
+      <Text
+        style={{
+          color:"#aaa",
+          textAlign:"center",
+          marginTop:10
+        }}
+      >
+        Keep FX ARENA updated with the latest improvements,
+        bug fixes and new features.
+      </Text>
+
+
+      {checkingUpdate && (
+        <View style={{marginTop:20, alignItems:"center"}}>
+
+          <ActivityIndicator
+            size="large"
+            color="#21e6c1"
+          />
+
+          <Text
+            style={{
+              color:"#21e6c1",
+              marginTop:10
+            }}
+          >
+            {updateStatus}
+          </Text>
+
+
+          <View
+            style={{
+              width:"100%",
+              height:10,
+              backgroundColor:"#333",
+              borderRadius:10,
+              marginTop:15,
+              overflow:"hidden"
+            }}
+          >
+
+            <View
+              style={{
+                width:`${updateProgress}%`,
+                height:"100%",
+                backgroundColor:"#21e6c1"
+              }}
+            />
+
+          </View>
+
+
+          <Text
+            style={{
+              color:"white",
+              marginTop:5
+            }}
+          >
+            {updateProgress}%
+          </Text>
+
+
+        </View>
+      )}
+
+
+      {!checkingUpdate && (
+        <TouchableOpacity
+          style={[
+            styles.sendButton,
+            {marginTop:20, width:"100%"}
+          ]}
+          onPress={checkForUpdates}
+        >
+
+          <Text style={styles.sendText}>
+            Check Now
+          </Text>
+
+        </TouchableOpacity>
+      )}
+
+    </View>
+
+
+    <TouchableOpacity
+      style={styles.backButton}
+      onPress={() => setActiveSection(null)}
+    >
+      <Text style={styles.backText}>
+        Back
+      </Text>
+    </TouchableOpacity>
+
+
+  </ScrollView>
+)}
       </ScrollView>
     </View>
   );
