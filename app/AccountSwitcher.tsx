@@ -232,7 +232,7 @@ const t = tournamentAccounts.find(
             >
               <Text style={styles.cardTitle}>
   {activeAccount.type === "real" ? "✓ " : ""}
-  Real Account
+  💼Wallet
 </Text>
              <Text  numberOfLines={1}  ellipsizeMode="tail"
   style={[styles.activeBalance, { color: "#facc15" }]}>

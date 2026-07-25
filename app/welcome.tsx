@@ -306,12 +306,14 @@ await AsyncStorage.setItem("isLoggedIn", "true");
 
 router.replace("/tradinglayout");
 
-  } catch (error) {
-    alert("Invalid OTP");
-    console.error(error);
-  } finally {
-    setVerifyLoading(false);
-  }
+  } catch (e:any) {
+  console.log("OTP ERROR:", e.code);
+  console.log("MESSAGE:", e.message);
+
+  alert(
+    `${e.code}\n\n${e.message}`
+  );
+}
 };
 
 useEffect(() => {
@@ -796,21 +798,37 @@ const handleLinkPassword = async () => {
     styles.button,
     { backgroundColor: "#21e6c1" }, // nice greenish-blue
   ]}
-  onPress={() => {
-  setProfile({
-    username: "Evaluator",
-    displayName: "Preview User",
-    verified: false,
-    preview: true, // 👈 add this
-  });
+  onPress={async () => {
+  try {
+    setLoading(true);
 
-  setActiveAccount({ type: "demo" });
+    const { signInAnonymously } = await import("firebase/auth");
 
-  AsyncStorage.setItem("isLoggedIn", "preview");
-  router.replace("/tradinglayout");
+    const result = await signInAnonymously(auth);
+
+    setProfile({
+      username: "Evaluator",
+      displayName: "Google Play Reviewer",
+      verified: false,
+      preview: true,
+      uid: result.user.uid,
+    });
+
+    setActiveAccount({ type: "demo" });
+
+    await AsyncStorage.setItem("isLoggedIn", "preview");
+
+    router.replace("/tradinglayout");
+
+  } catch (e) {
+    console.log("Evaluation login failed", e);
+    alert("Evaluation mode unavailable");
+  } finally {
+    setLoading(false);
+  }
 }}
 >
-  <Text style={styles.buttonText}>👀 Evaluation Mode</Text>
+  <Text style={styles.buttonText}>👀 Evaluator's Access</Text>
   <Text style={{ color: "#5f79eeff", fontSize: 12, marginTop: 4 }}>
   No signup required! 
 </Text>
