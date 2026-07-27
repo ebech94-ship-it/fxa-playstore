@@ -637,7 +637,7 @@ const allowRebuy =
   >
     {item.prizeModel === "dynamic"
       ? "🔥 Growing Prize Pool"
-      : "🎁 Guaranteed Prize Pool"}
+      : "🎁 Sponsored Prize Pool"}
   </Text>
 </View>
 

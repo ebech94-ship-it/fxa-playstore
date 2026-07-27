@@ -219,16 +219,18 @@ useEffect(() => {
   if (!currentUser) return;
 
   const q = query(
-    collection(db, "users", currentUser.uid, "transactions"),
-    orderBy("createdAt", "desc"),
-    limit(8)
-  );
+  collection(db, "transactions"),
+  orderBy("createdAt", "desc"),
+  limit(8)
+);
 
   const unsub = onSnapshot(q, (snap) => {
-    const rows = snap.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
+   const rows = snap.docs
+  .filter(doc => doc.data().uid === currentUser.uid)
+  .map(doc => ({
+    id: doc.id,
+    ...doc.data(),
+  }));
 
     setTransactions(rows);
   });

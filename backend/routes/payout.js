@@ -844,26 +844,32 @@ t.update(
 
         // TRANSACTION HISTORY
 
-        t.set(
-          db.collection("transactions").doc(),
-          {
+      t.set(
+  db.collection("transactions").doc(),
+  {
 
-            userId:payout.userId,
+    userId:payout.userId,
 
-            username:user?.username || "Unknown",
+    username:user?.username || "Unknown",
 
-            type:"payout",
+    type:"withdrawal",
 
-            amount:payout.amount,
+    amount:payout.amount,
 
-            transactionId:transaction_id,
+    transactionId:transaction_id,
 
-            status:"completed",
+    status:"completed",
 
-            createdAt:
-              admin.firestore.FieldValue.serverTimestamp(),
-          }
-        );
+    method:payout.payment_method,
+
+    wallet:payout.mobile_no,
+
+    currency:"USD",
+
+    createdAt:
+      admin.firestore.FieldValue.serverTimestamp(),
+  }
+);
       });
     }
     // ----------------------

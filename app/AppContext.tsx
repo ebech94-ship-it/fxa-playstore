@@ -907,7 +907,7 @@ useEffect(() => {
     if (!snap.exists()) return;
 
    const data = snap.data();
-/*
+
 setLeaderboardParticipants(prev => ({
   ...prev,
   demo: [
@@ -922,7 +922,7 @@ setLeaderboardParticipants(prev => ({
     },
     ...(prev.demo ?? []).filter(p => p.id !== authUser.uid)
   ].sort((a, b) => (b.balance ?? 0) - (a.balance ?? 0))
-}));*/
+}));
 
 const firestoreBalance =
   data.accounts?.demo?.balance;

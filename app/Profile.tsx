@@ -184,9 +184,10 @@ useEffect(() => {
   if (!user) return;
 
   const q = query(
-    collection(db, "users", user.uid, "transactions"),
-    orderBy("createdAt", "desc")
-  );
+  collection(db, "transactions"),
+  where("uid", "==", user.uid),
+  orderBy("createdAt", "desc")
+);
 
   const unsub = onSnapshot(q, (snap) => {
     const list: any[] = [];
@@ -201,9 +202,10 @@ useEffect(() => {
   if (!user) return;
 
   const q = query(
-    collection(db, "users", user.uid, "withdrawals"),
-    orderBy("createdAt", "desc")
-  );
+  collection(db, "transactions"),
+  where("uid", "==", user.uid),
+  orderBy("createdAt", "desc")
+);
 
   const unsub = onSnapshot(q, (snap) => {
     const list: any[] = [];

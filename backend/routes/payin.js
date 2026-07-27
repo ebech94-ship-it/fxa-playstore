@@ -166,6 +166,7 @@ const txRef = await db.collection("transactions").add({
   momoNumber: cleanPhone,
   status: "pending",
   type: "deposit",
+   method: operator,
   createdAt: admin.firestore.FieldValue.serverTimestamp(),
 });
 
