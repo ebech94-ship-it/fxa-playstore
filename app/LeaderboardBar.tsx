@@ -1,7 +1,7 @@
 // LeaderboardBar.tsx — Fixed & clean version
 
 import { db } from "@/lib/firebase";
-import { collection, onSnapshot, orderBy, query, doc, getDoc  } from "firebase/firestore";
+import { collection, doc, getDoc, onSnapshot, orderBy, query } from "firebase/firestore";
 import { useEffect, useMemo, useRef, useState } from "react";
 import ViewShot from "react-native-view-shot";
 
@@ -282,13 +282,20 @@ useEffect(() => {
   const checkAdmin = async () => {
     if (!authUser?.uid) return;
 
+    console.log("AUTH UID:", authUser.uid); // ADD HERE
+
     const adminRef = doc(db, "admins", authUser.uid);
     const adminSnap = await getDoc(adminRef);
 
+    console.log("ADMIN EXISTS:", adminSnap.exists()); // ADD HERE
+    console.log("ADMIN DATA:", adminSnap.data()); // ADD HERE
+
     if (adminSnap.exists() && adminSnap.data()?.role === "admin") {
       setIsAdmin(true);
+      console.log("ADMIN STATUS: TRUE"); // ADD HERE
     } else {
       setIsAdmin(false);
+      console.log("ADMIN STATUS: FALSE"); // ADD HERE
     }
   };
 
@@ -442,9 +449,12 @@ return (
 >
           <Image
             source={{
-              uri: isCurrent
-                ? profile?.avatarUrl || p.avatar || "https://placehold.co/32x32"
-                : p.avatar || "https://placehold.co/32x32",
+              uri:
+  isCurrent && profile?.avatarUrl?.startsWith("https://")
+    ? profile.avatarUrl
+    : p.avatar?.startsWith("https://")
+    ? p.avatar
+    : "https://placehold.co/32x32/png",
             }}
             style={[styles.avatar, isCurrent && styles.currentUserAvatar]}
           />
@@ -457,8 +467,10 @@ return (
                   : p.username || "Player"
               }
               countryCode={
-                isCurrent ? toISO2(profile?.country) : p.countryCode || "CM"
-              }
+  isCurrent
+    ? toISO2(profile?.country)
+    : toISO2(p.countryCode)
+}
             />
            <Text style={styles.balance}>
  {`$${(
@@ -580,11 +592,29 @@ data={sortedParticipants}                 // only the players for current page
   renderItem={({ item, index }) => (
     <View style={[styles.player, { width: 120, marginBottom: 6 }]}>
      <TouchableOpacity
-  onPress={() => setSelectedUser(item)}
+  onPress={async () => {
+  console.log("CLICKED USER UID:", item.id);
+
+  const userSnap = await getDoc(doc(db, "users", item.id));
+
+  console.log("USER EXISTS:", userSnap.exists());
+  console.log("USER DATA:", userSnap.data());
+
+  if (userSnap.exists()) {
+    setSelectedUser({
+      ...item,
+      ...userSnap.data(),
+    });
+  } else {
+    setSelectedUser(item);
+  }
+}}
 >
   <Image
     source={{
-      uri: item.avatar || "https://via.placeholder.com/32",
+   uri: item.avatar?.startsWith("https://")
+     ? item.avatar
+     : "https://placehold.co/32x32/png",
     }}
     style={styles.avatar}
   />
@@ -592,7 +622,7 @@ data={sortedParticipants}                 // only the players for current page
       <View style={styles.info}>
         <ParticipantRow
           username={item.username || "Player"}
-          countryCode={item.countryCode || "CM"}
+           countryCode={toISO2(item.countryCode)}
         />
        <Text style={styles.balance}>
   {`$${((item.balance ?? 0).toFixed(1))}`}
