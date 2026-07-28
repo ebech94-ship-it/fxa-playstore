@@ -534,7 +534,7 @@ return (
   style={{
     flex: 1,
     backgroundColor: "rgba(15,23,39,0.95)",
-    paddingHorizontal: 16,
+    paddingHorizontal: 12,
     paddingTop: 20,
     paddingBottom: 20,
     justifyContent: "flex-start",
@@ -583,14 +583,22 @@ return (
   </Text>
 </TouchableOpacity>
          <FlatList
-data={sortedParticipants}                 // only the players for current page
+  data={sortedParticipants}
   keyExtractor={(p) => p.id}
-  numColumns={3}                           // keep grid-like layout
-  columnWrapperStyle={{ justifyContent: "space-between", marginBottom: 10 }}
+  numColumns={3}
+  contentContainerStyle={{
+    paddingHorizontal: 10,
+    paddingBottom: 30,
+  }}
+  columnWrapperStyle={{
+    justifyContent: "space-between",
+    marginBottom: 10,
+    paddingRight: 10,
+  }}
   
   onEndReachedThreshold={0.5}             // trigger when near bottom
   renderItem={({ item, index }) => (
-    <View style={[styles.player, { width: 120, marginBottom: 6 }]}>
+   <View style={[styles.player, { width: "30%", marginBottom: 6 }]}>
      <TouchableOpacity
   onPress={async () => {
   console.log("CLICKED USER UID:", item.id);
@@ -659,13 +667,13 @@ data={sortedParticipants}                 // only the players for current page
         🆔 {selectedUser.publicId || "N/A"}
       </Text>
 
-      {isAdmin && (
+     {isAdmin && (
   <>
-    <Text>
+    <Text style={styles.profileText}>
       📧 {selectedUser.email || "N/A"}
     </Text>
 
-    <Text>
+    <Text style={styles.profileText}>
       📱 {selectedUser.phone || "N/A"}
     </Text>
   </>

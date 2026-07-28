@@ -276,7 +276,7 @@ const verifyOTP = async () => {
     const user = auth.currentUser;
 
 if (user) {
-  const normalizedPhone = `+${callingCode}${phone}`;
+const normalizedPhone = user.phoneNumber || normalizePhone(phone);
 
   await setDoc(
     doc(db, "users", user.uid),
@@ -656,12 +656,15 @@ const handleLinkPassword = async () => {
     >
 
 
-      <ScrollView
-        style={{ flex: 1 }}
-        contentContainerStyle={{ flexGrow: 1 }}
-        keyboardShouldPersistTaps="handled"
-        showsVerticalScrollIndicator={false}
-      >
+     <ScrollView
+  style={{ flex: 1 }}
+  contentContainerStyle={{
+    flexGrow: 1,
+    paddingBottom: 50,
+  }}
+  keyboardShouldPersistTaps="handled"
+  showsVerticalScrollIndicator={false}
+>
         <View style={styles.overlay}>
   
 
@@ -1202,7 +1205,7 @@ router.replace("/tradinglayout");
 
                   <TextInput
                     style={styles.input}
-                 placeholder="Email, Public ID, or Phone number"
+                 placeholder="Email"
                     placeholderTextColor="#aaa"
                     value={email}
                     onChangeText={setEmail}
