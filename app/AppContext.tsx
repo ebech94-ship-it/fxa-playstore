@@ -909,20 +909,21 @@ useEffect(() => {
 
    const data = snap.data();
 
-setLeaderboardParticipants(prev => ({
+ setLeaderboardParticipants(prev => ({
   ...prev,
-  demo: [
-    {
-      id: authUser.uid,
-      username: data.username ?? "Player",
-      avatar: data.avatarUrl ?? "",
-      countryCode: data.countryCode ?? data.country ?? "CM",
-      balance: data.accounts?.demo?.balance ?? 1000,
-      publicId: data.publicId,
-      email: data.email,
-    },
-    ...(prev.demo ?? []).filter(p => p.id !== authUser.uid)
-  ].sort((a, b) => (b.balance ?? 0) - (a.balance ?? 0))
+  demo: (prev.demo ?? []).map(p =>
+    p.id === authUser.uid
+      ? {
+          ...p,
+          username: data.username ?? p.username,
+          avatar: data.avatarUrl ?? p.avatar,
+          countryCode: data.countryCode ?? data.country ?? p.countryCode,
+          balance: data.accounts?.demo?.balance ?? p.balance,
+          publicId: data.publicId ?? p.publicId,
+          email: data.email ?? p.email,
+        }
+      : p
+  ).sort((a, b) => (b.balance ?? 0) - (a.balance ?? 0))
 }));
 
 const firestoreBalance =
