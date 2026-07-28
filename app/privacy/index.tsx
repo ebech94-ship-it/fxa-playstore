@@ -1,5 +1,4 @@
 import { Stack } from "expo-router";
-import React from "react";
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 
 export default function PrivacyPolicyScreen() {
@@ -34,7 +33,7 @@ export default function PrivacyPolicyScreen() {
           • Account details (such as your name, email address, phone number, and optional profile image){'\n'}
           • Payment-related information necessary to process eligible platform transactions, such as tournament 
           participation fees and prize payouts.
-           Payment credentials and mobile money PINs are not stored by FX Arena.
+           Payment credentials and mobile money PINs are not stored by FX Arena{'\n'}
           • Device and app usage information{'\n'}
           • Tournament performance data (scores, win/loss records){'\n'}
           • Optional data you choose to provide (bio, avatar, etc.)
@@ -71,7 +70,8 @@ export default function PrivacyPolicyScreen() {
           • When required by law{'\n'}
           • To protect the rights and safety of users{'\n'}
           • To enforce Terms & Conditions{'\n'}
-          • With service providers strictly necessary for app functionality
+          • With service providers strictly necessary for app functionality{'\n'}
+
           • With trusted third-party service providers that help operate the App, including 
           authentication, cloud hosting, analytics, and payment processing.
         </Text>
