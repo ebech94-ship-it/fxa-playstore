@@ -86,6 +86,7 @@ Virtual trading balances cannot be redeemed, transferred, withdrawn, or exchange
 
 Only officially awarded tournament prizes, where applicable, may be paid to eligible winners 
 in accordance with the tournament rules.
+Prize availability, eligibility, and amounts depend on the specific tournament rules and applicable laws.
         </Text>
 
         <Text style={styles.sectionTitle}>9. User Conduct</Text>
@@ -95,8 +96,9 @@ in accordance with the tournament rules.
         </Text>
          <Text style={styles.sectionTitle}>10. Payment Services</Text>
         <Text style={styles.paragraph}>
-         Payments within FX Arena are optional and are used only for eligible platform services, including tournament registration,
-          prize payouts, and other supported platform features where applicable.
+      Payments within FX Arena are optional and relate only to platform services such as tournament
+       participation fees, where applicable, and eligible prize distribution. Payments do not represent 
+      investments, deposits, trading capital, or purchases of financial instruments.
 
 FX Arena does not operate as a bank, payment institution, money transmitter, or custodian of customer funds.
 
@@ -153,12 +155,18 @@ Payment transactions are processed by our trusted third-party payment provider,
         </Text>
 <Text style={styles.sectionTitle}>18. Governing Law </Text>
         <Text style={styles.paragraph}>
-         These Terms shall be governed by the applicable laws of the jurisdiction in which FX Arena operates,
-          unless otherwise required by applicable consumer protection laws.
+        These Terms are governed by the applicable laws of the jurisdiction where 
+        FX Arena is legally established, together with applicable consumer protection laws.
         </Text>
+
         <Text style={styles.sectionTitle}>19. Contact </Text>
         <Text style={styles.paragraph}>
-          For support, contact us via the App Help Center.
+        For support, contact us through the support channels provided in the App or on our official website.
+        </Text>
+          <Text style={styles.sectionTitle}>20. Account Deletion </Text>
+        <Text style={styles.paragraph}>
+        Users may request deletion of their account through the available account settings or support channels. 
+        Upon verification, account data will be deleted or handled according to applicable legal requirements and our Privacy Policy.
         </Text>
 
         <View style={{ height: 80 }} />

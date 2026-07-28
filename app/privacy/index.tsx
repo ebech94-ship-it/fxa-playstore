@@ -32,9 +32,9 @@ export default function PrivacyPolicyScreen() {
         </Text>
         <Text style={styles.paragraph}>
           • Account details (such as your name, email address, phone number, and optional profile image){'\n'}
-          • Payment-related information necessary to process tournament registrations and prize payouts
-           through our trusted third-party payment provider.
-           We do not store your mobile money or payment credentials.
+          • Payment-related information necessary to process eligible platform transactions, such as tournament 
+          participation fees and prize payouts.
+           Payment credentials and mobile money PINs are not stored by FX Arena.
           • Device and app usage information{'\n'}
           • Tournament performance data (scores, win/loss records){'\n'}
           • Optional data you choose to provide (bio, avatar, etc.)
@@ -54,8 +54,8 @@ export default function PrivacyPolicyScreen() {
 
         <Text style={styles.sectionTitle}>4. Data Storage & Security</Text>
         <Text style={styles.paragraph}>
-          All data is stored securely using encrypted and industry-standard
-          methods. We take reasonable steps to prevent unauthorized access,
+          All data is stored securely using industry-standard security practices and cloud infrastructure protections.
+           We take reasonable steps to prevent unauthorized access,
           misuse, loss, or alteration of your data.
           User account data is securely stored using cloud infrastructure and 
           authentication services. Payment transactions are securely processed by our 
@@ -92,20 +92,25 @@ export default function PrivacyPolicyScreen() {
           • Correct inaccurate information{'\n'}
           • Request a summary of your stored data
         </Text>
-
-        <Text style={styles.sectionTitle}>8. Cookies & Tracking</Text>
+<Text style={styles.sectionTitle}>8. Account Deletion</Text>
         <Text style={styles.paragraph}>
-          The App may use simple analytics and device identifiers to improve
-          performance. No invasive tracking is used.
+          Users can request deletion of their account through the available account
+           settings or by contacting support. After verification, account data will be deleted or
+            retained only where required for legal, security, or operational purposes.
+        </Text>
+        <Text style={styles.sectionTitle}>9. Cookies & Tracking</Text>
+        <Text style={styles.paragraph}>
+          The App may use analytics and device identifiers to understand app performance, 
+          fix issues, and improve user experience. No invasive tracking is used.
         </Text>
 
-        <Text style={styles.sectionTitle}>9. Children’s Privacy</Text>
+        <Text style={styles.sectionTitle}>10. Children’s Privacy</Text>
         <Text style={styles.paragraph}>
-          The App is intended for users aged 18 and above. We do not knowingly
-          collect data from children under 13.
+          The App is intended for users aged 18 and above. We do not knowingly collect personal
+           information from users below the applicable legal age.
         </Text>
 
-      <Text style={styles.sectionTitle}>10. Third-Party Services</Text>
+      <Text style={styles.sectionTitle}>11. Third-Party Services</Text>
 
 <Text style={styles.paragraph}>
 The App relies on trusted third-party service providers to deliver certain
@@ -125,13 +130,13 @@ The App does not execute real-money forex trades or provide brokerage,
 investment, or financial advisory services. All trading activities and
 competitions are simulated.
 </Text>
-        <Text style={styles.sectionTitle}>11. Changes to This Policy</Text>
+        <Text style={styles.sectionTitle}>12. Changes to This Policy</Text>
         <Text style={styles.paragraph}>
           We may update this Privacy Policy periodically. Continued use of the
           App means you accept the updated terms.
         </Text>
 
-        <Text style={styles.sectionTitle}>12. Contact Us</Text>
+        <Text style={styles.sectionTitle}>13. Contact Us</Text>
         <Text style={styles.paragraph}>
           For concerns regarding this Privacy Policy, visit the Help Center 
           within the App or contact us at ebech@republic.beauty.
