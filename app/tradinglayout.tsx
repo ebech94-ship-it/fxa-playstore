@@ -1,7 +1,7 @@
 // TradingLayout.tsx
 import { Ionicons } from "@expo/vector-icons";
 import uuid from "react-native-uuid";
-
+import TradingManual from "../components/TradingManual";
 import { AccountType, useApp } from "./AppContext";
 
 import ProfileBadge from "../components/ProfileBadge";
@@ -10,6 +10,7 @@ import type { ChartViewHandle } from "./ChartView";
 
 import {
   doc,
+  getDoc,
   increment,
   onSnapshot,
   setDoc,
@@ -166,7 +167,7 @@ const expiryPanResponder = useRef(
   const [expiration, setExpiration] = useState<string>("15s");
 
   const expirationOptions: string[] = ["5s","10s", "12s", "15s","20s","25s",  "30s", "1m", "5m", "15m", "30m", "1h","2h", "4h"];
- 
+ const [showManual, setShowManual] = useState(false);
 
   const [profitPercent] = useState<number>(PAYOUT);
   const { unreadCount, participantBalances } = useApp();
@@ -436,6 +437,46 @@ setTimeout(() => setTradeToast(null), 2000);
    // 🕒 SINGLE MASTER CLOCK — updates price + resolves trades
 // 🕒 SINGLE MASTER CLOCK — updates price + resolves trades
 ========================================================= */
+useEffect(() => {
+
+  const checkGuideStatus = async () => {
+
+    const uid = auth.currentUser?.uid;
+
+    if (!uid) return;
+
+
+    try {
+
+      const userRef = doc(db, "users", uid);
+
+      const snap = await getDoc(userRef);
+
+
+      const hasSeenGuide =
+        snap.data()?.settings?.hasSeenGuide;
+
+
+      if (!hasSeenGuide) {
+        setShowManual(true);
+      }
+
+
+    } catch (error) {
+
+      console.log(
+        "Guide check failed:",
+        error
+      );
+
+    }
+
+  };
+
+
+  checkGuideStatus();
+
+}, []);
 
 useEffect(() => {
   const timer = setInterval(() => {
@@ -673,7 +714,9 @@ const [tradeToast, setTradeToast] = useState<{
     { icon: "trophy-outline", label: "Tournaments", color: "#FFD700" },
     { icon :"gift-outline", label: "Invite&Earn", color: "#00BFFF" },
     { icon: "notifications-outline", label: "Alerts", color: "#FF4500" },
+    { icon:"book-outline", label:"Guide", color:"#00BFFF"},
      { icon: "information-circle-outline", label: "About", color: "#FF69B4" },
+     
   ];
 
   const renderPage = () => {
@@ -699,6 +742,9 @@ const [tradeToast, setTradeToast] = useState<{
        case "About":
   Component = AboutScreen;
   break;
+  case "Guide":
+  Component = TradingManual;
+  break;
       default:
         return null;
     }
@@ -717,15 +763,19 @@ const [tradeToast, setTradeToast] = useState<{
 
     <View style={styles.pageContent}>
       {activePage === "Profile" ? (
-        <ProfileScreen
-          useHeikinAshi={useHeikinAshi}
-          setUseHeikinAshi={setUseHeikinAshi}
-          compressWicks={compressWicks}
-          setCompressWicks={setCompressWicks}
-        />
-      ) : (
-        <Component />
-      )}
+  <ProfileScreen
+    useHeikinAshi={useHeikinAshi}
+    setUseHeikinAshi={setUseHeikinAshi}
+    compressWicks={compressWicks}
+    setCompressWicks={setCompressWicks}
+  />
+) : activePage === "Guide" ? (
+  <TradingManual
+    onClose={() => setActivePage(null)}
+  />
+) : (
+  <Component />
+)}
     </View>
   </View>
 );
@@ -1036,7 +1086,33 @@ demoBalance={demoBalance}
     <Text style={{ color: "#fff" }}>{tradeToast.expiration}</Text>
   </Animated.View>
 )}
+{showManual && (
+ <TradingManual
+ onClose={async()=>{
 
+   setShowManual(false);
+
+
+   const uid = auth.currentUser?.uid;
+
+   if(!uid) return;
+
+
+   await setDoc(
+     doc(db,"users",uid),
+     {
+       settings:{
+         hasSeenGuide:true
+       }
+     },
+     {
+       merge:true
+     }
+   );
+
+ }}
+/>
+)}
   </View> 
 );
 }

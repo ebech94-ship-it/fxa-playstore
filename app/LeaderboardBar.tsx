@@ -1,7 +1,7 @@
 // LeaderboardBar.tsx — Fixed & clean version
 
 import { db } from "@/lib/firebase";
-import { collection, onSnapshot, orderBy, query } from "firebase/firestore";
+import { collection, onSnapshot, orderBy, query, doc, getDoc  } from "firebase/firestore";
 import { useEffect, useMemo, useRef, useState } from "react";
 import ViewShot from "react-native-view-shot";
 
@@ -195,6 +195,7 @@ const [showSharePreview, setShowSharePreview] = useState(false);
 const [liveParticipants, setLiveParticipants] = useState<Participant[]>([]);
 const [loadingLive, setLoadingLive] = useState(false);
 const [selectedUser, setSelectedUser] = useState<any>(null);
+const [isAdmin, setIsAdmin] = useState(false);
 
 const shareLeaderboard = async () => {
   try {
@@ -275,6 +276,24 @@ useEffect(() => {
   setShowFull(false);
   setLiveParticipants([]);
 }, [mode, tournamentId]);
+
+
+useEffect(() => {
+  const checkAdmin = async () => {
+    if (!authUser?.uid) return;
+
+    const adminRef = doc(db, "admins", authUser.uid);
+    const adminSnap = await getDoc(adminRef);
+
+    if (adminSnap.exists() && adminSnap.data()?.role === "admin") {
+      setIsAdmin(true);
+    } else {
+      setIsAdmin(false);
+    }
+  };
+
+  checkAdmin();
+}, [authUser]);
 
  useEffect (() => {
   const backAction = () => {
@@ -610,9 +629,17 @@ data={sortedParticipants}                 // only the players for current page
         🆔 {selectedUser.publicId || "N/A"}
       </Text>
 
-      <Text style={styles.profileText}>
-        📧 {selectedUser.email || "N/A"}
-      </Text>
+      {isAdmin && (
+  <>
+    <Text>
+      📧 {selectedUser.email || "N/A"}
+    </Text>
+
+    <Text>
+      📱 {selectedUser.phone || "N/A"}
+    </Text>
+  </>
+)}
 
       <Text style={styles.profileText}>
         💰 ${selectedUser.balance?.toFixed(2)}

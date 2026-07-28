@@ -92,6 +92,7 @@ type Accounts = {
   email?: string;
   phone?: string;
 provider?: string;
+role?: string;  
 verifiedAt?: any;
 
 referredBy?: string | null;
