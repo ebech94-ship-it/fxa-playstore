@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-import DefaultAvatar from "../assets/images/default-avatar.png";
+import DefaultAvatar from "../assets/images/default-avatar.jpg";
 
 import { useApp } from "@/app/AppContext";
 import * as ImagePicker from "expo-image-picker";
@@ -37,8 +37,7 @@ import {
 } from "react-native";
 import { db } from "../firebaseConfig";
 
-const DEFAULT_AVATAR =
-  "https://your-default-avatar-image.png";
+const DEFAULT_AVATAR = Image.resolveAssetSource(DefaultAvatar).uri;
 
 /* ---------------- TYPES ---------------- */
 type ProfileErrors = {
