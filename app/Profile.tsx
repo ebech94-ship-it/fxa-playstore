@@ -1,5 +1,5 @@
 import { Ionicons } from "@expo/vector-icons";
-  
+import DefaultAvatar from "../assets/images/default-avatar.png";
 
 import { useApp } from "@/app/AppContext";
 import * as ImagePicker from "expo-image-picker";
@@ -36,6 +36,9 @@ import {
   View
 } from "react-native";
 import { db } from "../firebaseConfig";
+
+const DEFAULT_AVATAR =
+  "https://your-default-avatar-image.png";
 
 /* ---------------- TYPES ---------------- */
 type ProfileErrors = {
@@ -114,7 +117,7 @@ const [profileLocked, setProfileLocked] = useState(false);
     country: "",
     dateOfBirth: "",
     
-    avatarUrl: "",
+    avatarUrl: DEFAULT_AVATAR,
     useHeikinAshi,
     compressWicks,
   });
@@ -135,7 +138,7 @@ const safeProfile = useMemo(() => ({
   phone: appProfile?.phone ?? "",
   country: appProfile?.country ?? "",
   dateOfBirth: appProfile?.dateOfBirth ?? "",
-  avatarUrl: appProfile?.avatarUrl ?? "",
+  avatarUrl: appProfile?.avatarUrl || DEFAULT_AVATAR,
   profileCompleted: appProfile?.profileCompleted ?? false,
   verified: !!appProfile?.username && !!appProfile?.country && !!appProfile?.avatarUrl,
 }), [appProfile]);
@@ -153,7 +156,7 @@ useEffect(() => {
     phone: safeProfile.phone,
     country: safeProfile.country,
     dateOfBirth: safeProfile.dateOfBirth,
-    avatarUrl: safeProfile.avatarUrl,
+   avatarUrl: safeProfile.avatarUrl || DEFAULT_AVATAR,
     useHeikinAshi,
     compressWicks,
   });
@@ -400,7 +403,7 @@ const saveProfile = async () => {
 
   setSaving(true);
   try {
-    let avatarUrl = form.avatarUrl;
+    let avatarUrl = form.avatarUrl || DEFAULT_AVATAR;
     
 
     const payload = {
@@ -777,7 +780,11 @@ if (!profileLoaded) {
     </View>
   ) : form.avatarUrl ? (
     <Image
-      source={{ uri: form.avatarUrl }}
+      source={
+    form.avatarUrl
+      ? { uri: form.avatarUrl }
+      : DefaultAvatar
+  }
       style={{ width: 100, height: 100, borderRadius: 50, marginBottom: 8 }}
       accessible
       accessibilityLabel="User avatar"
