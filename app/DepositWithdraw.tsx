@@ -140,7 +140,8 @@ const [paymentLoading, setPaymentLoading] = useState(false);
 
 const [withdrawalSuccessVisible, setWithdrawalSuccessVisible] = useState(false);
 const [withdrawalReference, setWithdrawalReference] = useState("");
-const [withdrawTimeout, setWithdrawTimeout] = useState<NodeJS.Timeout | null>(null);
+const [withdrawTimeout, setWithdrawTimeout] =
+  useState<ReturnType<typeof setTimeout> | null>(null);
 const [withdrawProcessing, setWithdrawProcessing] = useState(false);
 const [depositSuccessVisible, setDepositSuccessVisible] = useState(false);
 

@@ -10,7 +10,7 @@ export default {
     orientation: "default",
     scheme: "forextournamentsarena",
     jsEngine: "hermes", // Hermes enabled
-    icon: "./assets/images/icon.png",
+    icon: "./assets/images/icon.jpg",
     userInterfaceStyle: "automatic",
 
     // Only bundle essential assets for smaller APK
@@ -26,7 +26,7 @@ export default {
     android: {
       package: "com.ebeh.forextournamentsarena",
       adaptiveIcon: {
-        foregroundImage: "./assets/images/icon.png",
+        foregroundImage: "./assets/images/icon.jpg",
         monochromeImage: "./assets/images/android-icon-monochrome.png",
         backgroundColor: "#E6F4FE",
       },
