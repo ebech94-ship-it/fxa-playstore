@@ -37,7 +37,7 @@ import {
 } from "react-native";
 import { db } from "../firebaseConfig";
 
-const DEFAULT_AVATAR = Image.resolveAssetSource(DefaultAvatar).uri;
+const DEFAULT_AVATAR = DefaultAvatar;
 
 /* ---------------- TYPES ---------------- */
 type ProfileErrors = {
@@ -58,7 +58,7 @@ type ProfileForm = {
   country: string;
   dateOfBirth: string;
 
-  avatarUrl: string;
+ avatarUrl: any;
   useHeikinAshi: boolean;
   compressWicks: boolean;
 };
@@ -402,7 +402,10 @@ const saveProfile = async () => {
 
   setSaving(true);
   try {
-    let avatarUrl = form.avatarUrl || DEFAULT_AVATAR;
+    let avatarUrl =
+  typeof form.avatarUrl === "string"
+    ? form.avatarUrl
+    : DEFAULT_AVATAR;
     
 
     const payload = {
@@ -412,7 +415,10 @@ const saveProfile = async () => {
   phone: form.phone,
   country: form.country,
   dateOfBirth: form.dateOfBirth,
-  avatarUrl,
+   avatarUrl:
+    typeof avatarUrl === "string"
+      ? avatarUrl
+      : "",
   profileCompleted: true,
   verified: true, // ✅ AUTO VERIFIED (SERVER TRUTH)
 };
@@ -779,15 +785,20 @@ if (!profileLoaded) {
     </View>
   ) : form.avatarUrl ? (
     <Image
-      source={
-    form.avatarUrl
+  source={
+    typeof form.avatarUrl === "string"
       ? { uri: form.avatarUrl }
-      : DefaultAvatar
+      : form.avatarUrl
   }
-      style={{ width: 100, height: 100, borderRadius: 50, marginBottom: 8 }}
-      accessible
-      accessibilityLabel="User avatar"
-    />
+  style={{
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    marginBottom: 8,
+  }}
+  accessible
+  accessibilityLabel="User avatar"
+/>
   ) : (
     <View
       style={{
