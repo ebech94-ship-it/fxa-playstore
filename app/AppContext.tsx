@@ -148,6 +148,9 @@ type FirestoreUserDoc = {
   profileCompleted?: boolean;
   verified?: boolean;
 
+deleted?: boolean;
+deletedAt?: any;
+
   accounts?: Accounts;
   
      uid?: string;
@@ -253,8 +256,13 @@ referrals: {
  
   joinedMap: Record<string, boolean>;
   leaderboardParticipants: Record<string, Participant[]>;
-  
+  setLeaderboardParticipants: React.Dispatch<
+  React.SetStateAction<Record<string, Participant[]>>
+>;
 participantBalances: Record<string, number>;  
+setParticipantBalances: React.Dispatch<
+  React.SetStateAction<Record<string, number>>
+>;
 
 };
 export type Participant = {
@@ -363,11 +371,13 @@ setSwitcherHintTournamentId: () => {},
 
   tournamentAccounts: [],
   leaderboardParticipants: {},
-  
+  setLeaderboardParticipants: () => {},
+
   joinedMap: {},
    unreadCount: 0,             // ✅ default
   setUnreadCount: () => {},   // ✅ noop default
   participantBalances: {},
+  setParticipantBalances: () => {},
 });
 
  
@@ -413,13 +423,16 @@ const [tournamentMeta, setTournamentMeta] = useState<
 const [leaderboardParticipants, setLeaderboardParticipants] = useState<
   Record<string, Participant[]>
 >({});
+
 const addLeaderboardUser = (user: Participant) => {
   setLeaderboardParticipants(prev => ({
     ...prev,
     demo: [
       user,
       ...(prev.demo ?? []).filter(p => p.id !== user.id)
-    ]
+    ].sort((a,b)=>
+      (b.balance ?? 0) - (a.balance ?? 0)
+    )
   }));
 };
 
@@ -472,6 +485,7 @@ const activeBalance = useMemo(() => {
   userDoc,
   demoBalance,
   participantBalances,
+  setParticipantBalances,
   participantDocs,
 ]);
 
@@ -786,7 +800,7 @@ useEffect(() => {
 
 console.log("DEMO USERS:", list.length);
     setLeaderboardParticipants(prev => ({
-      ...prev,
+      
       demo: list,
     }));
   });
@@ -816,6 +830,7 @@ useEffect(() => {
           username: data.username,
           balance: data.balance ?? 0,
           avatar: data.avatar,
+          avatarUrl: data.avatarUrl,
           countryCode: data.countryCode,
            // ADD THESE
   publicId: data.publicId,
@@ -899,65 +914,25 @@ useEffect(() => {
   return () => clearInterval(timer);
 }, []);
 
-useEffect(() => {
-  if (!authUser?.uid) return;
 
-  const userRef = doc(db, "users", authUser.uid);
-
-  const unsub = onSnapshot(userRef, async (snap) => {
-    if (!snap.exists()) return;
-
-   const data = snap.data();
-
- setLeaderboardParticipants(prev => ({
-  ...prev,
-  demo: (prev.demo ?? []).map(p =>
-    p.id === authUser.uid
-      ? {
-          ...p,
-          username: data.username ?? p.username,
-          avatar: data.avatarUrl ?? p.avatar,
-          countryCode: data.countryCode ?? data.country ?? p.countryCode,
-          balance: data.accounts?.demo?.balance ?? p.balance,
-          publicId: data.publicId ?? p.publicId,
-          email: data.email ?? p.email,
-        }
-      : p
-  ).sort((a, b) => (b.balance ?? 0) - (a.balance ?? 0))
-}));
-
-const firestoreBalance =
-  data.accounts?.demo?.balance;
-
-   if (typeof firestoreBalance === "number") {
-
-  // Only initialize if app has no local demo balance yet
-  setDemoBalance(prev => {
-    if (prev === 1000) {
-      return firestoreBalance;
-    }
-
-    return prev;
-  });
-
-  await AsyncStorage.setItem(
-    `demoBalance_${authUser.uid}`,
-    firestoreBalance.toString()
-  );
-}
-  });
-
-  return unsub;
-
-}, [authUser?.uid]);
 
 useEffect(() => {
   if (!authUser?.uid) return;
 
-  const key = `demoBalance_${authUser.uid}`;
+  setLeaderboardParticipants(prev => ({
+    ...prev,
+    demo: (prev.demo ?? [])
+      .map(p =>
+        p.id === authUser.uid
+          ? {
+              ...p,
+              balance: demoBalance,
+            }
+          : p
+      )
+      .sort((a, b) => (b.balance ?? 0) - (a.balance ?? 0)),
+  }));
 
-  AsyncStorage.setItem(key, demoBalance.toString())
-    .catch(console.error);
 }, [demoBalance, authUser?.uid]);
 
 useEffect(() => {
@@ -982,36 +957,32 @@ useEffect(() => {
     setUserDoc(null);
     setAccounts(null);
 
-    // RESET ACTIVE ACCOUNT
     setActiveTournament(null);
     setActiveAccount({ type: "demo" });
 
-    // RESET PROFILE
+    setParticipantBalances({});
+    setParticipantDocs({});
+    setTournamentMeta({});
+
     setProfile(null);
     setProfileSubmitted(false);
     setProfileLoaded(false);
 
-    // RESET ADMIN
     setIsAdmin(false);
     setAdminLoaded(false);
 
-    // 🔥 RESET TOURNAMENT STATE
-    setParticipantBalances({});
-    setParticipantDocs({});
-   
-    setTournamentMeta({});
-   
-
-    // reset demo balance until next user loads
     setDemoBalance(1000);
 
     setLoading(false);
+
     return;
   }
 
-  const ref = doc(db, "users", authUser.uid);
+  setLoading(true);
 
-  const unsub = onSnapshot(ref, (snap) => {
+  const userRef = doc(db, "users", authUser.uid);
+
+  const unsub = onSnapshot(userRef, async (snap) => {
     if (!snap.exists()) {
       setLoading(false);
       return;
@@ -1019,15 +990,115 @@ useEffect(() => {
 
     const data = snap.data() as FirestoreUserDoc;
 
-    setUserDoc(data);
+    if (data.deleted === true) {
+      auth.signOut();
+      return;
+    }
 
-    setIsAdmin(data?.roles?.admin === true || data?.isAdmin === true);
-    setAdminLoaded(true);
+    // -------------------------
+    // User document
+    // -------------------------
+
+    setUserDoc(data);
 
     const acc: Accounts = data.accounts ?? {};
     setAccounts(acc);
 
-  
+    // -------------------------
+    // Admin
+    // -------------------------
+
+    setIsAdmin(
+      data.roles?.admin === true ||
+      data.isAdmin === true
+    );
+
+    setAdminLoaded(true);
+
+    // -------------------------
+    // Demo balance
+    // -------------------------
+
+    const firestoreBalance =
+      data.accounts?.demo?.balance;
+
+    if (typeof firestoreBalance === "number") {
+      setDemoBalance(firestoreBalance);
+
+      await AsyncStorage.setItem(
+        `demoBalance_${authUser.uid}`,
+        firestoreBalance.toString()
+      );
+    }
+
+    // -------------------------
+    // Leaderboard
+    // -------------------------
+
+    addLeaderboardUser({
+      id: authUser.uid,
+      username:
+        data.username ??
+        data.displayName ??
+        "Player",
+
+      avatar:
+        data.avatarUrl ?? "",
+
+      countryCode:
+        data.countryCode ??
+        data.country ??
+        "CM",
+
+      balance:
+        Number(
+          data.accounts?.demo?.balance ?? 1000
+        ),
+
+      publicId: data.publicId,
+      email: data.email,
+    });
+
+    setLeaderboardParticipants(prev => ({
+      ...prev,
+      demo: (prev.demo ?? [])
+        .map(p =>
+          p.id === authUser.uid
+            ? {
+                ...p,
+                username:
+                  data.username ??
+                  p.username,
+
+                avatar:
+                  data.avatarUrl ??
+                  p.avatar,
+
+                countryCode:
+                  data.countryCode ??
+                  data.country ??
+                  p.countryCode,
+
+                balance:
+                  data.accounts?.demo?.balance ??
+                  p.balance,
+
+                publicId:
+                  data.publicId ??
+                  p.publicId,
+
+                email:
+                  data.email ??
+                  p.email,
+              }
+            : p
+        )
+        .sort(
+          (a, b) =>
+            (b.balance ?? 0) -
+            (a.balance ?? 0)
+        ),
+    }));
 
     setLoading(false);
   });
@@ -1233,9 +1304,11 @@ useEffect(() => {
 referrals,
   joinedMap,
   leaderboardParticipants,
+  setLeaderboardParticipants,
   addLeaderboardUser,
 
   participantBalances,
+  setParticipantBalances,
 }), [
   appReady,
   unreadCount,
@@ -1271,10 +1344,13 @@ setOpenAccountSwitcher,
   tournamentAccounts,
   joinedMap,
   leaderboardParticipants,
+  setLeaderboardParticipants,
+
   addLeaderboardUser,
 
 referrals,
   participantBalances,
+  setParticipantBalances,
 ]);
   return (
     <AppContext.Provider value={contextValue}>

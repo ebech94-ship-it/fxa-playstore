@@ -263,7 +263,7 @@ Tap a tournament card to view:
 
 Leaderboard supports vertical and horizontal scrolling.
 
-Press ALL to view the complete leaderboard.
+Press ALL button at top of the screen to view the complete leaderboard.
 `}
               fr={`
 Ouvrez les Tournois depuis le menu gauche.
@@ -277,7 +277,7 @@ Appuyez sur une carte tournoi pour voir :
 
 Le classement peut être défilé verticalement et horizontalement.
 
-Appuyez sur ALL pour voir tout le classement.
+Appuyez sur ALL button en haut de l'écran pour voir tout le classement.
 `}
             />
 

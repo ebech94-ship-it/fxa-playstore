@@ -11,7 +11,7 @@ import { deleteUser, getAuth } from "firebase/auth";
 import {
   collection,
   collectionGroup,
-  deleteDoc,
+ 
   doc,
   getDocs,
   onSnapshot,
@@ -128,7 +128,7 @@ const [updateProgress, setUpdateProgress] = useState(0);
 
 const formHydratedRef = useRef(false);
 
-const { profile: appProfile,  setProfile, setProfileSubmitted, profile, profileLoaded, balances } = useApp();
+const { profile: appProfile,  setProfile, setLeaderboardParticipants,  setProfileSubmitted, profile, profileLoaded, balances } = useApp();
 
 const safeProfile = useMemo(() => ({
   publicId: appProfile?.publicId ?? "Not assigned",
@@ -329,7 +329,7 @@ const uploadAvatarToCloudinary = async (uri: string) => {
   return json.secure_url;
 };
 
-const syncUserIdentity = async () => {
+const syncUserIdentity = async (avatarUrl: string) => {
   if (!user) return;
 
   const newName = form.username || form.displayName;
@@ -345,21 +345,39 @@ const syncUserIdentity = async () => {
 
       if (data.uid === user.uid || item.id === user.uid) {
         await updateDoc(item.ref, {
-          name: newName,
-          username: newName,
-        });
+  name: newName,
+  username: newName,
+  avatar: form.avatarUrl,
+  avatarUrl: form.avatarUrl,
+});
       }
     }
 
 
     // 2. Update leaderboard record
-    await updateDoc(
-      doc(db, "leaderboard", user.uid),
-      {
-        name: newName,
-        username: newName,
-      }
-    ).catch(() => {});
+  await updateDoc(doc(db, "leaderboard", user.uid), {
+  avatar: avatarUrl,
+  avatarUrl: avatarUrl,
+}).catch(() => {});
+
+await updateDoc(doc(db, "demoAccounts", user.uid), {
+  avatar: avatarUrl,
+  avatarUrl: avatarUrl,
+}).catch(() => {});
+
+// ✅ Update AppContext leaderboard immediately
+setLeaderboardParticipants((prev) => ({
+  ...prev,
+  demo: (prev.demo ?? []).map((p) =>
+    p.id === user.uid
+      ? {
+          ...p,
+          avatar: avatarUrl,
+          avatarUrl,
+        }
+      : p
+  ),
+}));
 
 
     // 3. Update demo leaderboard / demo account record
@@ -425,9 +443,28 @@ const saveProfile = async () => {
 
 
     await updateDoc(doc(db, "users", user.uid), payload);
+// 🔥 Sync avatar to leaderboard records
+await updateDoc(
+  doc(db, "leaderboard", user.uid),
+  {
+    avatar: avatarUrl,
+    avatarUrl: avatarUrl,
+  }
+).catch(() => {});
+
+
+// 🔥 Sync avatar to demo leaderboard
+await updateDoc(
+  doc(db, "demoAccounts", user.uid),
+  {
+    avatar: avatarUrl,
+    avatarUrl: avatarUrl,
+  }
+).catch(() => {});
+
 
 // Update old fallback names everywhere
-await syncUserIdentity();
+await syncUserIdentity(avatarUrl);
 // 🔥 UPDATE APP CONTEXT IMMEDIATELY
 setProfile((prev) => ({
   ...(prev ?? {}),
@@ -499,13 +536,18 @@ const handleDeleteAccount = async () => {
 
             if (!user) return;
 
-            // Delete Firestore user data
-            await deleteDoc(doc(db, "users", user.uid));
+           const token = await user.getIdToken();
 
-            // Delete account
-            await deleteUser(user);
+await fetch("https://forexapp2-backend.onrender.com/user/delete-account", {
+  method: "POST",
+  headers: {
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+  },
+});
 
-            router.replace("/splash");
+           await auth.signOut();
+router.replace("/welcome");
           } catch (err) {
             console.log("Delete account error:", err);
           }

@@ -17,7 +17,8 @@ import { AccountType, useApp } from "./AppContext";
 export type Participant = {
   id: string;
   username?: string;
-  avatar?: string;
+  avatar?:string;
+ avatarUrl?:string;
   balance?: number;
   countryCode?: string;
 
@@ -373,15 +374,46 @@ useEffect(() => {
 }, [mode, tournamentId, activeLeaderboardParticipants]);
 
 useEffect(() => {
-  console.log(
-    "LeaderboardBar received:",
-    activeLeaderboardParticipants.length
-  );
 
-  if (mode === "demo") {
-    setLiveParticipants(activeLeaderboardParticipants);
-  }
-}, [activeLeaderboardParticipants, mode]);
+ if (!liveParticipants.length) return;
+
+ const loadAvatars = async () => {
+
+   const updated = await Promise.all(
+     liveParticipants.map(async (p) => {
+
+       
+
+       const snap = await getDoc(
+         doc(db,"users",p.id)
+       );
+
+       if(snap.exists()){
+
+         const data = snap.data();
+
+         return {
+           ...p,
+           avatar:data.avatarUrl || p.avatar,
+           username:data.username || p.username,
+           countryCode:data.country || p.countryCode
+         };
+
+       }
+
+       return p;
+
+     })
+   );
+
+   setLiveParticipants(updated);
+
+ };
+
+
+ loadAvatars();
+
+},[liveParticipants]);
 
 const chunkSize = isLandscape ? 1 : 2; // 1 row in landscape, 2 rows in portrait
 
@@ -394,6 +426,7 @@ const chunkedParticipants = useMemo(() => {
 
   return chunks;
 }, [sortedParticipants, chunkSize]);
+
 
 const topTraders = useMemo(() => {
   return sortedParticipants.slice(0, 5);
@@ -449,12 +482,15 @@ return (
 >
           <Image
             source={{
-              uri:
-  isCurrent && profile?.avatarUrl?.startsWith("https://")
-    ? profile.avatarUrl
-    : p.avatar?.startsWith("https://")
-    ? p.avatar
-    : "https://placehold.co/32x32/png",
+           uri:
+  isCurrent
+    ? (profile?.avatarUrl ||
+       p.avatarUrl ||
+       p.avatar ||
+       "https://placehold.co/32x32/png")
+    : (p.avatarUrl ||
+       p.avatar ||
+       "https://placehold.co/32x32/png"),
             }}
             style={[styles.avatar, isCurrent && styles.currentUserAvatar]}
           />
@@ -472,7 +508,7 @@ return (
     : toISO2(p.countryCode)
 }
             />
-           <Text style={styles.balance}>
+           <Text style={[styles.balance, isCurrent && {color:"#00ff88"}]}>
  {`$${(
   mode === "demo" && isCurrent
     ? (demoBalance ?? 0)
@@ -618,14 +654,25 @@ return (
   }
 }}
 >
-  <Image
-    source={{
-   uri: item.avatar?.startsWith("https://")
-     ? item.avatar
-     : "https://placehold.co/32x32/png",
-    }}
-    style={styles.avatar}
-  />
+ <Image
+  source={{
+    uri:
+      item.id === currentUser?.uid
+        ? (
+            profile?.avatarUrl ||
+            item.avatarUrl ||
+            item.avatar ||
+            "https://placehold.co/32x32/png"
+          )
+        : (
+            item.avatarUrl ||
+            item.avatar ||
+            "https://placehold.co/32x32/png"
+          ),
+  }}
+  style={styles.avatar}
+/>
+
 </TouchableOpacity>
       <View style={styles.info}>
         <ParticipantRow
@@ -652,10 +699,11 @@ return (
     >
       <Image
         source={{
-          uri:
-            selectedUser.avatar ||
-            "https://placehold.co/80x80",
-        }}
+            uri:
+      selectedUser.avatarUrl ||
+      selectedUser.avatar ||
+      "https://placehold.co/80x80",
+  }}
         style={styles.profileAvatar}
       />
 
@@ -885,17 +933,24 @@ paddingHorizontal: 6,
 },
   balance: { color: "#22c55e", fontSize: 11, fontWeight: "700" },
   rank: { color: "#facc15", fontWeight: "700", fontSize: 12, top:7 },
-  currentUser: {
-    backgroundColor: "rgba(255,255,255,0.15)",
-    shadowColor: "#22c55e",
-    shadowOpacity: 0.8,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 0 },
-  },
+ currentUser: {
+  backgroundColor: "rgba(0,255,120,0.25)",
+  borderWidth: 2,
+  borderColor: "#00ff88",
+  shadowColor: "#00ff88",
+  shadowOpacity: 1,
+  shadowRadius: 14,
+  shadowOffset: { width: 0, height: 0 },
+  elevation: 15,
+},
   currentUserAvatar: {
-    borderWidth: 2,
-    borderColor: "#22c55e",
-  },
+  borderWidth: 3,
+  borderColor: "#00ff88",
+  shadowColor: "#00ff88",
+  shadowOpacity: 1,
+  shadowRadius: 8,
+  elevation: 8,
+},
  profileOverlay: {
   position: "absolute",
   top: 0,

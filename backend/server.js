@@ -596,6 +596,19 @@ app.post("/admin/delete-user", authenticate, requireAdmin, async (req, res) => {
   res.json({ success: true });
 });
 
+app.post("/user/delete-account", authenticate, async (req, res) => {
+  try {
+    await db.collection("users").doc(req.user.uid).update({
+      deleted: true,
+      deletedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ---------------------------------------------------------------------
 // ADMIN — SYSTEM LOGS & ACTIVITY HISTORY
 // ---------------------------------------------------------------------

@@ -118,19 +118,11 @@ const updateDemoBalance = async (
   try {
     const userRef = doc(db, "users", uid);
 
-    await setDoc(
-      userRef,
-      {
-        accounts: {
-          demo: {
-            balance: newBalance,
-            updatedAt: Date.now(),
-            type: "practice",
-          },
-        },
-      },
-      { merge: true }
-    );
+await updateDoc(userRef, {
+  "accounts.demo.balance": newBalance,
+  "accounts.demo.updatedAt": Date.now(),
+  "accounts.demo.type": "practice",
+});
 
     console.log("✅ Demo synced:", uid, newBalance);
   } catch (e) {
@@ -170,7 +162,7 @@ const expiryPanResponder = useRef(
  const [showManual, setShowManual] = useState(false);
 
   const [profitPercent] = useState<number>(PAYOUT);
-  const { unreadCount, participantBalances } = useApp();
+  const { unreadCount, participantBalances, setParticipantBalances } = useApp();
 
 
 const handleKeyPress = (key: string) => {
@@ -274,7 +266,7 @@ useEffect(() => {
 const closeTradeInFirestore = async (userId: string, closed: ClosedTrade) => {
   try {
     const ref = doc(db, "users", userId, "closedTrades", closed.id);
-    await setDoc(ref, closed, { merge: true }); // <-- FIXED
+    await setDoc(ref, closed ); // <-- FIXED
     console.log("🔥 Closed trade saved:", closed);
   } catch (err) {
     console.log("❌ Error saving closed trade:", err);
@@ -519,36 +511,50 @@ useEffect(() => {
         };
 
         // 🔥 SINGLE tournament Cloud Function call (WIN + LOSS handled here)
-     if (
+  if (
   t.account.type === "tournament" &&
   t.account.tournamentId
 ) {
+  const tournamentId = t.account.tournamentId;
+
   await settleTournamentTrade({
-    tournamentId: t.account.tournamentId,
+    tournamentId,
     tradeId: t.id,
     result: isWin ? "GAIN" : "LOSS",
   });
 
+  const ref = doc(
+    db,
+    "tournaments",
+    tournamentId,
+    "participants",
+    auth.currentUser!.uid
+  );
+
+  const snap = await getDoc(ref);
+
+  if (snap.exists()) {
+    setParticipantBalances(prev => ({
+      ...prev,
+      [tournamentId]: snap.data().balance ?? 0,
+    }));
+  }
 }
 
-        // 💰 DEMO balance update
-        // 💰 DEMO balance sync
+// 💰 DEMO balance sync
 if (t.account.type === "demo") {
   const uid = auth.currentUser?.uid;
 
   if (uid) {
-    setDemoBalance(prev => {
-      const newBalance = isWin
-        ? prev + payout
-        : prev;
+   setDemoBalance(prev => {
+  const updated = prev + (isWin ? payout : 0);
 
-      updateDemoBalance(uid, newBalance);
+  void updateDemoBalance(uid, updated);
 
-      return newBalance;
-    });
+  return updated;
+});
   }
 }
-
         // 💰 REAL account update
         if (isWin && t.account.type === "real") {
           const uid = auth.currentUser?.uid;
@@ -576,7 +582,7 @@ if (t.account.type === "demo") {
   }, 1000);
 
   return () => clearInterval(timer);
-}, [profitPercent, setDemoBalance, demoBalance, settleTournamentTrade]);
+}, [profitPercent,  settleTournamentTrade]);
 
 useEffect(() => {
   console.log("🔥 TradingLayout balances:", ctxBalances);
