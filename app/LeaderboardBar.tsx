@@ -10,7 +10,7 @@ import {
   TouchableOpacity, View, useWindowDimensions
 } from "react-native";
 import CountryFlag from "react-native-country-flag";
-import Animated, { FadeOut, Layout, SlideInRight } from "react-native-reanimated";
+import Animated, { FadeOut, Layout } from "react-native-reanimated";
 import { AccountType, useApp } from "./AppContext";
 
 
@@ -333,9 +333,7 @@ useEffect(() => {
     setLoadingLive(false);
     return;
   }
-
-  setLiveParticipants([]);
-  setLoadingLive(true);
+setLoadingLive(true);
 
   // 🟣 TOURNAMENT LEADERBOARD
   if (mode === "tournament" && tournamentId) {
@@ -467,9 +465,6 @@ return (
       return (
   <Animated.View
   key={p.id}
-  entering={SlideInRight.springify()
-    .damping(18)
-    .stiffness(160)}
   exiting={FadeOut}
   layout={Layout.springify()}
   style={[

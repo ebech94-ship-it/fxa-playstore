@@ -800,7 +800,7 @@ useEffect(() => {
 
 console.log("DEMO USERS:", list.length);
     setLeaderboardParticipants(prev => ({
-      
+       ...prev,
       demo: list,
     }));
   });
@@ -855,10 +855,39 @@ useEffect(() => {
   return balanceA - balanceB;
 });  list.sort((a, b) => (b.rankingScore ?? 0) - (a.rankingScore ?? 0));
 
-      setLeaderboardParticipants((prev) => ({
-        ...prev,
-        [t.tournamentId]: list,
-      }));
+      setLeaderboardParticipants((prev) => {
+  const oldList = prev[t.tournamentId] ?? [];
+
+  let changed = false;
+
+  const merged = list.map(player => {
+    const old = oldList.find(p => p.id === player.id);
+
+    if (
+      !old ||
+      old.balance !== player.balance ||
+      old.rankingScore !== player.rankingScore
+    ) {
+      changed = true;
+      return player;
+    }
+
+    return old;
+  });
+
+  if (!changed && oldList.length === merged.length) {
+    return prev;
+  }
+
+  return {
+    ...prev,
+    [t.tournamentId]: merged.sort(
+      (a,b) =>
+        (b.rankingScore ?? 0) -
+        (a.rankingScore ?? 0)
+    ),
+  };
+});
     });
 
     unsubscribes.push(unsub);
@@ -914,26 +943,6 @@ useEffect(() => {
   return () => clearInterval(timer);
 }, []);
 
-
-
-useEffect(() => {
-  if (!authUser?.uid) return;
-
-  setLeaderboardParticipants(prev => ({
-    ...prev,
-    demo: (prev.demo ?? [])
-      .map(p =>
-        p.id === authUser.uid
-          ? {
-              ...p,
-              balance: demoBalance,
-            }
-          : p
-      )
-      .sort((a, b) => (b.balance ?? 0) - (a.balance ?? 0)),
-  }));
-
-}, [demoBalance, authUser?.uid]);
 
 useEffect(() => {
   if (
@@ -1035,29 +1044,6 @@ useEffect(() => {
     // Leaderboard
     // -------------------------
 
-    addLeaderboardUser({
-      id: authUser.uid,
-      username:
-        data.username ??
-        data.displayName ??
-        "Player",
-
-      avatar:
-        data.avatarUrl ?? "",
-
-      countryCode:
-        data.countryCode ??
-        data.country ??
-        "CM",
-
-      balance:
-        Number(
-          data.accounts?.demo?.balance ?? 1000
-        ),
-
-      publicId: data.publicId,
-      email: data.email,
-    });
 
     setLeaderboardParticipants(prev => ({
       ...prev,
