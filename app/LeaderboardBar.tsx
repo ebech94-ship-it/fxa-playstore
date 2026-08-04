@@ -370,47 +370,7 @@ setLoadingLive(true);
 
 }, [mode, tournamentId, activeLeaderboardParticipants]);
 
-useEffect(() => {
 
- if (!liveParticipants.length) return;
-
- const loadAvatars = async () => {
-const updated = await Promise.all(
-  liveParticipants.map(async (p) => {
-    const snap = await getDoc(doc(db, "users", p.id));
-
-    if (snap.exists()) {
-      const data = snap.data();
-
-      return {
-        ...p,
-        avatar: data.avatarUrl || p.avatar,
-        username: data.username || p.username,
-        countryCode: data.country || p.countryCode,
-      };
-    }
-
-    return p;
-  })
-);
-
-// ✅ Only update state if something actually changed
-const changed = updated.some((u, i) =>
-  u.avatar !== liveParticipants[i]?.avatar ||
-  u.username !== liveParticipants[i]?.username ||
-  u.countryCode !== liveParticipants[i]?.countryCode
-);
-
-if (changed) {
-  setLiveParticipants(updated);
-}
-
- };
-
-
- loadAvatars();
-
-},[liveParticipants]);
 
 const chunkSize = isLandscape ? 1 : 2; // 1 row in landscape, 2 rows in portrait
 
