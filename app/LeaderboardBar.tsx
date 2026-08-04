@@ -189,8 +189,9 @@ const isLandscape = width > height;
  
 
 
-const [mode, setMode] = useState<"real" | "demo" | "tournament">("real");
-
+const [mode, setMode] = useState<"real" | "demo" | "tournament">(
+  activeAccount.type
+);
 
 const [showSharePreview, setShowSharePreview] = useState(false);
 const [liveParticipants, setLiveParticipants] = useState<Participant[]>([]);
@@ -273,12 +274,8 @@ useEffect(() => {
 }, [activeAccount.type]);
 
 useEffect(() => {
-  
   setShowFull(false);
- if (mode !== "demo") {
-    setLiveParticipants([]);
-}
-}, [mode, tournamentId]);
+}, [mode]);
 
 
 useEffect(() => {
