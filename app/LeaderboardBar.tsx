@@ -275,7 +275,9 @@ useEffect(() => {
 useEffect(() => {
   
   setShowFull(false);
-  setLiveParticipants([]);
+ if (mode !== "demo") {
+    setLiveParticipants([]);
+}
 }, [mode, tournamentId]);
 
 
@@ -376,35 +378,35 @@ useEffect(() => {
  if (!liveParticipants.length) return;
 
  const loadAvatars = async () => {
+const updated = await Promise.all(
+  liveParticipants.map(async (p) => {
+    const snap = await getDoc(doc(db, "users", p.id));
 
-   const updated = await Promise.all(
-     liveParticipants.map(async (p) => {
+    if (snap.exists()) {
+      const data = snap.data();
 
-       
+      return {
+        ...p,
+        avatar: data.avatarUrl || p.avatar,
+        username: data.username || p.username,
+        countryCode: data.country || p.countryCode,
+      };
+    }
 
-       const snap = await getDoc(
-         doc(db,"users",p.id)
-       );
+    return p;
+  })
+);
 
-       if(snap.exists()){
+// ✅ Only update state if something actually changed
+const changed = updated.some((u, i) =>
+  u.avatar !== liveParticipants[i]?.avatar ||
+  u.username !== liveParticipants[i]?.username ||
+  u.countryCode !== liveParticipants[i]?.countryCode
+);
 
-         const data = snap.data();
-
-         return {
-           ...p,
-           avatar:data.avatarUrl || p.avatar,
-           username:data.username || p.username,
-           countryCode:data.country || p.countryCode
-         };
-
-       }
-
-       return p;
-
-     })
-   );
-
-   setLiveParticipants(updated);
+if (changed) {
+  setLiveParticipants(updated);
+}
 
  };
 

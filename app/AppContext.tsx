@@ -799,10 +799,26 @@ useEffect(() => {
     list.sort((a, b) => (b.balance ?? 0) - (a.balance ?? 0));
 
 console.log("DEMO USERS:", list.length);
-    setLeaderboardParticipants(prev => ({
-       ...prev,
-      demo: list,
-    }));
+   setLeaderboardParticipants(prev => {
+  const old = prev.demo ?? [];
+
+  if (
+    old.length === list.length &&
+    old.every((p, i) =>
+      p.id === list[i].id &&
+      p.balance === list[i].balance &&
+      p.username === list[i].username &&
+      p.avatar === list[i].avatar
+    )
+  ) {
+    return prev;
+  }
+
+  return {
+    ...prev,
+    demo: list,
+  };
+});
   });
 
   return unsub;
