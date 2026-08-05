@@ -485,7 +485,7 @@ const activeBalance = useMemo(() => {
   userDoc,
   demoBalance,
   participantBalances,
-  setParticipantBalances,
+ 
   participantDocs,
 ]);
 
@@ -869,7 +869,7 @@ useEffect(() => {
 
   // SECONDARY: balance (IMPORTANT FIX)
   return balanceA - balanceB;
-});  list.sort((a, b) => (b.rankingScore ?? 0) - (a.rankingScore ?? 0));
+}); 
 
       setLeaderboardParticipants((prev) => {
   const oldList = prev[t.tournamentId] ?? [];
@@ -1056,52 +1056,6 @@ useEffect(() => {
       );
     }
 
-    // -------------------------
-    // Leaderboard
-    // -------------------------
-
-
-    setLeaderboardParticipants(prev => ({
-      ...prev,
-      demo: (prev.demo ?? [])
-        .map(p =>
-          p.id === authUser.uid
-            ? {
-                ...p,
-                username:
-                  data.username ??
-                  p.username,
-
-                avatar:
-                  data.avatarUrl ??
-                  p.avatar,
-
-                countryCode:
-                  data.countryCode ??
-                  data.country ??
-                  p.countryCode,
-
-                balance:
-                  data.accounts?.demo?.balance ??
-                  p.balance,
-
-                publicId:
-                  data.publicId ??
-                  p.publicId,
-
-                email:
-                  data.email ??
-                  p.email,
-              }
-            : p
-        )
-        .sort(
-          (a, b) =>
-            (b.balance ?? 0) -
-            (a.balance ?? 0)
-        ),
-    }));
-
     setLoading(false);
   });
 
@@ -1170,9 +1124,8 @@ useEffect(() => {
   }
 
   const verified =
-    !!userDoc.username &&
-    !!userDoc.country &&
-    !!userDoc.avatarUrl;
+  !!userDoc.username &&
+  !!userDoc.country;
 
   setProfile(prev => ({
     publicId: userDoc.publicId,
@@ -1182,10 +1135,11 @@ useEffect(() => {
     phone: userDoc.phone ?? prev?.phone,
     country: userDoc.country ?? prev?.country,
     dateOfBirth: userDoc.dateOfBirth ?? prev?.dateOfBirth,
-    avatarUrl:
-      typeof userDoc.avatarUrl === "string"
-        ? userDoc.avatarUrl
-        : prev?.avatarUrl ?? "",
+   avatarUrl:
+  typeof userDoc.avatarUrl === "string" &&
+  userDoc.avatarUrl.trim() !== ""
+    ? userDoc.avatarUrl
+    : prev?.avatarUrl ?? "",
     verified,
     profileCompleted: userDoc.profileCompleted === true,
   }));

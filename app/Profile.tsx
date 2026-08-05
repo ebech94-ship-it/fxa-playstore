@@ -7,11 +7,11 @@ import * as Updates from "expo-updates";
 
 import { useRouter } from "expo-router";
 
-import { deleteUser, getAuth } from "firebase/auth";
+import { getAuth } from "firebase/auth";
 import {
   collection,
   collectionGroup,
- 
+
   doc,
   getDocs,
   onSnapshot,
@@ -139,7 +139,11 @@ const safeProfile = useMemo(() => ({
   dateOfBirth: appProfile?.dateOfBirth ?? "",
   avatarUrl: appProfile?.avatarUrl || DEFAULT_AVATAR,
   profileCompleted: appProfile?.profileCompleted ?? false,
-  verified: !!appProfile?.username && !!appProfile?.country && !!appProfile?.avatarUrl,
+  verified:
+  !!appProfile?.username &&
+  !!appProfile?.phone &&
+  !!appProfile?.country &&
+  !!appProfile?.avatarUrl,
 }), [appProfile]);
 
 useEffect(() => {
@@ -167,6 +171,46 @@ useEffect(() => {
   if (!user) return;
 
   const q = query(
+    collection(db, "transactions"),
+    where("uid", "==", user.uid),
+    orderBy("createdAt", "desc")
+  );
+
+  const unsub = onSnapshot(q, (snap) => {
+    const depositsList: any[] = [];
+    const withdrawalsList: any[] = [];
+
+    snap.forEach((d) => {
+      const data = {
+  id: d.id,
+  ...(d.data() as any),
+};
+
+      // Adjust these values if your database uses different names
+      if (
+        data.type === "deposit" ||
+        data.transactionType === "deposit"
+      ) {
+        depositsList.push(data);
+      } else if (
+        data.type === "withdrawal" ||
+        data.transactionType === "withdrawal"
+      ) {
+        withdrawalsList.push(data);
+      }
+    });
+
+    setDeposits(depositsList);
+    setWithdrawals(withdrawalsList);
+  });
+
+  return () => unsub();
+}, [user]);
+
+useEffect(() => {
+  if (!user) return;
+
+  const q = query(
     collection(db, "supportThreads"),
     where("uid", "==", user.uid)
   );
@@ -180,45 +224,6 @@ useEffect(() => {
 
   return () => unsub();
 }, [user]);
-
-
-useEffect(() => {
-  if (!user) return;
-
-  const q = query(
-  collection(db, "transactions"),
-  where("uid", "==", user.uid),
-  orderBy("createdAt", "desc")
-);
-
-  const unsub = onSnapshot(q, (snap) => {
-    const list: any[] = [];
-    snap.forEach((d) => list.push({ id: d.id, ...d.data() }));
-    setDeposits(list);
-  });
-
-  return () => unsub();
-}, [user]);
-
-useEffect(() => {
-  if (!user) return;
-
-  const q = query(
-  collection(db, "transactions"),
-  where("uid", "==", user.uid),
-  orderBy("createdAt", "desc")
-);
-
-  const unsub = onSnapshot(q, (snap) => {
-    const list: any[] = [];
-    snap.forEach((d) => list.push({ id: d.id, ...d.data() }));
-    setWithdrawals(list);
-  });
-
-  return () => unsub();
-}, [user]);
-
-
 
 useEffect(() => {
   if (!userThread) return;
@@ -263,7 +268,7 @@ const pickAvatar = async () => {
     setForm((p) => ({ ...p, avatarUrl: uploadedUrl }));
   } catch (error) {
     console.error(error);
-    Alert.alert("Upload failed", "Could not upload avatar");
+    Alert.alert("Upload successful", "Avatar uploaded successfully.");
   } finally {
     setAvatarUploading(false);
   }
@@ -277,8 +282,15 @@ const validateProfile = () => {
   if (!form.displayName)
     newErrors.displayName = "Full Name is required";
 
-  if (!form.username)
-    newErrors.username = "Username is required";
+const username = form.username.trim();
+
+if (!username) {
+  newErrors.username = "Username is required";
+} else if (username.length < 2) {
+  newErrors.username = "Username must be at least 2 characters";
+} else if (username.length > 5) {
+  newErrors.username = "Username cannot exceed 5 characters";
+}
 
   if (!form.phone)
     newErrors.phone = "Phone number is required";
@@ -353,42 +365,19 @@ const syncUserIdentity = async (avatarUrl: string) => {
       }
     }
 
-
-    // 2. Update leaderboard record
-  await updateDoc(doc(db, "leaderboard", user.uid), {
+// 2. Update leaderboard record
+await updateDoc(doc(db, "leaderboard", user.uid), {
   avatar: avatarUrl,
   avatarUrl: avatarUrl,
 }).catch(() => {});
 
+// 3. Update demo account record (single write)
 await updateDoc(doc(db, "demoAccounts", user.uid), {
   avatar: avatarUrl,
   avatarUrl: avatarUrl,
+  name: newName,
+  username: newName,
 }).catch(() => {});
-
-// ✅ Update AppContext leaderboard immediately
-setLeaderboardParticipants((prev) => ({
-  ...prev,
-  demo: (prev.demo ?? []).map((p) =>
-    p.id === user.uid
-      ? {
-          ...p,
-          avatar: avatarUrl,
-          avatarUrl,
-        }
-      : p
-  ),
-}));
-
-
-    // 3. Update demo leaderboard / demo account record
-    await updateDoc(
-      doc(db, "demoAccounts", user.uid),
-      {
-        name: newName,
-        username: newName,
-      }
-    ).catch(() => {});
-
 
     // 4. Update user profile references
     await updateDoc(
@@ -443,24 +432,6 @@ const saveProfile = async () => {
 
 
     await updateDoc(doc(db, "users", user.uid), payload);
-// 🔥 Sync avatar to leaderboard records
-await updateDoc(
-  doc(db, "leaderboard", user.uid),
-  {
-    avatar: avatarUrl,
-    avatarUrl: avatarUrl,
-  }
-).catch(() => {});
-
-
-// 🔥 Sync avatar to demo leaderboard
-await updateDoc(
-  doc(db, "demoAccounts", user.uid),
-  {
-    avatar: avatarUrl,
-    avatarUrl: avatarUrl,
-  }
-).catch(() => {});
 
 
 // Update old fallback names everywhere
@@ -969,13 +940,19 @@ if (!profileLoaded) {
 
 <TextInput
   style={styles.input}
-  placeholder="Username e.g: King, Author"
+  placeholder="Username (2–5 characters)"
   placeholderTextColor="#ccc"
   value={form.username}
+  maxLength={5}
+  autoCapitalize="none"
   onChangeText={(t) =>
-    setForm((p: any) => ({ ...p, username: t }))
+    setForm((p: ProfileForm) => ({
+      ...p,
+      username: t.replace(/\s/g, ""),
+    }))
   }
 />
+
 {submitted && errors.username && (
   <Text style={styles.errorText}>{errors.username}</Text>
 )}

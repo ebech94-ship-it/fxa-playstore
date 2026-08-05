@@ -1,7 +1,7 @@
 // LeaderboardBar.tsx — Fixed & clean version
 
 import { db } from "@/lib/firebase";
-import { collection, doc, getDoc, onSnapshot, orderBy, query } from "firebase/firestore";
+import { doc, getDoc } from "firebase/firestore";
 import { useEffect, useMemo, useRef, useState } from "react";
 import ViewShot from "react-native-view-shot";
 
@@ -320,55 +320,30 @@ useEffect(() => {
 
 }, [showFull]);
 
-
-
 useEffect(() => {
-
-  let unsub: (() => void) | undefined;
-
-  // 🟡 DEMO LEADERBOARD
   if (mode === "demo") {
     setLiveParticipants(activeLeaderboardParticipants);
     setLoadingLive(false);
     return;
   }
-setLoadingLive(true);
 
-  // 🟣 TOURNAMENT LEADERBOARD
   if (mode === "tournament" && tournamentId) {
-    const q = query(
-      collection(db, "tournaments", tournamentId, "participants"),
-      orderBy("balance", "desc")
+    setLiveParticipants(
+      leaderboardParticipants[tournamentId] ?? []
     );
-
-    unsub = onSnapshot(q, (snap) => {
-      const data = snap.docs.map((d) => {
-        const dta = d.data() as any;
-
-        return {
-          id: d.id,
-          ...dta,
-          balance: dta.balance ?? 0,
-        };
-      });
-
-      requestAnimationFrame(() => {
-        setLiveParticipants(data);
-      });
-
-      setLoadingLive(false);
-    });
-  }
-
-  // 🔵 REAL
-  else {
-    setLiveParticipants([]);
     setLoadingLive(false);
+    return;
   }
 
-  return () => unsub?.();
+  setLiveParticipants([]);
+  setLoadingLive(false);
 
-}, [mode, tournamentId, activeLeaderboardParticipants]);
+}, [
+  mode,
+  tournamentId,
+  activeLeaderboardParticipants,
+  leaderboardParticipants,
+]);
 
 
 
