@@ -321,11 +321,11 @@ useEffect(() => {
 }, [showFull]);
 
 useEffect(() => {
-  if (mode === "demo") {
-    setLiveParticipants(activeLeaderboardParticipants);
-    setLoadingLive(false);
-    return;
-  }
+ if (mode === "demo") {
+  setLiveParticipants(leaderboardParticipants.demo ?? []);
+  setLoadingLive(false);
+  return;
+}
 
   if (mode === "tournament" && tournamentId) {
     setLiveParticipants(
@@ -341,7 +341,7 @@ useEffect(() => {
 }, [
   mode,
   tournamentId,
-  activeLeaderboardParticipants,
+ 
   leaderboardParticipants,
 ]);
 
