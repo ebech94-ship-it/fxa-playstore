@@ -1122,23 +1122,19 @@ flexShrink: 1,
   style={{
     flex:1,
     width:"100%",
-    minHeight:0,
+   overflow: "hidden",
   }}
 >
 
    {viewTab === "info" ? (
 
 <ScrollView
-  style={{width:"100%"}}
-
-  nestedScrollEnabled={true}
-
+  style={{ flex: 1 }}
+  overScrollMode="always"
   keyboardShouldPersistTaps="handled"
-
-  showsVerticalScrollIndicator={true}
-
+  showsVerticalScrollIndicator
   contentContainerStyle={{
-    paddingBottom:80,
+    paddingBottom: 80,
   }}
 >
 
@@ -1305,22 +1301,34 @@ flexShrink: 1,
 
 <ScrollView
   horizontal
-  showsHorizontalScrollIndicator={true}
-  nestedScrollEnabled={true}
+  nestedScrollEnabled
+  directionalLockEnabled
+  showsHorizontalScrollIndicator
+  alwaysBounceHorizontal={false}
+  overScrollMode="never"
+  keyboardShouldPersistTaps="handled"
+  contentContainerStyle={{
+    minWidth: 750,
+  }}
 >
-  <View style={{ width: 750 }}>
 
-    <FlatList
-      data={sortedLeaderboard}
-      keyExtractor={(item) => item.id}
+  <FlatList
+    style={{
+      width: 750,
+      
+    }}
 
-      nestedScrollEnabled={true}
+    data={sortedLeaderboard}
+    keyExtractor={(item) => item.id}
 
-      showsVerticalScrollIndicator={true}
+    showsVerticalScrollIndicator
+    nestedScrollEnabled
 
-      contentContainerStyle={{
-        paddingBottom: 40,
-      }}
+    keyboardShouldPersistTaps="handled"
+
+    contentContainerStyle={{
+      paddingBottom: 40,
+    }}
 
       ListHeaderComponent={
         <>
@@ -1452,7 +1460,8 @@ flexShrink: 1,
 
     />
 
-  </View>
+ 
+ 
 
 </ScrollView>
 
@@ -1503,7 +1512,7 @@ disabledBtn: { opacity: 0.45 },
   justifyContent: "center", alignItems: "center" },
 modalContent: {
   width: "96%",
-  height: "85%",
+  maxHeight: "85%",
   maxWidth: 650,
   backgroundColor: "#12122a",
   borderRadius: 18,
