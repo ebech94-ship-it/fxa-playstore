@@ -128,7 +128,7 @@ const [updateProgress, setUpdateProgress] = useState(0);
 
 const formHydratedRef = useRef(false);
 
-const { profile: appProfile,  setProfile, setLeaderboardParticipants,  setProfileSubmitted, profile, profileLoaded, balances } = useApp();
+const { profile: appProfile,  setProfile,  setProfileSubmitted, profile, profileLoaded, balances } = useApp();
 
 const safeProfile = useMemo(() => ({
   publicId: appProfile?.publicId ?? "Not assigned",
@@ -288,7 +288,7 @@ if (!username) {
   newErrors.username = "Username is required";
 } else if (username.length < 2) {
   newErrors.username = "Username must be at least 2 characters";
-} else if (username.length > 5) {
+} else if (username.length > 8) {
   newErrors.username = "Username cannot exceed 5 characters";
 }
 
@@ -940,10 +940,10 @@ if (!profileLoaded) {
 
 <TextInput
   style={styles.input}
-  placeholder="Username (2–5 characters)"
+  placeholder="Username (2–8 characters)"
   placeholderTextColor="#ccc"
   value={form.username}
-  maxLength={5}
+  maxLength={8}
   autoCapitalize="none"
   onChangeText={(t) =>
     setForm((p: ProfileForm) => ({

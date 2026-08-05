@@ -777,11 +777,19 @@ collectedFunds: Number(data.collectedFunds ?? 0),
 
   return unsub;
 }, []);
+
 useEffect(() => {
-  const unsub = onSnapshot(collection(db, "users"), (snap) => {
+  const q = query(collection(db, "users"));
+
+const unsub = onSnapshot(q, (snap) => {
    console.log("USERS SNAPSHOT:", snap.size);
    
-    const list = snap.docs.map((d) => {
+    const list = snap.docs
+  .filter((d) => {
+  const data: any = d.data();
+  return !data.deleted;
+})
+  .map((d) => {
       const data: any = d.data();
 
      return {
@@ -795,6 +803,22 @@ useEffect(() => {
   email: data.email,
 };
     });
+
+// 👇 ADD THIS
+if (
+  authUser &&
+  !list.some((p) => p.id === authUser.uid)
+) {
+  list.push({
+    id: authUser.uid,
+    username: profile?.username ?? userDoc?.username ?? "Player",
+    avatar: profile?.avatarUrl ?? userDoc?.avatarUrl ?? "",
+    countryCode: profile?.country ?? userDoc?.country ?? "CM",
+    balance: demoBalance,
+    publicId: userDoc?.publicId,
+    email: userDoc?.email,
+  });
+}
 
     list.sort((a, b) => (b.balance ?? 0) - (a.balance ?? 0));
 
@@ -822,7 +846,18 @@ console.log("DEMO USERS:", list.length);
   });
 
   return unsub;
-}, []);
+}, [
+  authUser?.uid,
+  demoBalance,
+  profile?.username,
+  profile?.avatarUrl,
+  profile?.country,
+  userDoc?.username,
+  userDoc?.avatarUrl,
+  userDoc?.country,
+]);
+
+
 
 useEffect(() => {
   if (tournaments.length === 0) return;

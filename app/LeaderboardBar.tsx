@@ -249,7 +249,14 @@ const displayParticipants = useMemo(() => {
     : (p.balance ?? 0), // still Firestore source of truth
     };
   });
-}, [participants, currentUser]);
+}, [
+  participants,
+  currentUser,
+  mode,
+  demoBalance,
+  liveTournamentBalance,
+  activeAccount.type,
+]);
 
 const sortedParticipants = [...displayParticipants].sort(
   (a, b) => (b.balance ?? 0) - (a.balance ?? 0)
@@ -266,6 +273,10 @@ const startingTournamentBalance = activeTourney?.startingBalance ?? 0;
 useEffect(() => {
   console.log("Leaderboard active account:", activeAccount);
 }, [activeAccount]);
+
+useEffect(() => {
+  console.log("Leaderboard participants:", leaderboardParticipants.demo?.length);
+}, [leaderboardParticipants]);
 
 useEffect(() => {
   if (activeAccount.type === "demo") setMode("demo");
