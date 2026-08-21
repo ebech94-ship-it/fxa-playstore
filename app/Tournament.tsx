@@ -158,6 +158,10 @@ const [tournamentCounts, setTournamentCounts] = useState<Record<string, number>>
 const [tournamentRebuyCounts, setTournamentRebuyCounts] = useState<Record<string, number>>({});
   const [viewTab, setViewTab] = useState("info"); // "info" | "leaderboard"
   
+const [leaderboardPage, setLeaderboardPage] = useState(0);
+const [showFAQ, setShowFAQ] = useState(false);
+const [openFAQ, setOpenFAQ] = useState<number | null>(null);
+
 type LoadingState = {
   register?: boolean;
   rebuy?: boolean;
@@ -1005,10 +1009,13 @@ flexShrink: 1,
   }}
 >
 
-    <Pressable
-      style={styles.modalContent}
-      onPress={(e) => e.stopPropagation()}
-    >
+    <ScrollView
+  style={styles.modalContent}
+  contentContainerStyle={{ paddingBottom: 40 }}
+  showsVerticalScrollIndicator={true}
+  nestedScrollEnabled={false}
+  onTouchStart={(e) => e.stopPropagation()}
+>
 
         {/* Close button */}
         <Pressable
@@ -1022,6 +1029,15 @@ flexShrink: 1,
           <Ionicons name="close" size={26} color="#fff" />
         </Pressable>
 
+        {/* FAQ button */}
+<Pressable
+  style={styles.faqFloatingButton}
+  onPress={() => setShowFAQ(prev => !prev)}
+>
+  <Text style={styles.faqFloatingText}>
+    ❓
+  </Text>
+</Pressable>
     
 {selectedTournament && (
 <View
@@ -1128,19 +1144,7 @@ flexShrink: 1,
 
    {viewTab === "info" ? (
 
-<ScrollView
-  style={{width:"100%"}}
 
-  nestedScrollEnabled={true}
-
-  keyboardShouldPersistTaps="handled"
-
-  showsVerticalScrollIndicator={true}
-
-  contentContainerStyle={{
-    paddingBottom:80,
-  }}
->
 
   <View
     style={{
@@ -1292,7 +1296,7 @@ flexShrink: 1,
 
     </View>
 
-</ScrollView>
+
 
     ) : (
 
@@ -1303,158 +1307,300 @@ flexShrink: 1,
   }}
 >
 
-<ScrollView
-  horizontal
-  showsHorizontalScrollIndicator={true}
-  nestedScrollEnabled={true}
->
-  <View style={{ width: 750 }}>
 
-    <FlatList
-      data={sortedLeaderboard}
-      keyExtractor={(item) => item.id}
+  {(() => {
 
-      nestedScrollEnabled={true}
+    const PAGE_SIZE = 10;
 
-      showsVerticalScrollIndicator={true}
+    const totalPages = Math.max(
+      1,
+      Math.ceil(sortedLeaderboard.length / PAGE_SIZE)
+    );
 
-      contentContainerStyle={{
-        paddingBottom: 40,
-      }}
+    const safePage = Math.min(
+      leaderboardPage,
+      totalPages - 1
+    );
 
-      ListHeaderComponent={
-        <>
-          {renderPinnedUserRow(sortedLeaderboard)}
+    const pageStart = safePage * PAGE_SIZE;
 
-          <View style={styles.tableRow}>
+    const pageUsers = sortedLeaderboard.slice(
+      pageStart,
+      pageStart + PAGE_SIZE
+    );
 
-            <Text style={[styles.tableColSmall, styles.headerText]}>
-              #
-            </Text>
+    return (
+      <>
+        {/* LEADERBOARD HEADER */}
+        <View style={styles.mobileLeaderboardHeader}>
 
-            <Text style={[styles.tableColName, styles.headerText]}>
-              Participant
-            </Text>
+          <Text style={styles.mobileRankHeader}>
+            #
+          </Text>
 
-            <Text style={[styles.tableColBalance, styles.headerText]}>
-              Balance
-            </Text>
+          <Text style={styles.mobileParticipantHeader}>
+            Participant
+          </Text>
 
-            <Text style={[styles.tableColPerformance, styles.headerText]}>
-              Performance
-            </Text>
+          <Text style={styles.mobileBalanceHeader}>
+            Balance
+          </Text>
 
-            <Text style={[styles.tableColTier, styles.headerText]}>
-              Level
-            </Text>
-
-            <Text style={[styles.tableColPrize, styles.headerText]}>
-              Prize
-            </Text>
-
-          </View>
-        </>
-      }
+        </View>
 
 
-      renderItem={({item,index}) => {
+        {/* 10 USERS PER PAGE */}
+        {pageUsers.map((item, pageIndex) => {
 
-        const prize = selectedTournament
-          ? getPrizeForRank(index + 1, selectedTournament)
-          : null;
+          const globalIndex =
+            pageStart + pageIndex;
 
+          const rank =
+            globalIndex + 1;
 
-        return (
+          const prize = selectedTournament
+            ? getPrizeForRank(
+                rank,
+                selectedTournament
+              )
+            : null;
 
-          <View
-            style={[
-              styles.tableRow,
-              {
-                width:750
-              },
-              item.id === currentUser?.uid &&
-              styles.currentRowHighlight,
-            ]}
-          >
+          const performance =
+            (item.balance ?? 0) -
+            (selectedTournament?.startingBalance ?? 0) -
+            (item.rebuyInjectedTotal ?? 0);
 
-            <Text style={styles.tableColSmall}>
-              {index === 0
-              ? "🥇"
-              : index === 1
-              ? "🥈"
-              : index === 2
-              ? "🥉"
-              : index + 1}
-            </Text>
+          return (
 
-
-            <View style={styles.tableColName}>
-              <NameWithFlag
-                username={item.username || "Player"}
-                countryCode={item.countryCode}
-              />
-            </View>
-
-
-            <Text style={styles.tableColBalance}>
-              {formatNum(item.balance)}T
-            </Text>
-
-
-            <Text
+            <Pressable
+              key={item.id}
+              onPress={() => {}}
+              android_ripple={{
+                color: "rgba(255,255,255,0.06)"
+              }}
               style={[
-                styles.tableColPerformance,
-                {
-                  color:
-                  (
-                  (item.balance ?? 0)
-                  -
-                  (selectedTournament?.startingBalance ?? 0)
-                  -
-                  (item.rebuyInjectedTotal ?? 0)
-                  )
-                  >=0
-                  ? "#22c55e"
-                  :"#ef4444"
-                }
+                styles.mobileLeaderboardRow,
+
+                item.id === currentUser?.uid &&
+                  styles.currentRowHighlight,
               ]}
             >
 
-              {formatNum(
-                (item.balance ?? 0)
-                -
-                (selectedTournament?.startingBalance ?? 0)
-                -
-                (item.rebuyInjectedTotal ?? 0)
-              )}T
+              {/* ROW 1 */}
+              <View
+                style={styles.mobileLeaderboardTopRow}
+              >
 
-            </Text>
+                <Text
+                  style={styles.mobileRankCell}
+                >
+                  {rank === 1
+                    ? "🥇"
+                    : rank === 2
+                    ? "🥈"
+                    : rank === 3
+                    ? "🥉"
+                    : rank}
+                </Text>
 
 
-            <Text style={styles.tableColTier}>
-              {getTierForRank(index+1)}
-            </Text>
+                <View
+                  style={
+                    styles.mobileParticipantCell
+                  }
+                >
+                  <NameWithFlag
+                    username={
+                      item.username ||
+                      item.email ||
+                      "Player"
+                    }
+                    countryCode={
+                      item.countryCode
+                    }
+                  />
+                </View>
 
 
-            <Text style={styles.tableColPrize}>
-              {prize !== null
-              ? `${formatNum(prize)} $`
-              : "-"
+                <Text
+                  style={styles.mobileBalanceCell}
+                >
+                  {formatNum(item.balance)}T
+                </Text>
+
+              </View>
+
+
+              {/* ROW 2 */}
+              <View
+                style={styles.mobileLeaderboardStatsRow}
+              >
+
+                {/* PERFORMANCE */}
+                <View
+                  style={styles.mobileStatCell}
+                >
+                  <Text
+                    style={
+                      styles.mobileStatLabel
+                    }
+                  >
+                    Performance
+                  </Text>
+
+                  <Text
+                    style={[
+                      styles.mobileStatValue,
+                      {
+                        color:
+                          performance >= 0
+                            ? "#22c55e"
+                            : "#ef4444",
+                      },
+                    ]}
+                  >
+                    {performance >= 0
+                      ? "+"
+                      : ""}
+                    {formatNum(
+                      performance
+                    )}T
+                  </Text>
+                </View>
+
+
+                {/* TIER */}
+                <View
+                  style={styles.mobileStatCell}
+                >
+                  <Text
+                    style={
+                      styles.mobileStatLabel
+                    }
+                  >
+                    Level
+                  </Text>
+
+                  <Text
+                    style={[
+                      styles.mobileStatValue,
+                      {
+                        color: "#facc15"
+                      },
+                    ]}
+                    numberOfLines={2}
+                  >
+                    {getTierForRank(rank)}
+                  </Text>
+                </View>
+
+
+                {/* PRIZE */}
+                <View
+                  style={styles.mobileStatCell}
+                >
+                  <Text
+                    style={
+                      styles.mobileStatLabel
+                    }
+                  >
+                    Prize
+                  </Text>
+
+                  <Text
+                    style={[
+                      styles.mobileStatValue,
+                      {
+                        color: "#22c55e"
+                      },
+                    ]}
+                  >
+                    {prize !== null
+                      ? `${formatNum(
+                          prize
+                        )} $`
+                      : "-"}
+                  </Text>
+                </View>
+
+              </View>
+
+            </Pressable>
+          );
+        })}
+
+
+        {/* PAGE NAVIGATION */}
+        <View
+          style={styles.leaderboardPagination}
+        >
+
+          <Pressable
+            disabled={safePage === 0}
+            onPress={() =>
+              setLeaderboardPage(
+                Math.max(0, safePage - 1)
+              )
+            }
+            style={[
+              styles.leaderboardPageButton,
+              safePage === 0 &&
+                styles.leaderboardPageButtonDisabled,
+            ]}
+          >
+            <Text
+              style={
+                styles.leaderboardPageArrow
               }
+            >
+              ‹
             </Text>
+          </Pressable>
 
 
-          </View>
+          <Text
+            style={
+              styles.leaderboardPageText
+            }
+          >
+            {safePage + 1}/{totalPages}
+          </Text>
 
-        );
 
-      }}
+          <Pressable
+            disabled={
+              safePage >= totalPages - 1
+            }
+            onPress={() =>
+              setLeaderboardPage(
+                Math.min(
+                  totalPages - 1,
+                  safePage + 1
+                )
+              )
+            }
+            style={[
+              styles.leaderboardPageButton,
+              safePage >= totalPages - 1 &&
+                styles.leaderboardPageButtonDisabled,
+            ]}
+          >
+            <Text
+              style={
+                styles.leaderboardPageArrow
+              }
+            >
+              ›
+            </Text>
+          </Pressable>
 
-    />
+        </View>
 
-  </View>
+      </>
+    );
 
-</ScrollView>
+  })()}
+
 
 </View>
 
@@ -1464,8 +1610,277 @@ flexShrink: 1,
 
 </View>
 )}
-            </Pressable>
 
+           </ScrollView>
+{showFAQ && (
+  <View style={styles.faqOverlay}>
+
+    <View style={styles.faqContainer}>
+
+      {/* FAQ HEADER */}
+      <View style={styles.faqHeader}>
+        <Text style={styles.faqTitle}>
+          Frequently Asked Questions
+        </Text>
+
+        {/* FAQ CLOSE X */}
+        <Pressable
+          style={styles.faqCloseButton}
+          onPress={() => {
+            setShowFAQ(false);
+            setOpenFAQ(null);
+          }}
+          hitSlop={{
+            top: 10,
+            bottom: 10,
+            left: 10,
+            right: 10,
+          }}
+        >
+          <Ionicons
+            name="close"
+            size={22}
+            color="#fff"
+          />
+        </Pressable>
+      </View>
+
+      <ScrollView
+        showsVerticalScrollIndicator={false}
+        contentContainerStyle={{
+          paddingBottom: 10,
+        }}
+      >
+{/* FAQ 1 */}
+<Pressable
+  style={styles.faqQuestionRow}
+  onPress={() =>
+    setOpenFAQ(openFAQ === 0 ? null : 0)
+  }
+>
+  <Text style={styles.faqQuestion}>
+    🏆 What is an FX ARENA Tournament?
+  </Text>
+
+  <Ionicons
+    name={
+      openFAQ === 0
+        ? "chevron-up"
+        : "chevron-down"
+    }
+    size={18}
+    color="#94a3b8"
+  />
+</Pressable>
+
+{openFAQ === 0 && (
+  <View style={styles.faqAnswerBox}>
+    <Text style={styles.faqAnswer}>
+      An FX ARENA Tournament is a competitive forex
+      trading simulation where participants trade with
+      virtual funds under the same tournament conditions.
+      Traders compete on a live leaderboard, and their
+      Trading Performance determines their ranking.
+      {"\n\n"}
+      It is designed to make forex learning more practical,
+      engaging, and competitive without using real trading
+      capital.
+    </Text>
+  </View>
+)}
+        {/* FAQ 1 */}
+        <Pressable
+          style={styles.faqQuestionRow}
+          onPress={() =>
+            setOpenFAQ(openFAQ === 0 ? null : 0)
+          }
+        >
+          <Text style={styles.faqQuestion}>
+            🏆 How do I receive my prize if I win?
+          </Text>
+
+          <Ionicons
+            name={
+              openFAQ === 0
+                ? "chevron-up"
+                : "chevron-down"
+            }
+            size={18}
+            color="#94a3b8"
+          />
+        </Pressable>
+
+        {openFAQ === 0 && (
+          <View style={styles.faqAnswerBox}>
+            <Text style={styles.faqAnswer}>
+              Your prize will be credited to your FX ARENA
+              wallet within 24 hours after the tournament ends
+              and the results are confirmed.
+            </Text>
+          </View>
+        )}
+
+        {/* FAQ 2 */}
+        <Pressable
+          style={styles.faqQuestionRow}
+          onPress={() =>
+            setOpenFAQ(openFAQ === 1 ? null : 1)
+          }
+        >
+          <Text style={styles.faqQuestion}>
+            💰 Where can I find my prize?
+          </Text>
+
+          <Ionicons
+            name={
+              openFAQ === 1
+                ? "chevron-up"
+                : "chevron-down"
+            }
+            size={18}
+            color="#94a3b8"
+          />
+        </Pressable>
+
+        {openFAQ === 1 && (
+          <View style={styles.faqAnswerBox}>
+            <Text style={styles.faqAnswer}>
+              Your winnings will automatically appear in your
+              FX ARENA wallet.
+            </Text>
+          </View>
+        )}
+
+        {/* FAQ 3 */}
+        <Pressable
+          style={styles.faqQuestionRow}
+          onPress={() =>
+            setOpenFAQ(openFAQ === 2 ? null : 2)
+          }
+        >
+          <Text style={styles.faqQuestion}>
+            ⏱️ When are results finalized?
+          </Text>
+
+          <Ionicons
+            name={
+              openFAQ === 2
+                ? "chevron-up"
+                : "chevron-down"
+            }
+            size={18}
+            color="#94a3b8"
+          />
+        </Pressable>
+
+        {openFAQ === 2 && (
+          <View style={styles.faqAnswerBox}>
+            <Text style={styles.faqAnswer}>
+              Results are finalized after the tournament
+              officially ends and the leaderboard is verified.
+            </Text>
+          </View>
+        )}
+
+        {/* FAQ 4 */}
+        <Pressable
+          style={styles.faqQuestionRow}
+          onPress={() =>
+            setOpenFAQ(openFAQ === 3 ? null : 3)
+          }
+        >
+          <Text style={styles.faqQuestion}>
+            🏆 How is the winner determined?
+          </Text>
+
+          <Ionicons
+            name={
+              openFAQ === 3
+                ? "chevron-up"
+                : "chevron-down"
+            }
+            size={18}
+            color="#94a3b8"
+          />
+        </Pressable>
+
+        {openFAQ === 3 && (
+          <View style={styles.faqAnswerBox}>
+            <Text style={styles.faqAnswer}>
+              Winners are ranked according to their final
+              Trading Performance.
+            </Text>
+          </View>
+        )}
+
+        {/* FAQ 5 */}
+        <Pressable
+          style={styles.faqQuestionRow}
+          onPress={() =>
+            setOpenFAQ(openFAQ === 4 ? null : 4)
+          }
+        >
+          <Text style={styles.faqQuestion}>
+            📊 Can I see my position during the tournament?
+          </Text>
+
+          <Ionicons
+            name={
+              openFAQ === 4
+                ? "chevron-up"
+                : "chevron-down"
+            }
+            size={18}
+            color="#94a3b8"
+          />
+        </Pressable>
+
+        {openFAQ === 4 && (
+          <View style={styles.faqAnswerBox}>
+            <Text style={styles.faqAnswer}>
+              Yes. Your current position and performance are
+              displayed on the live leaderboard in the leaderboard tab section.
+            </Text>
+          </View>
+        )}
+
+        {/* FAQ 6 */}
+        <Pressable
+          style={styles.faqQuestionRow}
+          onPress={() =>
+            setOpenFAQ(openFAQ === 5 ? null : 5)
+          }
+        >
+          <Text style={styles.faqQuestion}>
+            ♻️ What is a Rebuy?
+          </Text>
+
+          <Ionicons
+            name={
+              openFAQ === 5
+                ? "chevron-up"
+                : "chevron-down"
+            }
+            size={18}
+            color="#94a3b8"
+          />
+        </Pressable>
+
+        {openFAQ === 5 && (
+          <View style={styles.faqAnswerBox}>
+            <Text style={styles.faqAnswer}>
+              A Rebuy allows you to continue trading after your
+              tournament balance falls below the permitted level.
+              The rebuy follows the tournament's applicable
+              rebuy fee and rules.
+            </Text>
+          </View>
+        )}
+
+      </ScrollView>
+    </View>
+  </View>
+)}
     </View>
 
   </KeyboardAvoidingView>
@@ -1750,5 +2165,295 @@ dividerLine: {
   height: "70%",
   backgroundColor: "rgba(255,255,255,0.12)",
   marginHorizontal: 8,
+},
+mobileLeaderboardHeader: {
+  flexDirection: "row",
+  alignItems: "center",
+  paddingVertical: 10,
+  borderBottomWidth: 1,
+  borderBottomColor: "#2b2b3a",
+},
+
+mobileRankHeader: {
+  width: 40,
+  color: "#9ca3af",
+  fontWeight: "900",
+},
+
+mobileParticipantHeader: {
+  flex: 1,
+  color: "#9ca3af",
+  fontWeight: "900",
+},
+
+mobileBalanceHeader: {
+  width: 90,
+  textAlign: "right",
+  color: "#9ca3af",
+  fontWeight: "900",
+},
+
+mobileLeaderboardRow: {
+  width: "100%",
+  paddingVertical: 10,
+  borderBottomWidth: 1,
+  borderBottomColor: "#2b2b3a",
+},
+
+mobileLeaderboardTopRow: {
+  width: "100%",
+  flexDirection: "row",
+  alignItems: "center",
+},
+
+mobileRankCell: {
+  width: 40,
+  color: "#fff",
+  fontWeight: "800",
+  fontSize: 14,
+},
+
+mobileParticipantCell: {
+  flex: 1,
+  minWidth: 0,
+  paddingRight: 8,
+},
+
+mobileBalanceCell: {
+  width: 90,
+  textAlign: "right",
+  color: "#38bdf8",
+  fontWeight: "800",
+},
+
+mobileLeaderboardStatsRow: {
+  width: "100%",
+  flexDirection: "row",
+  marginTop: 8,
+},
+
+mobileStatCell: {
+  flex: 1,
+  minWidth: 0,
+  alignItems: "center",
+  justifyContent: "center",
+},
+
+mobileStatLabel: {
+  color: "#94a3b8",
+  fontSize: 10,
+  fontWeight: "700",
+  marginBottom: 2,
+  textAlign: "center",
+},
+
+mobileStatValue: {
+  fontSize: 11,
+  fontWeight: "900",
+  textAlign: "center",
+},
+
+leaderboardPagination: {
+  width: "100%",
+  flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "space-between",
+  marginTop: 14,
+  paddingBottom: 10,
+},
+
+leaderboardPageButton: {
+  width: 70,
+  height: 44,
+  borderRadius: 8,
+  backgroundColor: "#353a4a",
+  alignItems: "center",
+  justifyContent: "center",
+},
+
+leaderboardPageButtonDisabled: {
+  opacity: 0.35,
+},
+
+leaderboardPageArrow: {
+  color: "#fff",
+  fontSize: 30,
+  lineHeight: 32,
+},
+
+leaderboardPageText: {
+  color: "#fff",
+  fontSize: 16,
+  fontWeight: "900",
+},
+faqFloatingButton: {
+  position: "absolute",
+  top: 60,
+  right: 14,
+  width: 38,
+  height: 38,
+  borderRadius: 19,
+  backgroundColor: "#1b2142",
+  justifyContent: "center",
+  alignItems: "center",
+  zIndex: 100,
+  borderWidth: 1,
+  borderColor: "rgba(255,255,255,0.12)",
+},
+
+faqFloatingText: {
+  color: "#fff",
+  fontSize: 17,
+  fontWeight: "900",
+},
+
+
+faqButton: {
+  backgroundColor: "#1f2937",
+  paddingHorizontal: 12,
+  paddingVertical: 6,
+  borderRadius: 10,
+},
+
+faqButtonText: {
+  color: "#fff",
+  fontSize: 11,
+  fontWeight: "900",
+},
+
+
+faqOverlay: {
+  position: "absolute",
+  top: 0,
+  left: 0,
+  right: 0,
+  bottom: 0,
+
+  justifyContent: "center",
+  alignItems: "center",
+
+  paddingHorizontal: 16,
+
+  zIndex: 2000,
+  elevation: 20,
+
+  backgroundColor: "rgba(0,0,0,0.35)",
+},
+
+
+
+faqContainer: {
+  width: "92%",
+  maxWidth: 420,
+  maxHeight: "75%",
+
+  backgroundColor: "#0f172a",
+
+  borderRadius: 18,
+
+  paddingHorizontal: 14,
+  paddingVertical: 14,
+
+  borderWidth: 1,
+  borderColor: "rgba(59,130,246,0.45)",
+
+  shadowColor: "#000",
+  shadowOpacity: 0.5,
+  shadowRadius: 18,
+  shadowOffset: {
+    width: 0,
+    height: 8,
+  },
+
+  elevation: 20,
+},
+
+faqHeader: {
+  flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "space-between",
+
+  paddingBottom: 10,
+  marginBottom: 4,
+
+  borderBottomWidth: 1,
+  borderBottomColor: "rgba(255,255,255,0.08)",
+},
+
+faqTitle: {
+  color: "#ff7ab6",
+  fontSize: 15,
+  fontWeight: "900",
+
+  flex: 1,
+  paddingRight: 10,
+},
+
+faqCloseButton: {
+  width: 34,
+  height: 34,
+
+  borderRadius: 17,
+
+  backgroundColor: "#1b2142",
+
+  justifyContent: "center",
+  alignItems: "center",
+
+  borderWidth: 1,
+  borderColor: "rgba(255,255,255,0.12)",
+},
+
+faqQuestionRow: {
+  minHeight: 48,
+
+  flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "space-between",
+
+  paddingVertical: 10,
+  paddingHorizontal: 10,
+
+  marginTop: 7,
+
+  backgroundColor: "#141b33",
+
+  borderRadius: 10,
+
+  borderWidth: 1,
+  borderColor: "rgba(255,255,255,0.06)",
+},
+
+faqQuestion: {
+  color: "#fff",
+  fontSize: 12,
+  fontWeight: "800",
+
+  flex: 1,
+  paddingRight: 8,
+},
+
+faqAnswerBox: {
+  backgroundColor: "#11182d",
+
+  paddingHorizontal: 12,
+  paddingVertical: 10,
+
+  marginTop: 2,
+
+  borderBottomLeftRadius: 10,
+  borderBottomRightRadius: 10,
+
+  borderLeftWidth: 1,
+  borderRightWidth: 1,
+  borderBottomWidth: 1,
+
+  borderColor: "rgba(59,130,246,0.18)",
+},
+
+faqAnswer: {
+  color: "#cbd5e1",
+  fontSize: 11,
+  lineHeight: 17,
 },
 });

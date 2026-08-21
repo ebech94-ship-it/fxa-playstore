@@ -138,7 +138,7 @@ export default function TradingLayout() {
 
   const [showAmountPad, setShowAmountPad] = useState(false);
 const [showExpiryPad, setShowExpiryPad] = useState(false);
-
+const [tradeHelp, setTradeHelp] = useState<"size" | "expiry" | null>(null);
 
 
 const expiryPosition = useRef(new Animated.ValueXY()).current;
@@ -901,35 +901,55 @@ demoBalance={demoBalance}
       {/* NO MORE switcher here */}
 
       {/* Trade Size */}
-      <View style={[styles.inputRow]}>
-  <Text style={styles.label}>Trade Size</Text>
+     <View style={[styles.inputRow]}>
+  <View style={styles.labelRow}>
+    <Text style={styles.label}>Trade Size</Text>
+
+    <TouchableOpacity
+      onPress={() => setTradeHelp("size")}
+      style={styles.infoButton}
+    >
+      <Ionicons name="information-circle-outline" size={17} color="#00BFFF" />
+    </TouchableOpacity>
+  </View>
 
   <TouchableOpacity
     style={styles.input}
-  onPress={() => setShowAmountPad(true)}
->
-  <Text style={{ color: "#fff", fontSize: 14 }}>
-    {amount}
-  </Text>
-</TouchableOpacity>
-<View style={styles.payoutBox}>
-  <Text style={styles.payoutLabel}>Payout</Text>
-  <Text style={styles.payoutValue}>
-    ${livePayout.toFixed(2)}
-  </Text>
+    onPress={() => setShowAmountPad(true)}
+  >
+    <Text style={{ color: "#fff", fontSize: 14 }}>
+      {amount}
+    </Text>
+  </TouchableOpacity>
+
+  <View style={styles.payoutBox}>
+    <Text style={styles.payoutLabel}>Payout</Text>
+    <Text style={styles.payoutValue}>
+      ${livePayout.toFixed(2)}
+    </Text>
+  </View>
 </View>
-      </View>
 
       {/* Expiration */}
-     <View style={[styles.inputRow, { marginTop: -10 }]}>
-        <Text style={styles.label}>Expiration</Text>
-       <TouchableOpacity
-  style={styles.expiryButton}
-  onPress={() => setShowExpiryPad(true)}
->
-  <Text style={styles.expiryKeyText}>{expiration}</Text>
-</TouchableOpacity>
-      </View>
+    <View style={[styles.inputRow, { marginTop: -10 }]}>
+  <View style={styles.labelRow}>
+    <Text style={styles.label}>Expiration</Text>
+
+    <TouchableOpacity
+      onPress={() => setTradeHelp("expiry")}
+      style={styles.infoButton}
+    >
+      <Ionicons name="information-circle-outline" size={17} color="#00BFFF" />
+    </TouchableOpacity>
+  </View>
+
+  <TouchableOpacity
+    style={styles.expiryButton}
+    onPress={() => setShowExpiryPad(true)}
+  >
+    <Text style={styles.expiryKeyText}>{expiration}</Text>
+  </TouchableOpacity>
+</View>
 
       {/* Profit */}
       <View
@@ -1119,6 +1139,52 @@ demoBalance={demoBalance}
  }}
 />
 )}
+{tradeHelp && (
+  <Modal
+    visible
+    transparent
+    animationType="fade"
+    onRequestClose={() => setTradeHelp(null)}
+  >
+    <Pressable
+      style={styles.padOverlay}
+      onPress={() => setTradeHelp(null)}
+    >
+      <View style={styles.tradeHelpBox}>
+        <TouchableOpacity
+          style={styles.tradeHelpClose}
+          onPress={() => setTradeHelp(null)}
+        >
+          <Text style={{ color: "red", fontSize: 18 }}>✕</Text>
+        </TouchableOpacity>
+
+        <Ionicons
+          name="information-circle"
+          size={28}
+          color="#00BFFF"
+          style={{ marginBottom: 6 }}
+        />
+
+        <Text style={styles.tradeHelpTitle}>
+          {tradeHelp === "size" ? "Trade Size" : "Expiration"}
+        </Text>
+
+        <Text style={styles.tradeHelpText}>
+          {tradeHelp === "size"
+            ? "Trade Size is the amount you want to risk on this trade. Enter a larger amount for a larger potential payout or profit, but remember that a losing trade can also reduce your balance by that amount."
+            : "Expiration is how long your trade remains open before it is settled. Choose the time you want, such as 5s, 15s, 1m or 5m. When the time expires, the trade is automatically evaluated."}
+        </Text>
+
+        <TouchableOpacity
+          style={styles.tradeHelpOk}
+          onPress={() => setTradeHelp(null)}
+        >
+          <Text style={styles.tradeHelpOkText}>Got it</Text>
+        </TouchableOpacity>
+      </View>
+    </Pressable>
+  </Modal>
+)}
   </View> 
 );
 }
@@ -1225,5 +1291,60 @@ payoutLabel: {  color: "#ccc",  fontSize: 12,},
 
 payoutValue: {  color: "gold",  fontSize: 12,  fontWeight: "bold",
 },
+labelRow: {
+  flexDirection: "row",
+  alignItems: "center",
+  marginBottom: 2,
+},
 
+infoButton: {
+  marginLeft: 5,
+  padding: 2,
+},
+tradeHelpBox: {
+  width: 280,
+  maxWidth: "85%",
+  backgroundColor: "#111827",
+  borderRadius: 14,
+  padding: 18,
+  alignItems: "center",
+  borderWidth: 1,
+  borderColor: "#2b2b3a",
+  elevation: 15,
+},
+
+tradeHelpClose: {
+  position: "absolute",
+  top: 7,
+  right: 9,
+  zIndex: 10,
+},
+
+tradeHelpTitle: {
+  color: "#fff",
+  fontSize: 17,
+  fontWeight: "bold",
+  marginBottom: 8,
+},
+
+tradeHelpText: {
+  color: "#ccc",
+  fontSize: 13,
+  lineHeight: 19,
+  textAlign: "center",
+},
+
+tradeHelpOk: {
+  marginTop: 14,
+  backgroundColor: "#00BFFF",
+  paddingVertical: 7,
+  paddingHorizontal: 24,
+  borderRadius: 7,
+},
+
+tradeHelpOkText: {
+  color: "#000",
+  fontWeight: "bold",
+  fontSize: 13,
+},
 });

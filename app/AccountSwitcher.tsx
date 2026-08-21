@@ -1,13 +1,13 @@
 // components/AccountSwitcher.tsx
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import { useEffect,useContext, useState } from "react";
+import { useEffect, useState } from "react";
 
 import type { AccountType, TournamentAccount } from "./AppContext"; // keep type imports separate if you want
 import { useApp } from "./AppContext";
 // AccountSwitcher.tsx
 
-import { Dimensions, ScrollView, StyleSheet, Text, TouchableOpacity, View, } from "react-native";
+import { Dimensions, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View, } from "react-native";
 
 /* ================= TYPES ================= */
 
@@ -40,7 +40,31 @@ const formatTournamentStatus = (
   if (status === "finished") return "Finished";
   return "Upcoming";
 };
+// 👇 ADD THIS HERE
+const getAccountPrefix = (
+  account: AccountType,
+  tournamentName?: string
+) => {
+  if (account.type === "demo") return "DE";
+  if (account.type === "real") return "RE";
 
+  if (account.type === "tournament") {
+    if (!tournamentName) return "TO";
+
+    const initials = tournamentName
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean)
+      .map(word => word[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 4);
+
+    return initials || "TO";
+  }
+
+  return "AC";
+};
 
 /* ================= COMPONENT ================= */
 
@@ -70,6 +94,10 @@ const switcherTournaments = tournamentAccounts
 
   const [expanded, setExpanded] = useState(false);
   const [showWarning, setShowWarning] = useState(false);
+  const [infoType, setInfoType] = useState<
+  "demo" | "wallet" | "tournament" | null
+>(null);
+
   const router = useRouter();
 
   const toggleExpand = () => setExpanded((v) => !v);
@@ -155,6 +183,19 @@ const t = tournamentAccounts.find(
 // console.log("expanded =", expanded);
 // console.log("switcherTournaments count =", switcherTournaments.length);
 
+const InfoButton = ({
+  type,
+}: {
+  type: "demo" | "wallet" | "tournament";
+}) => (
+  <TouchableOpacity
+    onPress={() => setInfoType(type)}
+    style={styles.infoButton}
+  >
+    <Text style={styles.infoButtonText}>?</Text>
+  </TouchableOpacity>
+);
+
   return (
     <View style={styles.container} pointerEvents="box-none">
       {/* ACTIVE ACCOUNT */}
@@ -177,13 +218,16 @@ const t = tournamentAccounts.find(
   ]}
 >
 {activeAccount.type === "demo"
-  ? `Demo • $${balances.demo.toFixed(1)}`
+  ? `DE • $${balances.demo.toFixed(1)}`
   : activeAccount.type === "real"
-  ? `Real • $${balances.real.toFixed(2)}`
+  ? `RE • $${balances.real.toFixed(2)}`
   : `${
-      tournamentAccounts.find(
-        t => t.tournamentId === activeAccount.tournamentId
-      )?.name ?? "Tournament"
+      getAccountPrefix(
+        activeAccount,
+        tournamentAccounts.find(
+          t => t.tournamentId === activeAccount.tournamentId
+        )?.name
+      )
     } • $${displayBalance.toFixed(1)}`
 }
 </Text>
@@ -203,10 +247,14 @@ const t = tournamentAccounts.find(
             <TouchableOpacity
               onPress={() => handleSelect({ type: "demo" })}
             >
-            <Text style={styles.cardTitle}>
-  {activeAccount.type === "demo" ? "✓ " : ""}
-  Demo Account
-</Text>
+           <View style={styles.titleRow}>
+  <Text style={styles.cardTitle}>
+    {activeAccount.type === "demo" ? "✓ " : ""}
+    Demo Account
+  </Text>
+
+  <InfoButton type="demo" />
+</View>
               <Text style={[styles.balance, { color: "#60a5fa" }]}>
                 ${balances.demo.toFixed(1)}
               </Text>
@@ -230,10 +278,14 @@ const t = tournamentAccounts.find(
             <TouchableOpacity
               onPress={() => handleSelect({ type: "real" })}
             >
-              <Text style={styles.cardTitle}>
-  {activeAccount.type === "real" ? "✓ " : ""}
-  💼Wallet
-</Text>
+         <View style={styles.titleRow}>
+  <Text style={styles.cardTitle}>
+    {activeAccount.type === "real" ? "✓ " : ""}
+    💼 Wallet
+  </Text>
+
+  <InfoButton type="wallet" />
+</View>
              <Text  numberOfLines={1}  ellipsizeMode="tail"
   style={[styles.activeBalance, { color: "#facc15" }]}>
   ${balances.real.toFixed(2)}
@@ -264,9 +316,13 @@ const t = tournamentAccounts.find(
     
           {/* TOURNAMENTS */}
 <>
+ <View style={styles.sectionTitleRow}>
   <Text style={styles.sectionTitle}>
-  YOUR TOURNAMENTS ({switcherTournaments.length})
-</Text>
+    YOUR TOURNAMENTS ({switcherTournaments.length})
+  </Text>
+
+  <InfoButton type="tournament" />
+</View>
   {switcherTournaments.length === 0 ? (
     <View style={[styles.card, { opacity: 0.6 }]}>
       <Text style={styles.cardTitle}>Tournament Account</Text>
@@ -352,6 +408,137 @@ const t = tournamentAccounts.find(
           </Text>
         </View>
       )}
+      {/* COMPONENT INFORMATION MODAL */}
+<Modal
+  visible={infoType !== null}
+  transparent
+  animationType="fade"
+  onRequestClose={() => setInfoType(null)}
+>
+  <View style={styles.infoOverlay}>
+    <View style={styles.infoModal}>
+
+      {/* HEADER */}
+      <View style={styles.infoHeader}>
+        <Text style={styles.infoTitle}>
+          {infoType === "wallet"
+            ? "💼 Wallet"
+            : infoType === "demo"
+            ? "🧪 Demo Account"
+            : "🏆 Tournament Account"}
+        </Text>
+
+        <TouchableOpacity
+          onPress={() => setInfoType(null)}
+          style={styles.closeButton}
+        >
+          <Text style={styles.closeButtonText}>✕</Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* WALLET */}
+      {infoType === "wallet" && (
+        <View>
+          <Text style={styles.infoDescription}>
+            Your wallet holds your Real Money balance within FX ARENA.
+          </Text>
+
+ <Text style={styles.infoItem}>
+            • Deposits are solely for funding tournament participation.
+          </Text>
+
+          <Text style={styles.infoItem}>
+            • Tournament registrations and Rebuy fees are deducted from this Wallet.
+          </Text>
+       
+          
+          <Text style={styles.infoItem}>
+            • Withdrawals are used to withdraw your tournament winnings.
+          </Text>
+
+          <View style={styles.infoWarning}>
+            <Text style={styles.infoWarningText}>
+              🔒 Real trading is not allowed on this Wallet Account and on this platform.
+            </Text>
+          </View>
+        </View>
+      )}
+
+      {/* DEMO */}
+      {infoType === "demo" && (
+        <View>
+          <Text style={styles.infoDescription}>
+            Your Demo Account is a virtual trading account designed for
+            practice and learning.
+          </Text>
+
+          <Text style={styles.infoItem}>
+            • Uses virtual funds only and can not be withdrawn.
+          </Text>
+
+          <Text style={styles.infoItem}>
+            • No real money is at risk.
+          </Text>
+
+          <Text style={styles.infoItem}>
+            • Practice trading strategies and disciplined decision making before entering tournaments.
+          </Text>
+
+          <Text style={styles.infoItem}>
+            • Demo performance does not represent real-world profits.
+          </Text>
+        </View>
+      )}
+
+      {/* TOURNAMENT */}
+      {infoType === "tournament" && (
+        <View>
+          <Text style={styles.infoDescription}>
+            A Tournament Account is created for each tournament you join.
+          </Text>
+
+<Text style={styles.infoItem}>
+            • The Tournament account created, is funded with the normally assigned starting 
+            balance, which appears here after your registration is completed.
+          </Text>
+
+          
+          <Text style={styles.infoItem}>
+            • Your trading performance determines your ranking.
+          </Text>
+
+<Text style={styles.infoItem}>
+            • Not placing trades on your Tournament Account leads to disqualification.
+          </Text>
+
+          <Text style={styles.infoItem}>
+            • Tournament balances are separate from your wallet balances and can not be withdrawn.
+          </Text>
+
+          <Text style={styles.infoItem}>
+            • Rebuys fees, where available, are deducted from your wallet and the tournament account loaded accordingly.
+          </Text>
+
+          <Text style={styles.infoItem}>
+            • You can always rebuy when your account meets the said conditions by opening the tournament 
+            card section and pressing the Rebuy button to process.
+          </Text>
+          <Text style={styles.infoItem}>
+            • Your final ranking determines your eligibility for prizes.
+          </Text>
+        </View>
+      )}
+
+      <TouchableOpacity
+        onPress={() => setInfoType(null)}
+        style={styles.gotItButton}
+      >
+        <Text style={styles.gotItText}>Got it</Text>
+      </TouchableOpacity>
+
+    </View>
+  </View>
+</Modal>
    </View>
   );
 }
@@ -429,4 +616,133 @@ textShadowRadius: 8, },
   backgroundColor: "rgba(255,255,255,0.1)",
    paddingHorizontal: 4, paddingVertical: 1,
   borderRadius: 4, alignSelf: "flex-start",},
+  titleRow: {
+  flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "space-between",
+},
+
+sectionTitleRow: {
+  flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "space-between",
+  marginVertical: 4,
+},
+
+infoButton: {
+  width: 19,
+  height: 19,
+  borderRadius: 10,
+  borderWidth: 1,
+  borderColor: "#64748b",
+  backgroundColor: "#1e293b",
+  alignItems: "center",
+  justifyContent: "center",
+  marginLeft: 6,
+},
+
+infoButtonText: {
+  color: "#cbd5e1",
+  fontSize: 12,
+  fontWeight: "800",
+},
+
+infoOverlay: {
+  flex: 1,
+  backgroundColor: "rgba(0,0,0,0.72)",
+  alignItems: "center",
+  justifyContent: "center",
+  paddingHorizontal: 20,
+},
+
+infoModal: {
+  width: "100%",
+  maxWidth: 380,
+  backgroundColor: "#111827",
+  borderRadius: 18,
+  borderWidth: 1,
+  borderColor: "#334155",
+  padding: 18,
+
+  shadowColor: "#000",
+  shadowOffset: {
+    width: 0,
+    height: 8,
+  },
+  shadowOpacity: 0.4,
+  shadowRadius: 20,
+  elevation: 15,
+},
+
+infoHeader: {
+  flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "space-between",
+  marginBottom: 14,
+},
+
+infoTitle: {
+  color: "#fff",
+  fontSize: 19,
+  fontWeight: "800",
+},
+
+closeButton: {
+  width: 30,
+  height: 30,
+  borderRadius: 15,
+  backgroundColor: "#1f2937",
+  alignItems: "center",
+  justifyContent: "center",
+},
+
+closeButtonText: {
+  color: "#94a3b8",
+  fontSize: 15,
+  fontWeight: "700",
+},
+
+infoDescription: {
+  color: "#cbd5e1",
+  fontSize: 14,
+  lineHeight: 21,
+  marginBottom: 12,
+},
+
+infoItem: {
+  color: "#94a3b8",
+  fontSize: 13,
+  lineHeight: 20,
+  marginBottom: 7,
+},
+
+infoWarning: {
+  marginTop: 10,
+  padding: 10,
+  borderRadius: 10,
+  backgroundColor: "rgba(245,158,11,0.10)",
+  borderWidth: 1,
+  borderColor: "rgba(245,158,11,0.35)",
+},
+
+infoWarningText: {
+  color: "#fbbf24",
+  fontSize: 12,
+  fontWeight: "700",
+  textAlign: "center",
+},
+
+gotItButton: {
+  marginTop: 18,
+  backgroundColor: "#2563eb",
+  borderRadius: 10,
+  paddingVertical: 10,
+  alignItems: "center",
+},
+
+gotItText: {
+  color: "#fff",
+  fontSize: 13,
+  fontWeight: "800",
+},
 });
