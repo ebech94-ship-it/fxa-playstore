@@ -1444,16 +1444,27 @@ if (!profileLoaded) {
   >
     <Text style={styles.sectionTitle}>Settings</Text>
 
+<Text
+  style={{
+    color: "#94a3b8",
+    fontSize: 13,
+    marginBottom: 15,
+    textAlign: "center",
+  }}
+>
+These settings are intentionally disabled 
+for this version and will be enabled in a future update.
+</Text>
     {/* Dark Mode */}
     <View style={styles.settingRow}>
       <Text style={styles.settingText}>Dark Mode</Text>
-      <Switch value={darkMode} onValueChange={toggleDarkMode} />
+      <Switch value={darkMode} onValueChange={toggleDarkMode} disabled />
     </View>
 
     {/* Sound Effects */}
     <View style={styles.settingRow}>
       <Text style={styles.settingText}>Sound Effects</Text>
-      <Switch value={soundEnabled} onValueChange={setSoundEnabled} />
+      <Switch value={soundEnabled} onValueChange={setSoundEnabled} disabled />
     </View>
 
     {/* 🔥 CHART SETTINGS (NEW) */}
@@ -1467,6 +1478,7 @@ if (!profileLoaded) {
       <Switch
         value={useHeikinAshi}
         onValueChange={setUseHeikinAshi}
+        disabled
       />
     </View>
 
@@ -1476,6 +1488,7 @@ if (!profileLoaded) {
       <Switch
         value={compressWicks}
         onValueChange={setCompressWicks}
+        disabled
       />
     </View>
 

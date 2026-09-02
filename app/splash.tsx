@@ -16,16 +16,21 @@ export default function SplashScreen() {
 const slideAnim = useRef(new Animated.Value(10)).current;
 
   // Animate the progress bar
-  useEffect(() => {
+useEffect(() => {
+  const startSplash = async () => {
+    await ExpoSplashScreen.hideAsync();
+
     Animated.timing(progress, {
       toValue: 1,
       duration: 10000,
       useNativeDriver: false,
-    }).start(async () => {
-      await ExpoSplashScreen.hideAsync();
-      
+    }).start(() => {
+      setAppReady(true);
     });
-  }, [progress, setAppReady]);
+  };
+
+  startSplash();
+}, []);
 
   // Glow animation for GodSpeed
   useEffect(() => {

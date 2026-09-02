@@ -294,7 +294,7 @@ prizeModel?: "guaranteed" | "dynamic";
   
   currency: string;
   startingBalance?: number;
-
+rebuyFee?: number;
   status: "upcoming" | "ongoing" | "finished";
 
   joined: boolean;

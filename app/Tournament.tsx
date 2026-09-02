@@ -244,11 +244,18 @@ useEffect(() => {
 
 // ---------- GLOBAL LEADERBOARD ----------
 const leaderboard = useMemo(() => {
-  if (!selectedTournament?.tournamentId) return [];
+  if (!selectedTournament) return [];
 
-  return leaderboardParticipants[selectedTournament.tournamentId] ?? [];
-}, [leaderboardParticipants, selectedTournament?.tournamentId]);
+  const tournamentId =
+    selectedTournament.tournamentId ??
+    selectedTournament.id;
 
+  return leaderboardParticipants[tournamentId] ?? [];
+}, [
+  leaderboardParticipants,
+  selectedTournament?.tournamentId,
+  selectedTournament?.id,
+]);
 
 // ---------- REGISTER USER TO TOURNAMENT ----------
 const handleRegister = async (tournamentId: string) => {
@@ -498,8 +505,86 @@ const bScore =
 
   return copy;
 }, [leaderboard, selectedTournament?.startingBalance]);
+// ---------- CHECK IF LEADERBOARD ROW BELONGS TO CURRENT USER ----------
+const isCurrentUserRow = (participant: any) => {
+  if (!participant) return false;
 
-  
+  const authUser = getAuth().currentUser;
+
+  const uid = String(
+    currentUser?.uid ?? authUser?.uid ?? ""
+  );
+
+  const email = String(
+    currentUser?.email ?? authUser?.email ?? ""
+  ).toLowerCase();
+
+  if (!uid && !email) return false;
+
+  return (
+    String(participant.id ?? "") === uid ||
+    String(participant.uid ?? "") === uid ||
+    String(participant.userId ?? "") === uid ||
+    String(participant.participantId ?? "") === uid ||
+    String(participant.email ?? "").toLowerCase() === email
+  );
+};
+
+const currentUserPosition = useMemo(() => {
+  if (!selectedTournament || !sortedLeaderboard.length) {
+    return null;
+  }
+
+  // Find EXACTLY the same user that the table highlights
+  const userIndex = sortedLeaderboard.findIndex(
+    (participant: any) => isCurrentUserRow(participant)
+  );
+
+  // User is not registered / not in leaderboard
+  if (userIndex === -1) {
+    return null;
+  }
+
+  // This is the SAME participant object used by the table
+  const user = sortedLeaderboard[userIndex];
+
+  const position = userIndex + 1;
+
+  const balance = Number(user.balance ?? 0);
+
+  const startingBalance = Number(
+    selectedTournament.startingBalance ?? 0
+  );
+
+  const rebuyInjectedTotal = Number(
+    user.rebuyInjectedTotal ?? 0
+  );
+
+  const performance =
+    balance -
+    startingBalance -
+    rebuyInjectedTotal;
+
+  const prize = getPrizeForRank(
+    position,
+    selectedTournament
+  );
+
+  return {
+    position,
+    user,
+    balance,
+    performance,
+    prize,
+    tier: getTierForRank(position),
+  };
+}, [
+  selectedTournament,
+  sortedLeaderboard,
+  currentUser?.uid,
+  currentUser?.email,
+]);
+
   // TOURNAMENT CARD
 const TournamentCard = ({ item }: { item: any }) => {
   const status: TournamentStatus = getTournamentStatus(
@@ -552,6 +637,7 @@ const allowRebuy =
   !!joinedMap[item.id] &&
   canRebuyByBalance;
 
+  
   return (
   
     <TouchableOpacity
@@ -810,83 +896,183 @@ disabled={
 
 
   // find current user row and create pinned row to top of leaderboard modal
-  const renderPinnedUserRow = (list: LeaderboardUser[]) => {
-  if (!currentUser) return null;
 
-  const idx = list.findIndex((p) => p.id === currentUser.uid);
-  if (idx === -1) return null;
+// ---------- YOUR POSITION PANEL ----------
+ const renderPinnedUserRow = () => {
+  if (!selectedTournament || !sortedLeaderboard.length) {
+    return null;
+  }
 
-  const rank = idx + 1;
-  const user = list[idx];
+  // Use the exact same matching logic as the highlighted leaderboard row
+  const userIndex = sortedLeaderboard.findIndex(
+    (participant: any) => isCurrentUserRow(participant)
+  );
 
-  const prize =
-    selectedTournament ? getPrizeForRank(rank, selectedTournament) : null;
+  // Current user is not in this tournament
+  if (userIndex === -1) {
+    return null;
+  }
+
+  const user = sortedLeaderboard[userIndex];
+  const position = userIndex + 1;
+
+  const balance = Number(user.balance ?? 0);
+
+  const startingBalance = Number(
+    selectedTournament.startingBalance ?? 0
+  );
+
+  const rebuyInjectedTotal = Number(
+    user.rebuyInjectedTotal ?? 0
+  );
+
+  const performance =
+    balance -
+    startingBalance -
+    rebuyInjectedTotal;
+
+  const prize = getPrizeForRank(
+    position,
+    selectedTournament
+  );
+
+  const tier = getTierForRank(position);
 
   return (
-    <View style={styles.pinnedRow}>
-      
-      {/* Rank */}
-      <Text style={styles.tableColSmall}>
-        {rank <= 3 ? ["🥇","🥈","🥉"][rank-1] : rank}
-      </Text>
+    <View style={styles.yourPositionCard}>
 
-      {/* Participant */}
-      <View style={styles.tableColName}>
-       <NameWithFlag
-  username={user.username || user.email || "Player"}
-  countryCode={user.countryCode}
-/>
+      {/* HEADER */}
+      <View style={styles.yourPositionHeader}>
+        <Text style={styles.yourPositionTitle}>
+          📍 Your Position
+        </Text>
+
+        <Text style={styles.yourPositionRank}>
+          #{position}
+        </Text>
       </View>
 
-      {/* Balance */}
-     <Text style={styles.tableColBalance} numberOfLines={1}>
-  {formatNum(user.balance)}T
-</Text>
-<Text
-  style={[
-    styles.tableColPerformance,
-    {
-      color:
-        (
-          (user.balance ?? 0)
-          - (selectedTournament?.startingBalance ?? 0)
-          - (user.rebuyInjectedTotal ?? 0)
-        ) >= 0
-          ? "#22c55e"
-          : "#ef4444",
-    },
-  ]}
->
-  {((user.balance ?? 0)
-    - (selectedTournament?.startingBalance ?? 0)
-    - (user.rebuyInjectedTotal ?? 0)) >= 0 ? "+" : ""}
-  {formatNum(
-  (user.balance ?? 0)
-  - (selectedTournament?.startingBalance ?? 0)
-  - (user.rebuyInjectedTotal ?? 0)
-)}T
-</Text>
-      {/* Tier */}
-      <Text style={styles.tableColTier}>
-        {getTierForRank(rank)}
-      </Text>
+      {/* USER DETAILS */}
+      <View style={styles.yourPositionTopRow}>
 
-      {/* Prize */}
-      <Text style={styles.tableColPrize}>
-       {prize !== null
- ? `${formatNum(prize)} $`
- : "-"}
-      </Text>
+        <View style={styles.yourPositionRankCell}>
+          <Text style={styles.yourPositionRankNumber}>
+            {position === 1
+              ? "🥇"
+              : position === 2
+              ? "🥈"
+              : position === 3
+              ? "🥉"
+              : `#${position}`}
+          </Text>
+        </View>
 
+        <View style={styles.yourPositionParticipant}>
+          <NameWithFlag
+            username={
+              user.username ||
+              user.email ||
+              "Player"
+            }
+            countryCode={user.countryCode}
+          />
+
+          <Text style={styles.youLabel}>
+            YOU
+          </Text>
+        </View>
+
+        <View style={styles.yourPositionBalance}>
+          <Text style={styles.yourPositionLabel}>
+            Balance
+          </Text>
+
+          <Text style={styles.yourPositionBalanceValue}>
+            {formatNum(balance)}T
+          </Text>
+        </View>
+
+      </View>
+
+      {/* STATS */}
+      <View style={styles.yourPositionStatsRow}>
+
+        <View style={styles.yourPositionStatCell}>
+          <Text style={styles.yourPositionStatLabel}>
+            Performance
+          </Text>
+
+          <Text
+            style={[
+              styles.yourPositionStatValue,
+              {
+                color:
+                  performance >= 0
+                    ? "#22c55e"
+                    : "#ef4444",
+              },
+            ]}
+          >
+            {performance >= 0 ? "+" : ""}
+            {formatNum(performance)}$
+          </Text>
+        </View>
+
+        <View style={styles.yourPositionStatCell}>
+          <Text style={styles.yourPositionStatLabel}>
+            Level
+          </Text>
+
+          <Text
+            style={[
+              styles.yourPositionStatValue,
+              { color: "#facc15" },
+            ]}
+            numberOfLines={2}
+          >
+            {tier}
+          </Text>
+        </View>
+
+        <View style={styles.yourPositionStatCell}>
+          <Text style={styles.yourPositionStatLabel}>
+            Prize
+          </Text>
+
+          <Text
+            style={[
+              styles.yourPositionStatValue,
+              { color: "#22c55e" },
+            ]}
+          >
+            {prize !== null
+              ? `${formatNum(prize)} $`
+              : "-"}
+          </Text>
+        </View>
+
+      </View>
     </View>
   );
 };
+
+
+
+
   // table header for leaderboard
   
   return (
     <View style={styles.container}>
     <Text style={styles.pageTitle}>🏆 Forex Tournaments</Text>
-
+   {/* FAQ button */}
+<Pressable
+  style={styles.faqFloatingButton}
+  onPress={() => setShowFAQ(prev => !prev)}
+>
+  <Text style={styles.faqFloatingText}>
+    ❓
+  </Text>
+</Pressable>
 <View
   style={{
     alignSelf: "center",
@@ -1002,21 +1188,16 @@ flexShrink: 1,
 >
 <View
   style={{
-    flex:1,
-    justifyContent:"center",
-    alignItems:"center",
-    padding:10,
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 10,
+    paddingVertical: 20,
   }}
 >
 
-    <ScrollView
-  style={styles.modalContent}
-  contentContainerStyle={{ paddingBottom: 40 }}
-  showsVerticalScrollIndicator={true}
-  nestedScrollEnabled={false}
-  onTouchStart={(e) => e.stopPropagation()}
->
-
+    <View style={styles.modalContent}>
+   
         {/* Close button */}
         <Pressable
           style={styles.closeButton}
@@ -1029,15 +1210,7 @@ flexShrink: 1,
           <Ionicons name="close" size={26} color="#fff" />
         </Pressable>
 
-        {/* FAQ button */}
-<Pressable
-  style={styles.faqFloatingButton}
-  onPress={() => setShowFAQ(prev => !prev)}
->
-  <Text style={styles.faqFloatingText}>
-    ❓
-  </Text>
-</Pressable>
+  
     
 {selectedTournament && (
 <View
@@ -1094,65 +1267,65 @@ flexShrink: 1,
   </View>
 
   {/* TABS */}
-  <View style={styles.tabRow}>
-    <TouchableOpacity
-      style={[
-        styles.tabBtn,
-        viewTab === "info" && styles.tabActive,
-      ]}
-      onPress={() => setViewTab("info")}
+<View style={styles.tabRow}>
+  <TouchableOpacity
+    style={[
+      styles.tabBtn,
+      viewTab === "info" && styles.tabActive,
+    ]}
+    onPress={() => setViewTab("info")}
+  >
+    <Text
+      style={
+        viewTab === "info"
+          ? styles.tabTextActive
+          : styles.tabText
+      }
     >
-      <Text
-        style={
-          viewTab === "info"
-            ? styles.tabTextActive
-            : styles.tabText
-        }
-      >
-        Information
-      </Text>
-    </TouchableOpacity>
+      Information
+    </Text>
+  </TouchableOpacity>
 
-    <TouchableOpacity
-      style={[
-        styles.tabBtn,
-        viewTab === "leaderboard" &&
-          styles.tabActive,
-      ]}
-      onPress={() => setViewTab("leaderboard")}
+  <TouchableOpacity
+    style={[
+      styles.tabBtn,
+      viewTab === "leaderboard" && styles.tabActive,
+    ]}
+    onPress={() => setViewTab("leaderboard")}
+  >
+    <Text
+      style={
+        viewTab === "leaderboard"
+          ? styles.tabTextActive
+          : styles.tabText
+      }
     >
-      <Text
-        style={
-          viewTab === "leaderboard"
-            ? styles.tabTextActive
-            : styles.tabText
-        }
-      >
-        Leaderboard
-      </Text>
-    </TouchableOpacity>
-  </View>
+      Leaderboard
+    </Text>
+  </TouchableOpacity>
+</View>
 
-  {/* ONLY THIS AREA SCROLLS */}
+
+
+{/* ONLY THE CONTENT BELOW SCROLLS */}
 <View
   style={{
-    flex:1,
-    width:"100%",
-    minHeight:0,
+    flex: 1,
+    width: "100%",
+    minHeight: 0,
   }}
 >
 
-   {viewTab === "info" ? (
-
-
-
-  <View
-    style={{
-      width:"100%",
-      paddingVertical:12,
+  {viewTab === "info" ? (
+  <ScrollView
+    style={{ flex: 1, width: "100%" }}
+    contentContainerStyle={{
+      paddingVertical: 12,
       paddingHorizontal: 4,
-      paddingBottom: 30,
+      paddingBottom: 40,
     }}
+    showsVerticalScrollIndicator={true}
+    nestedScrollEnabled={true}
   >
 
         <Text style={styles.sectionTitle}>
@@ -1294,21 +1467,30 @@ flexShrink: 1,
         )}
 <View style={{ height: 32 }} />
 
-    </View>
+   </ScrollView>
 
 
 
-    ) : (
+   ) : (
 
-<View
+<ScrollView
   style={{
     flex: 1,
     width: "100%",
   }}
+  contentContainerStyle={{
+    paddingBottom: 30,
+  }}
+  showsVerticalScrollIndicator={true}
+  nestedScrollEnabled={true}
 >
-
-
-  {(() => {
+{/* YOUR POSITION — DIRECTLY ABOVE TABLE HEADER */}
+{selectedTournament && (
+ <View style={{ width: "100%" }}>
+   {renderPinnedUserRow()}
+    </View>
+   )}
+{(() => {
 
     const PAGE_SIZE = 10;
 
@@ -1332,7 +1514,9 @@ flexShrink: 1,
     return (
       <>
         {/* LEADERBOARD HEADER */}
-        <View style={styles.mobileLeaderboardHeader}>
+
+{/* LEADERBOARD HEADER */}
+<View style={styles.mobileLeaderboardHeader}>
 
           <Text style={styles.mobileRankHeader}>
             #
@@ -1381,8 +1565,8 @@ flexShrink: 1,
               style={[
                 styles.mobileLeaderboardRow,
 
-                item.id === currentUser?.uid &&
-                  styles.currentRowHighlight,
+               isCurrentUserRow(item) &&
+  styles.currentRowHighlight,
               ]}
             >
 
@@ -1464,7 +1648,7 @@ flexShrink: 1,
                       : ""}
                     {formatNum(
                       performance
-                    )}T
+                    )}$
                   </Text>
                 </View>
 
@@ -1528,7 +1712,6 @@ flexShrink: 1,
             </Pressable>
           );
         })}
-
 
         {/* PAGE NAVIGATION */}
         <View
@@ -1602,16 +1785,24 @@ flexShrink: 1,
   })()}
 
 
-</View>
+</ScrollView>
 
     )}
+
 
   </View>
 
 </View>
 )}
 
-           </ScrollView>
+           </View>
+           
+    </View>
+
+  </KeyboardAvoidingView>
+</Pressable>
+</Modal>
+
 {showFAQ && (
   <View style={styles.faqOverlay}>
 
@@ -1882,11 +2073,6 @@ flexShrink: 1,
   </View>
 )}
     </View>
-
-  </KeyboardAvoidingView>
-</Pressable>
-</Modal>
-    </View>
   );
 }
 
@@ -1956,20 +2142,34 @@ modalContent: {
   modalPrize: { color: "#47f11dff", fontWeight: "800" },
   modalInfo: { color: "#cbd5e1" },
 
- tabRow:{
-  flexDirection:"row",
-
-  marginTop:15,
-  marginBottom:10,
-
-  backgroundColor:"#141933",
-
-  borderRadius:14,
-
-  padding:4,
+ tabRow: {
+  flexDirection: "row",
+  width: "100%",
+  marginVertical: 10,
 },
-  tabBtn: { flex: 1,   paddingVertical: 8, borderRadius: 10, alignItems: "center", marginRight: 6, backgroundColor: "#121227" },
-  tabActive: { backgroundColor: "#1f2937" },
+
+tabBtn: {
+  flex: 1,
+  minHeight: 48,
+  justifyContent: "center",
+  alignItems: "center",
+  paddingHorizontal: 12,
+  borderRadius: 10,
+  marginHorizontal: 4,
+},
+
+tabActive: {
+  backgroundColor: "#1e3a5f",
+},
+
+
+tabTextActive: {
+  color: "#ffffff",
+  fontSize: 15,
+  fontWeight: "800",
+},
+
+
   rankRow:{
     flexDirection:"row",
     alignItems:"center",
@@ -1999,7 +2199,7 @@ rankPrize:{
     textAlign:"center",
 },
   tabText: { color: "#9ca3af", fontWeight: "700" },
-  tabTextActive: { color: "#fff", fontWeight: "900" },
+ 
   sectionTitle: { fontSize: 16, fontWeight: "900", color: "#ff7ab6", marginTop: 12 },
   infoText: { color: "#d1d5db", marginTop: 8 },
  infoBox: {
@@ -2054,7 +2254,11 @@ tableRow: {   flexDirection: "row",  alignItems: "center",
  borderColor: "#2b2b3a", marginBottom: 8, flexDirection: "row", alignItems: "center" },
   
   pinnedCol: { color: "#fff", fontWeight: "900" },
-  currentRowHighlight: { backgroundColor: "rgba(34,197,94,0.06)" },
+currentRowHighlight: {
+  backgroundColor: "rgba(34,197,94,0.10)",
+  borderLeftWidth: 3,
+  borderLeftColor: "#22c55e",
+},
   balanceLightBlue: { color: "#38bdf8" , fontWeight: "700" }, priceGreen: { color: "#facc15", fontWeight: "700" },
 
   headerText: { color: "#cbd5e1", fontWeight: "900" },
@@ -2288,8 +2492,8 @@ leaderboardPageText: {
 },
 faqFloatingButton: {
   position: "absolute",
-  top: 60,
-  right: 14,
+  top: 5,
+  right: 50,
   width: 38,
   height: 38,
   borderRadius: 19,
@@ -2455,5 +2659,218 @@ faqAnswer: {
   color: "#cbd5e1",
   fontSize: 11,
   lineHeight: 17,
+},
+pageHeader: {
+  flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "center",
+  position: "relative",
+  marginBottom: 2,
+},
+
+pageFAQButton: {
+  position: "absolute",
+  right: 0,
+  backgroundColor: "#0f172a",
+  borderWidth: 1,
+  borderColor: "rgba(251,191,36,0.35)",
+  paddingHorizontal: 9,
+  paddingVertical: 4,
+  borderRadius: 999,
+},
+
+pageFAQText: {
+  color: "#fbbf24",
+  fontSize: 11,
+  fontWeight: "800",
+},
+yourPositionContainer: {
+  marginTop: 0,
+  marginBottom: 4,
+  paddingTop: 0,
+  borderTopWidth: 1,
+  borderTopColor: "rgba(34,197,94,0.25)",
+},
+
+yourPositionTitle: {
+  color: "#22c55e",
+  fontSize: 13,
+  fontWeight: "900",
+  marginBottom: 7,
+  textAlign: "left",
+},
+yourPositionFixedArea: {
+  width: "100%",
+  paddingTop: 8,
+  paddingBottom: 2,
+  backgroundColor: "#12122a",
+  borderTopWidth: 1,
+  borderTopColor: "rgba(34,197,94,0.25)",
+},
+
+yourPositionCard: {
+  width: "100%",
+  backgroundColor: "rgba(34,197,94,0.08)",
+  borderWidth: 1,
+  borderColor: "rgba(34,197,94,0.45)",
+  borderRadius: 12,
+  padding: 10,
+},
+
+yourPositionHeader: {
+  flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "space-between",
+  marginBottom: 8,
+},
+
+yourPositionRank: {
+  color: "#94a3b8",
+  fontSize: 11,
+  fontWeight: "800",
+},
+
+yourPositionTopRow: {
+  width: "100%",
+  flexDirection: "row",
+  alignItems: "center",
+},
+
+yourPositionRankCell: {
+  width: 40,
+},
+
+yourPositionRankNumber: {
+  color: "#fff",
+  fontSize: 14,
+  fontWeight: "900",
+},
+
+yourPositionParticipant: {
+  flex: 1,
+  minWidth: 0,
+  paddingRight: 8,
+},
+
+youLabel: {
+  color: "#22c55e",
+  fontSize: 9,
+  fontWeight: "900",
+  marginTop: 2,
+},
+
+yourPositionBalance: {
+  width: 90,
+  alignItems: "flex-end",
+},
+
+yourPositionLabel: {
+  color: "#94a3b8",
+  fontSize: 9,
+  fontWeight: "700",
+},
+
+yourPositionBalanceValue: {
+  color: "#38bdf8",
+  fontSize: 12,
+  fontWeight: "900",
+  marginTop: 2,
+},
+
+yourPositionStatsRow: {
+  width: "100%",
+  flexDirection: "row",
+  marginTop: 9,
+  paddingTop: 8,
+  borderTopWidth: 1,
+  borderTopColor: "rgba(255,255,255,0.06)",
+},
+
+yourPositionStatCell: {
+  flex: 1,
+  minWidth: 0,
+  alignItems: "center",
+  justifyContent: "center",
+},
+
+yourPositionStatLabel: {
+  color: "#94a3b8",
+  fontSize: 9,
+  fontWeight: "700",
+  marginBottom: 2,
+  textAlign: "center",
+},
+
+yourPositionStatValue: {
+  fontSize: 10,
+  fontWeight: "900",
+  textAlign: "center",
+},
+
+yourPositionEmpty: {
+  color: "#94a3b8",
+  fontSize: 11,
+  textAlign: "center",
+  paddingVertical: 8,
+},
+currentUserPositionRow: {
+  width: "100%",
+  minHeight: 58,
+  flexDirection: "row",
+  alignItems: "center",
+  paddingHorizontal: 10,
+  paddingVertical: 8,
+  marginBottom: 4,
+  backgroundColor: "rgba(34,197,94,0.10)",
+  borderWidth: 1,
+  borderColor: "rgba(34,197,94,0.45)",
+  borderRadius: 10,
+},
+
+currentUserRankBox: {
+  width: 55,
+  alignItems: "center",
+  justifyContent: "center",
+},
+
+currentUserRankText: {
+  fontSize: 16,
+  fontWeight: "800",
+  color: "#22c55e",
+},
+
+currentUserNameBox: {
+  flex: 1,
+  paddingHorizontal: 8,
+},
+
+currentUserName: {
+  fontSize: 14,
+  fontWeight: "700",
+  color: "#ffffff",
+},
+
+currentUserLabel: {
+  marginTop: 2,
+  fontSize: 9,
+  fontWeight: "700",
+  color: "#22c55e",
+},
+
+currentUserBalanceBox: {
+  width: 100,
+  alignItems: "flex-end",
+},
+
+currentUserBalance: {
+  fontSize: 13,
+  fontWeight: "700",
+  color: "#ffffff",
+},
+
+currentUserPerformance: {
+  marginTop: 2,
+  fontSize: 10,
+  fontWeight: "700",
 },
 });

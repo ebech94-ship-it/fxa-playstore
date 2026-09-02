@@ -20,6 +20,7 @@ import { getFunctions, httpsCallable } from "firebase/functions";
 import { useEffect, useRef, useState } from "react";
 
 import {
+  Alert,
   Animated,
   Dimensions,
   Modal,
@@ -28,7 +29,6 @@ import {
   ScrollView,
   StyleSheet,
   Text,
-
   TouchableOpacity,
   View
 } from "react-native";
@@ -158,7 +158,8 @@ const expiryPanResponder = useRef(
 
   const [expiration, setExpiration] = useState<string>("15s");
 
-  const expirationOptions: string[] = ["5s","10s", "12s", "15s","20s","25s",  "30s", "1m", "5m", "15m", "30m", "1h","2h", "4h"];
+  const expirationOptions: string[] = ["5s","10s", "15s", "25s", "30s", "1m", "2m", "3m", "5m", "10m", "15m", "25m",
+     "30m", "1h", "2h", "3h", "4h", "6h"];
  const [showManual, setShowManual] = useState(false);
 
   const [profitPercent] = useState<number>(PAYOUT);
@@ -186,7 +187,7 @@ const handleKeyPress = (key: string) => {
 };
 const {
   profile,
-  
+  tournaments,
   tournamentAccounts,
   activeAccount,
   setActiveAccount,
@@ -646,51 +647,76 @@ useEffect(() => {
 
   return () => unsub();
 }, [activeTournament, tournamentMeta]);
+
+
 // 🔥 TOURNAMENT REBUY DETECTION
 useEffect(() => {
+  // Only relevant when currently using a tournament account
   if (
     activeAccount.type !== "tournament" ||
     !activeAccount.tournamentId
   ) {
+    setAllowRebuy(false);
     return;
   }
 
   const tournamentId = activeAccount.tournamentId;
 
+  // Find this tournament in the user's tournament accounts
   const tournamentInfo = tournamentAccounts.find(
     (t) => t.tournamentId === tournamentId
   );
 
-  if (!tournamentInfo) return;
-
+  if (!tournamentInfo) {
+    setAllowRebuy(false);
+    return;
+  }
 
   const startBalance = Number(
     tournamentInfo.startingBalance || 0
   );
 
   const currentBalance =
-    participantBalances[tournamentId] ?? 0;
+    Number(participantBalances[tournamentId] ?? 0);
 
+  if (startBalance <= 0) {
+    setAllowRebuy(false);
+    return;
+  }
 
-  if (!startBalance) return;
-
-
+  // 🔥 REBUY unlocks when balance falls to 50% or below
   const rebuyThreshold = startBalance * 0.5;
 
+  const unlocked = currentBalance <= rebuyThreshold;
 
+  // 🔥 THIS WAS MISSING
+  setAllowRebuy(unlocked);
+
+  console.log("♻️ REBUY CHECK:", {
+    tournamentId,
+    startBalance,
+    currentBalance,
+    rebuyThreshold,
+    unlocked,
+  });
+
+  // Show the unlock alert only once per tournament
   if (
-    currentBalance <= rebuyThreshold &&
+    unlocked &&
     !rebuyAlertShown.current[tournamentId]
   ) {
-
     rebuyAlertShown.current[tournamentId] = true;
 
-    alert(
-      "🏆 FX ARENA REBUY UNLOCKED\n\n" +
-      "Your tournament balance has dropped below 50% of the starting balance.\n\n" +
-      "🔥 The REBUY button is now ENABLED in the Tournament Card section.\n\n" +
-      "Reload your battle account and continue your climb on the leaderboard!"
+    Alert.alert(
+      "🏆 FX ARENA REBUY UNLOCKED",
+      "Your tournament balance has dropped to 50% or below your starting balance.\n\nThe REBUY button is now available above the trading chart."
     );
+  }
+
+  // If balance somehow goes back above threshold,
+  // allow the detection to trigger again later if needed.
+  if (!unlocked) {
+    rebuyAlertShown.current[tournamentId] = false;
   }
 
 }, [
@@ -702,7 +728,126 @@ useEffect(() => {
 const [showRebuyAlert, setShowRebuyAlert] = useState(false);
 const rebuyAlertShown = useRef<Record<string, boolean>>({});
 
-  
+  // =========================================================
+// 🔥 TOURNAMENT REBUY
+// =========================================================
+
+const [allowRebuy, setAllowRebuy] = useState(false);
+const [showRebuyConfirm, setShowRebuyConfirm] = useState(false);
+const [pendingRebuyTournament, setPendingRebuyTournament] = useState<string | null>(null);
+const [rebuyCompleted, setRebuyCompleted] = useState(false);
+
+const [loadingActions, setLoadingActions] = useState<
+  Record<
+    string,
+    {
+      rebuy?: boolean;
+      rebuyDone?: boolean;
+    }
+  >
+>({});
+// 🔥 Get REBUY FEE from the active tournament card
+const activeTournamentInfo =
+  activeAccount.type === "tournament"
+    ? tournamentAccounts.find(
+        (t) => t.tournamentId === activeAccount.tournamentId
+      )
+    : undefined;
+
+const rebuyFee = Number(activeTournamentInfo?.rebuyFee ?? 0);
+
+// ----------- REBUY ACTION (FINAL CLEAN VERSION) -----------
+const handleRebuy = async (tournamentId: string) => {
+  console.log("🔥 REBUY BUTTON PRESSED", tournamentId);
+
+  if (loadingActions[tournamentId]?.rebuy) return;
+
+  const auth = getAuth();
+  const user = auth.currentUser;
+
+  if (!user) {
+    Alert.alert("Error", "You must be logged in.");
+    return;
+  }
+
+  const tour = tournaments.find((t) => t.id === tournamentId);
+
+  if (!tour) {
+    Alert.alert("Error", "Tournament not found.");
+    return;
+  }
+if (tour.endTime == null) {
+  Alert.alert("Error", "Tournament timing missing.");
+  return;
+}
+  if (Date.now() > tour.endTime) {
+    Alert.alert("Closed", "This tournament has already ended.");
+    return;
+  }
+
+  setLoadingActions((prev) => ({
+    ...prev,
+    [tournamentId]: {
+      ...prev[tournamentId],
+      rebuy: true,
+      rebuyDone: false,
+    },
+  }));
+
+  try {
+    const token = await user.getIdToken(true);
+
+    const response = await fetch(
+      "https://forexapp2-backend.onrender.com/tournament/rebuy",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ tournamentId }),
+      }
+    );
+
+    const text = await response.text();
+
+    let result: any = {};
+    try {
+      result = JSON.parse(text);
+    } catch {}
+
+    if (!response.ok) {
+      throw new Error(result?.error || "Rebuy failed");
+    }
+
+    Alert.alert("Success 🎉", "Rebuy successful!");
+    setLoadingActions((prev) => ({
+      ...prev,
+      [tournamentId]: {
+        ...prev[tournamentId],
+        rebuy: false,
+        rebuyDone: true,
+      },
+    }));
+  } catch (err) {
+    console.error("REBUY ERROR:", err);
+
+    Alert.alert(
+      "Rebuy Failed",
+      err instanceof Error ? err.message : "Unknown error"
+    );
+
+    setLoadingActions((prev) => ({
+      ...prev,
+      [tournamentId]: {
+        ...prev[tournamentId],
+        rebuy: false,
+        rebuyDone: false,
+      },
+    }));
+  }
+};
+
 const [tradeToast, setTradeToast] = useState<{
   visible: boolean;
   type: "buy" | "sell";
@@ -792,24 +937,59 @@ const [tradeToast, setTradeToast] = useState<{
   <View style={{ flex: 1, flexDirection: "row", backgroundColor: "#0a0a0a" }}>
 
 {/* 🔥 FLOATING ACCOUNT SWITCHER – top-right */}
-<AccountSwitcher
-  balances={{
-    demo: demoBalance ?? 0,
-    real: ctxBalances?.real ?? 0,
-    tournament: ctxBalances?.tournament ?? 0,
-  }}
-  onTopUp={() => setDemoBalance(10000)}
-  tournamentBalances={tournamentAccounts}
-  activeAccount={activeAccount}
-  tournamentMeta={tournamentMeta}
-  onSwitch={(account) => {
-    setActiveAccount(account);
-    setTimeout(() => chartRef.current?.resize?.(), 50);
-  }}
- 
-  onDeposit={() => setActivePage("DepositWithdraw")}
-  onWithdraw={() => setActivePage("DepositWithdraw")}
-/>
+{/* 🔥 FLOATING ACCOUNT SWITCHER – top-right */}
+<View style={styles.switcherWrapper}>
+
+  <AccountSwitcher
+    balances={{
+      demo: demoBalance ?? 0,
+      real: ctxBalances?.real ?? 0,
+      tournament: ctxBalances?.tournament ?? 0,
+    }}
+    onTopUp={() => setDemoBalance(10000)}
+    tournamentBalances={tournamentAccounts}
+    activeAccount={activeAccount}
+    tournamentMeta={tournamentMeta}
+    onSwitch={(account) => {
+      setActiveAccount(account);
+      setTimeout(() => chartRef.current?.resize?.(), 50);
+    }}
+    onDeposit={() => setActivePage("DepositWithdraw")}
+    onWithdraw={() => setActivePage("DepositWithdraw")}
+  />
+
+  {/* ♻️ ATTACHED REBUY BUTTON */}
+  {allowRebuy && (
+    <TouchableOpacity
+      style={styles.attachedRebuyButton}
+      activeOpacity={0.7}
+
+      onPress={() => {
+  console.log("🔥 REBUY BUTTON PRESSED");
+
+  if (
+    activeAccount.type !== "tournament" ||
+    !activeAccount.tournamentId
+  ) {
+    Alert.alert(
+      "Tournament Required",
+      "Please switch to a tournament account first."
+    );
+    return;
+  }
+
+  setPendingRebuyTournament(activeAccount.tournamentId);
+  setRebuyCompleted(false);
+  setShowRebuyConfirm(true);
+}}
+    >
+      <Text style={styles.attachedRebuyText}>
+        ♻️ REBUY • ${rebuyFee}
+      </Text>
+    </TouchableOpacity>
+  )}
+
+</View>
 
     {/* Left vertical menu */}
     <ScrollView
@@ -1061,10 +1241,10 @@ demoBalance={demoBalance}
     >
 
       <TouchableOpacity
-        style={{ position: "absolute", top: 6, right: 8 }}
+        style={{ position: "absolute", top: 6, right: 8  }}
         onPress={() => setShowExpiryPad(false)}
       >
-        <Text style={{ color: "red", fontSize: 18 }}>✕</Text>
+        <Text style={{ color: "red",  fontSize: 18 }}>✕</Text>
       </TouchableOpacity>
 
       <View style={styles.expiryGrid}>
@@ -1185,6 +1365,141 @@ demoBalance={demoBalance}
     </Pressable>
   </Modal>
 )}
+<Modal
+  visible={showRebuyConfirm}
+  transparent
+  animationType="fade"
+  onRequestClose={() => {
+    if (!pendingRebuyTournament ||
+        !loadingActions[pendingRebuyTournament]?.rebuy) {
+      setShowRebuyConfirm(false);
+      setPendingRebuyTournament(null);
+      setRebuyCompleted(false);
+    }
+  }}
+>
+  <Pressable
+    style={styles.padOverlay}
+    onPress={() => {
+      if (
+        !pendingRebuyTournament ||
+        !loadingActions[pendingRebuyTournament]?.rebuy
+      ) {
+        setShowRebuyConfirm(false);
+        setPendingRebuyTournament(null);
+        setRebuyCompleted(false);
+      }
+    }}
+  >
+    <Pressable
+      style={styles.rebuyConfirmBox}
+      onPress={(e) => e.stopPropagation()}
+    >
+
+      {!rebuyCompleted ? (
+        <>
+          <Text style={styles.rebuyConfirmTitle}>
+            ♻️ Confirm REBUY
+          </Text>
+
+          <Text style={styles.rebuyConfirmText}>
+            Your tournament balance has reached the REBUY level.
+          </Text>
+
+          <Text style={styles.rebuyConfirmFee}>
+            Rebuy Fee: ${rebuyFee}
+          </Text>
+
+          <Text style={styles.rebuyConfirmQuestion}>
+            Do you really want to continue?
+          </Text>
+        </>
+      ) : (
+        <>
+          <Text style={styles.rebuyDoneTitle}>
+            ✅ REBUY DONE
+          </Text>
+
+          <Text style={styles.rebuyConfirmText}>
+            Your tournament rebuy was completed successfully.
+          </Text>
+
+          <Text style={styles.rebuyConfirmFee}>
+            New Chance Activated 🎉
+          </Text>
+        </>
+      )}
+
+      <View style={styles.rebuyConfirmActions}>
+
+        {/* CANCEL / CLOSE */}
+        <TouchableOpacity
+          style={styles.rebuyCancelButton}
+          disabled={
+            !!pendingRebuyTournament &&
+            loadingActions[pendingRebuyTournament]?.rebuy
+          }
+          onPress={() => {
+            setShowRebuyConfirm(false);
+            setPendingRebuyTournament(null);
+            setRebuyCompleted(false);
+          }}
+        >
+          <Text style={styles.rebuyCancelText}>
+            {rebuyCompleted ? "CLOSE" : "CANCEL"}
+          </Text>
+        </TouchableOpacity>
+
+        {/* REBUY / PROCESSING / DONE */}
+        <TouchableOpacity
+          style={[
+            styles.rebuyConfirmButton,
+            rebuyCompleted && styles.rebuyDoneButton,
+          ]}
+          disabled={
+            rebuyCompleted ||
+            !pendingRebuyTournament ||
+            loadingActions[pendingRebuyTournament]?.rebuy
+          }
+          onPress={() => {
+            if (!pendingRebuyTournament) return;
+
+            const tournamentId = pendingRebuyTournament;
+
+            console.log(
+              "🔥 CONFIRMED REBUY:",
+              tournamentId
+            );
+
+            // KEEP MODAL OPEN
+            setLoadingActions((prev) => ({
+              ...prev,
+              [tournamentId]: {
+                ...prev[tournamentId],
+                rebuy: true,
+              },
+            }));
+
+            handleRebuy(tournamentId).then(() => {
+              setRebuyCompleted(true);
+            });
+          }}
+        >
+          <Text style={styles.rebuyConfirmButtonText}>
+            {rebuyCompleted
+              ? "DONE ✓"
+              : pendingRebuyTournament &&
+                loadingActions[pendingRebuyTournament]?.rebuy
+              ? "PROCESSING..."
+              : "REBUY ♻️"}
+          </Text>
+        </TouchableOpacity>
+
+      </View>
+
+    </Pressable>
+  </Pressable>
+</Modal>
   </View> 
 );
 }
@@ -1205,10 +1520,10 @@ const styles = StyleSheet.create({
   input: {  backgroundColor: "rgba(255,255,255,0.1)", borderColor: "#666",  borderWidth: 1,  borderRadius: 6, 
    padding: 5, color: "#fff", fontSize: 14, },
   inputRow: { marginVertical: 3 },
-  expiryButton: { paddingVertical: 4, paddingHorizontal: 10, backgroundColor: "rgba(255,255,255,0.1)", borderRadius: 3,
-   marginRight: 6, },
+  expiryButton: { paddingVertical: 2, paddingHorizontal: 5, backgroundColor: "rgba(255,255,255,0.1)", borderRadius: 1.5,
+   marginRight: 3, },
   expButtonActive: { backgroundColor: "blue" },
-  expButtonText: { color: "#fff", fontSize: 14 },
+  expButtonText: { color: "#fff", fontSize: 10, fontWeight: "bold" },
   profitBox: { backgroundColor: "rgba(255,255,0,0.1)",  borderColor: "gold",
    borderWidth: 1, borderRadius: 8,
  padding: 8,  marginBottom: 0, alignItems: "center",  bottom: 14, },
@@ -1346,5 +1661,121 @@ tradeHelpOkText: {
   color: "#000",
   fontWeight: "bold",
   fontSize: 13,
+},
+
+switcherWrapper: {
+  position: "absolute",
+  top: 5,
+  right: 10,
+  zIndex: 2000,
+  elevation: 30,
+  alignItems: "center",
+},
+
+attachedRebuyButton: {
+  marginTop: 75,
+  right: 15,
+  paddingHorizontal: 12,
+  paddingVertical: 6,
+  borderRadius: 8,
+  backgroundColor: "#16a34a",
+  borderWidth: 1,
+  borderColor: "#4ade80",
+  zIndex: 3000,
+  elevation: 40,
+},
+
+attachedRebuyText: {
+  color: "#fff",
+  fontSize: 8,
+  fontWeight: "900",
+},
+rebuyDoneTitle: {
+  color: "#4ade80",
+  fontSize: 20,
+  fontWeight: "900",
+  marginBottom: 12,
+},
+
+rebuyDoneButton: {
+  backgroundColor: "#15803d",
+  borderColor: "#4ade80",
+},
+rebuyConfirmBox: {
+  width: 300,
+  backgroundColor: "#111827",
+  borderRadius: 14,
+  padding: 20,
+  alignItems: "center",
+  borderWidth: 1,
+  borderColor: "#4ade80",
+  elevation: 20,
+},
+
+rebuyConfirmTitle: {
+  color: "#4ade80",
+  fontSize: 19,
+  fontWeight: "900",
+  marginBottom: 12,
+},
+
+rebuyConfirmText: {
+  color: "#ddd",
+  fontSize: 13,
+  textAlign: "center",
+  marginBottom: 10,
+},
+
+rebuyConfirmFee: {
+  color: "gold",
+  fontSize: 17,
+  fontWeight: "900",
+  marginVertical: 8,
+},
+
+rebuyConfirmQuestion: {
+  color: "#fff",
+  fontSize: 13,
+  textAlign: "center",
+  marginBottom: 18,
+},
+
+rebuyConfirmActions: {
+  flexDirection: "row",
+  width: "100%",
+  justifyContent: "space-between",
+  gap: 10,
+},
+
+rebuyCancelButton: {
+  flex: 1,
+  paddingVertical: 10,
+  borderRadius: 8,
+  backgroundColor: "#333",
+  borderWidth: 1,
+  borderColor: "#777",
+  alignItems: "center",
+},
+
+rebuyCancelText: {
+  color: "#fff",
+  fontWeight: "bold",
+  fontSize: 12,
+},
+
+rebuyConfirmButton: {
+  flex: 1,
+  paddingVertical: 10,
+  borderRadius: 8,
+  backgroundColor: "#16a34a",
+  borderWidth: 1,
+  borderColor: "#4ade80",
+  alignItems: "center",
+},
+
+rebuyConfirmButtonText: {
+  color: "#fff",
+  fontWeight: "900",
+  fontSize: 12,
 },
 });
