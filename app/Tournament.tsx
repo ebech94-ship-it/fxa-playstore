@@ -1219,13 +1219,7 @@ flexShrink: 1,
     setSelectedTournament(null);
   }}
 >
-  <Pressable
-    style={styles.modalOverlay}
-    onPress={() => {
-      setShowTournamentPopup(false);
-      setSelectedTournament(null);
-    }}
-  >
+  <View style={styles.modalOverlay}>
    <KeyboardAvoidingView
   style={{
     flex: 1,
@@ -1366,16 +1360,16 @@ flexShrink: 1,
 
   {viewTab === "info" ? (
   <ScrollView
-    style={{ flex: 1, width: "100%" }}
-    contentContainerStyle={{
-      paddingVertical: 12,
-      paddingHorizontal: 4,
-      paddingBottom: 40,
-      flexGrow: 1
-    }}
-    showsVerticalScrollIndicator={true}
-    nestedScrollEnabled={false}
-  >
+  style={{ flex: 1, width: "100%" }}
+  contentContainerStyle={{
+    paddingVertical: 12,
+    paddingHorizontal: 4,
+    paddingBottom: 40,
+  }}
+  showsVerticalScrollIndicator={true}
+  nestedScrollEnabled={true}
+  keyboardShouldPersistTaps="handled"
+>
 
         <Text style={styles.sectionTitle}>
           📖 Information
@@ -1849,7 +1843,7 @@ flexShrink: 1,
     </View>
 
   </KeyboardAvoidingView>
-</Pressable>
+</View>
 </Modal>
 
 {showFAQ && (
@@ -2551,8 +2545,8 @@ leaderboardPageText: {
 },
 faqFloatingButton: {
   position: "absolute",
-  top: 5,
-  right: 28,
+  top: 28,
+  right: 31,
   width: 34,
   height: 34,
   borderRadius: 17,

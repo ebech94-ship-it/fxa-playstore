@@ -238,7 +238,13 @@ useEffect(() => {
 
   const [openTrades, setOpenTrades] = useState<Trade[]>([]);
  const [closedTrades, setClosedTrades] = useState<ClosedTrade[]>([]);
+const tournamentOpenTrades = openTrades.filter(
+  (t) => t.account?.type === "tournament"
+);
 
+const tournamentClosedTrades = closedTrades.filter(
+  (t) => t.account?.type === "tournament"
+);
 
   // Parse expiration like "30s", "1m", "5m"
   function parseExpirationMs(exp: string) {
@@ -1067,11 +1073,19 @@ demoBalance={demoBalance}
 
 
 
-      <TradeSummaryBar
-  openTrades={openTrades}
-  closedTrades={closedTrades}
+     <TradeSummaryBar
+  openTrades={
+    activeAccount.type === "tournament"
+      ? tournamentOpenTrades
+      : openTrades
+  }
+  closedTrades={
+    activeAccount.type === "tournament"
+      ? tournamentClosedTrades
+      : closedTrades
+  }
   activeAccount={activeAccount.type}
-   onResizeChart={() => chartRef.current?.resize?.()}
+  onResizeChart={() => chartRef.current?.resize?.()}
 />
 
     </View>
