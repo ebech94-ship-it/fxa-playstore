@@ -585,6 +585,7 @@ const currentUserPosition = useMemo(() => {
   currentUser?.email,
 ]);
 
+
   // TOURNAMENT CARD
 const TournamentCard = ({ item }: { item: any }) => {
   const status: TournamentStatus = getTournamentStatus(
@@ -787,11 +788,16 @@ const allowRebuy =
 
 </View>
 
-      {/* LIVE STATS */}
-      <View style={styles.cardStatsRow}>
-  
+    {/* LIVE STATS */}
+<View style={styles.cardStatsRow}>
+
+  {/* DATE / COUNTDOWN */}
   <View style={styles.timeColumn}>
-    <Text style={styles.cardDetail}>
+    <Text
+      style={styles.cardDetail}
+      numberOfLines={1}
+      ellipsizeMode="tail"
+    >
       {status === "upcoming"
         ? `⏳ Starts in ${formatCountdown(item.startTime - now)}`
         : status === "ongoing"
@@ -799,7 +805,11 @@ const allowRebuy =
         : "🏁 Finished"}
     </Text>
 
-    <Text style={styles.cardDate}>
+    <Text
+      style={styles.cardDate}
+      numberOfLines={1}
+      ellipsizeMode="tail"
+    >
       📅 {formatFullDate(
         status === "upcoming"
           ? item.startTime
@@ -808,16 +818,18 @@ const allowRebuy =
     </Text>
   </View>
 
+  {/* JOINED / REBUYS */}
   <View style={styles.statsColumn}>
-    <Text style={styles.cardDetail}>
+    <Text style={styles.cardDetail} numberOfLines={1}>
       👥 {tournamentCounts[item.id] ?? 0} Joined
     </Text>
 
-    <Text style={styles.cardDetail}>
+    <Text style={styles.cardDetail} numberOfLines={1}>
       ♻️ {tournamentRebuyCounts[item.id] ?? 0} Rebuys
     </Text>
   </View>
- </View>
+
+</View>
       {/* ACTIONS */}
       <View style={styles.cardFooter}>
         <TouchableOpacity
@@ -894,7 +906,42 @@ disabled={
   );
 };
 
+const sortedTournaments = useMemo(() => {
+  return [...tournaments].sort((a, b) => {
+    const aStart = a.startTime ?? 0;
+    const aEnd = a.endTime ?? 0;
+    const bStart = b.startTime ?? 0;
+    const bEnd = b.endTime ?? 0;
 
+    const statusA = getTournamentStatus(aStart, aEnd, now);
+    const statusB = getTournamentStatus(bStart, bEnd, now);
+
+    // 1. ONGOING FIRST
+    if (statusA === "ongoing" && statusB !== "ongoing") return -1;
+    if (statusB === "ongoing" && statusA !== "ongoing") return 1;
+
+    // 2. UPCOMING BEFORE FINISHED
+    if (statusA === "upcoming" && statusB === "finished") return -1;
+    if (statusB === "upcoming" && statusA === "finished") return 1;
+
+    // 3. ONGOING: tournament ending soonest first
+    if (statusA === "ongoing" && statusB === "ongoing") {
+      return aEnd - bEnd;
+    }
+
+    // 4. UPCOMING: tournament starting soonest first
+    if (statusA === "upcoming" && statusB === "upcoming") {
+      return aStart - bStart;
+    }
+
+    // 5. FINISHED: newest finished tournament first
+    if (statusA === "finished" && statusB === "finished") {
+      return bEnd - aEnd;
+    }
+
+    return 0;
+  });
+}, [tournaments, now]);
   // find current user row and create pinned row to top of leaderboard modal
 
 // ---------- YOUR POSITION PANEL ----------
@@ -1143,7 +1190,7 @@ flexShrink: 1,
 </Text>
 </View>
     <FlatList
-  data={tournaments}
+  data={sortedTournaments}
   renderItem={({ item }) => <TournamentCard item={item} />}
   keyExtractor={(item) => item.id}
   contentContainerStyle={{ paddingBottom: 20 }}
@@ -1313,6 +1360,7 @@ flexShrink: 1,
     flex: 1,
     width: "100%",
     minHeight: 0,
+    overflow: "hidden",
   }}
 >
 
@@ -1323,9 +1371,10 @@ flexShrink: 1,
       paddingVertical: 12,
       paddingHorizontal: 4,
       paddingBottom: 40,
+      flexGrow: 1
     }}
     showsVerticalScrollIndicator={true}
-    nestedScrollEnabled={true}
+    nestedScrollEnabled={false}
   >
 
         <Text style={styles.sectionTitle}>
@@ -2319,12 +2368,22 @@ rankHeaderCol: {
 },
 cardStatsRow: {
   flexDirection: "row",
+  alignItems: "center",
+  justifyContent: "space-between",
+  width: "100%",
   marginTop: 8,
-  gap: 80,
 },
-timeColumn: {},
 
-statsColumn: {},
+timeColumn: {
+  flex: 1,
+  minWidth: 0,
+  marginRight: 8,
+},
+
+statsColumn: {
+  flexShrink: 0,
+  alignItems: "flex-end",
+},
 
 cardDate: {
   color: "#9ca3af",
@@ -2493,10 +2552,10 @@ leaderboardPageText: {
 faqFloatingButton: {
   position: "absolute",
   top: 5,
-  right: 50,
-  width: 38,
-  height: 38,
-  borderRadius: 19,
+  right: 28,
+  width: 34,
+  height: 34,
+  borderRadius: 17,
   backgroundColor: "#1b2142",
   justifyContent: "center",
   alignItems: "center",
