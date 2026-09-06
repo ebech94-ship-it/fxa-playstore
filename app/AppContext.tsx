@@ -876,19 +876,24 @@ useEffect(() => {
       const list: Participant[] = snap.docs.map((d) => {
         const data = d.data();
 
-        return {
-          id: d.id,
-          username: data.username,
-          balance: data.balance ?? 0,
-          avatar: data.avatar,
-          avatarUrl: data.avatarUrl,
-          countryCode: data.countryCode,
-           // ADD THESE
+       return {
+  id: d.id,
+  username: data.username,
+  balance: data.balance ?? 0,
+  avatar: data.avatar,
+  avatarUrl: data.avatarUrl,
+  countryCode: data.countryCode,
   publicId: data.publicId,
   email: data.email,
-          rankingScore: data.rankingScore ?? 0,
-          startingBalance: data.startingBalance ?? 0,
-        };
+
+  startingBalance: data.startingBalance ?? 0,
+
+  // ♻️ REBUY DATA — MUST BE PASSED TO LEADERBOARD
+  rebuyInjectedTotal: data.rebuyInjectedTotal ?? 0,
+  rebuyCount: data.rebuyCount ?? 0,
+
+  rankingScore: data.rankingScore ?? 0,
+};
       });
 
       // 🔥 SORT (important for leaderboard UI)
@@ -914,11 +919,13 @@ useEffect(() => {
   const merged = list.map(player => {
     const old = oldList.find(p => p.id === player.id);
 
-    if (
-      !old ||
-      old.balance !== player.balance ||
-      old.rankingScore !== player.rankingScore
-    ) {
+   if (
+  !old ||
+  old.balance !== player.balance ||
+  old.rankingScore !== player.rankingScore ||
+  old.rebuyInjectedTotal !== player.rebuyInjectedTotal ||
+  old.rebuyCount !== player.rebuyCount
+) {
       changed = true;
       return player;
     }
