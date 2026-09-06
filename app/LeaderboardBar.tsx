@@ -28,6 +28,7 @@ export type Participant = {
   performance?: number;
   rankingScore?: number;
   startingBalance?: number;
+  rebuyInjectedTotal?: number;
 };
 
 export type LeaderboardBarProps = {
@@ -258,9 +259,23 @@ const displayParticipants = useMemo(() => {
   activeAccount.type,
 ]);
 
-const sortedParticipants = [...displayParticipants].sort(
-  (a, b) => (b.balance ?? 0) - (a.balance ?? 0)
-);
+const sortedParticipants = [...displayParticipants].sort((a, b) => {
+  const startBalance = Number(
+    activeTourney?.startingBalance ?? 0
+  );
+
+  const aPerformance =
+    Number(a.balance ?? 0) -
+    startBalance -
+    Number(a.rebuyInjectedTotal ?? 0);
+
+  const bPerformance =
+    Number(b.balance ?? 0) -
+    startBalance -
+    Number(b.rebuyInjectedTotal ?? 0);
+
+  return bPerformance - aPerformance;
+});
 
 const rankIndex = sortedParticipants.findIndex(
   (p) => p.id === currentUser?.uid

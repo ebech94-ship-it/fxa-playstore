@@ -484,6 +484,7 @@ const formatFullDate = (ms: number) => {
   return `${ordinal} ${month} ${year}, ${hours}:${minutes}`;
 
 }; 
+
 const sortedLeaderboard = useMemo(() => {
   const copy = [...leaderboard];
 
@@ -1029,15 +1030,30 @@ const sortedTournaments = useMemo(() => {
           </Text>
         </View>
 
-        <View style={styles.yourPositionBalance}>
-          <Text style={styles.yourPositionLabel}>
-            Balance
-          </Text>
+       <View style={styles.yourPositionBalance}>
+  <Text style={styles.yourPositionLabel}>
+    Balance
+  </Text>
 
-          <Text style={styles.yourPositionBalanceValue}>
-            {formatNum(balance)}T
-          </Text>
-        </View>
+  <Text style={styles.yourPositionBalanceValue}>
+    {formatNum(balance)}T
+  </Text>
+
+  {/* YOUR REBUY */}
+  <Text
+    style={{
+      color: "#f59e0b",
+      fontSize: 10,
+      fontWeight: "700",
+      marginTop: 2,
+    }}
+  >
+    ♻️ Rebuy:{" "}
+    {rebuyInjectedTotal > 0
+      ? `-${formatNum(rebuyInjectedTotal)}T`
+      : "0T"}
+  </Text>
+</View>
 
       </View>
 
