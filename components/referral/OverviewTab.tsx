@@ -22,7 +22,7 @@ type Props = {
   activeReferrals?: number;
   weeklyProgress?: number;
   weeklyTarget?: number;
-
+coins?: number;
   activities?: ActivityItem[];
 
   copyLink: () => void;
@@ -34,6 +34,7 @@ export default function OverviewTab({
   landingLink,
   referralCount,
   referralPoints,
+   coins = 0,
   activeReferrals = 0,
   weeklyProgress = 0,
   weeklyTarget = 3,
@@ -113,8 +114,11 @@ export default function OverviewTab({
   </Text>
 
   <Text style={styles.infoText}>
-    Once these steps are completed, your referral will count and you will receive your referral rewards automatically.
-  </Text>
+  Your referral counts when the eligibility requirements are
+  met. Rewards depend on the program rules and successful
+  verification. Eligible rewards may include virtual Coins
+  and other benefits.
+</Text>
 </View>
 
       {/* STATS ENGINE */}
@@ -123,34 +127,25 @@ export default function OverviewTab({
           ⚡ Referral Power
         </Text>
 
-        <View style={styles.statsRow}>
-          <View style={styles.statBox}>
-            <Text style={styles.statValue}>
-              {referralCount}
-            </Text>
-            <Text style={styles.statLabel}>
-              Friends
-            </Text>
-          </View>
+      <View style={styles.statBox}>
+  <Text style={styles.statValue}>{referralCount}</Text>
+  <Text style={styles.statLabel}>Referrals</Text>
+</View>
 
-          <View style={styles.statBox}>
-            <Text style={styles.statValue}>
-              {activeReferrals}
-            </Text>
-            <Text style={styles.statLabel}>
-              Active
-            </Text>
-          </View>
+<View style={styles.statBox}>
+  <Text style={styles.statValue}>{activeReferrals}</Text>
+  <Text style={styles.statLabel}>Active</Text>
+</View>
 
-          <View style={styles.statBox}>
-            <Text style={styles.statValue}>
-              {referralPoints}
-            </Text>
-            <Text style={styles.statLabel}>
-              Points
-            </Text>
-          </View>
-        </View>
+<View style={styles.statBox}>
+  <Text style={styles.statValue}>{referralPoints.toLocaleString()}</Text>
+  <Text style={styles.statLabel}>Points</Text>
+</View>
+
+<View style={styles.statBox}>
+  <Text style={styles.statValue}>{coins.toLocaleString()}</Text>
+  <Text style={styles.statLabel}>Coins 🪙</Text>
+</View>
       </View>
 
       {/* WEEKLY CHALLENGE */}

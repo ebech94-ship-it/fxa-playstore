@@ -25,8 +25,7 @@ type AccountSwitcherProps = {
 
   onSwitch: (account: AccountType) => void;
   onTopUp?: () => void;
-  onDeposit?: () => void;
-  onWithdraw?: () => void;
+  
    // ✅ Add tournamentMeta so AccountSwitcher can show real tournament names
   tournamentMeta?: Record<
     string,
@@ -73,12 +72,18 @@ export default function AccountSwitcher({
   activeAccount,
   onSwitch,
   onTopUp,
-  onDeposit,
-  onWithdraw,
+ 
    tournamentMeta,
 }: AccountSwitcherProps) {
 
-  const { openAccountSwitcher, setOpenAccountSwitcher, tournamentAccounts } = useApp(); // context only for tournaments
+const {
+  openAccountSwitcher,
+  setOpenAccountSwitcher,
+  tournamentAccounts,
+  userDoc,
+} = useApp();
+
+const coinsBalance = Number(userDoc?.coins ?? 0);
 
   // convert context tournaments to UI-friendly shape
 const switcherTournaments = tournamentAccounts
@@ -135,10 +140,7 @@ useEffect(() => {
   onSwitch(account);
   setExpanded(false);
 
-  if (account.type === "real") {
-    setShowWarning(true);
-    setTimeout(() => setShowWarning(false), 4000);
-  }
+ 
 };
 
 
@@ -220,15 +222,13 @@ const InfoButton = ({
 {activeAccount.type === "demo"
   ? `DE • $${balances.demo.toFixed(1)}`
   : activeAccount.type === "real"
-  ? `RE • $${balances.real.toFixed(2)}`
-  : `${
-      getAccountPrefix(
-        activeAccount,
-        tournamentAccounts.find(
-          t => t.tournamentId === activeAccount.tournamentId
-        )?.name
-      )
-    } • $${displayBalance.toFixed(1)}`
+  ? `WALLET • ${coinsBalance.toLocaleString()} Coins`
+  : `${getAccountPrefix(
+      activeAccount,
+      tournamentAccounts.find(
+        t => t.tournamentId === activeAccount.tournamentId
+      )?.name
+    )} • ${displayBalance.toFixed(1)}T`
 }
 </Text>
 
@@ -268,50 +268,49 @@ const InfoButton = ({
             </TouchableOpacity>
           </View>
 
-          {/* REAL */}
-          <View
-            style={[
-              styles.card,
-              activeAccount.type === "real" && styles.activeCard,
-            ]}
-          >
-            <TouchableOpacity
-              onPress={() => handleSelect({ type: "real" })}
-            >
-         <View style={styles.titleRow}>
-  <Text style={styles.cardTitle}>
-    {activeAccount.type === "real" ? "✓ " : ""}
-    💼 Wallet
-  </Text>
+         
+{/* COINS WALLET */}
+<View
+  style={[
+    styles.card,
+    activeAccount.type === "real" && styles.activeCard,
+  ]}
+>
+  <TouchableOpacity onPress={() => handleSelect({ type: "real" })}>
+    <View style={styles.titleRow}>
+      <Text style={styles.cardTitle}>
+        {activeAccount.type === "real" ? "✓ " : ""}
+        🪙 Coins Wallet
+      </Text>
+      <InfoButton type="wallet" />
+    </View>
 
-  <InfoButton type="wallet" />
+    <Text
+      numberOfLines={1}
+      ellipsizeMode="tail"
+      style={[styles.activeBalance, { color: "#facc15", marginLeft: 0 }]}
+    >
+      {coinsBalance.toLocaleString()} Coins
+    </Text>
+
+    <Text style={{ color: "#94a3b8", fontSize: 10, marginTop: 3 }}>
+      Virtual tournament entry and rewards
+    </Text>
+  </TouchableOpacity>
+
+  <TouchableOpacity
+    onPress={() => {
+      setExpanded(false);
+      router.push("/DepositWithdraw");
+    }}
+    style={[styles.button, { backgroundColor: "#854d0e", alignSelf: "stretch" }]}
+  >
+    <Text style={[styles.buttonText, { textAlign: "center" }]}>
+      Open Coins Wallet
+    </Text>
+  </TouchableOpacity>
 </View>
-             <Text  numberOfLines={1}  ellipsizeMode="tail"
-  style={[styles.activeBalance, { color: "#facc15" }]}>
-  ${balances.real.toFixed(2)}
-</Text>
-               {/* 🎯 TRADING LOCKED BADGE */}
-    {activeAccount.type === "real" && (
-      <Text style={styles.tradingLockedBadge}>Trading Locked</Text>
-    )}
-            </TouchableOpacity>
 
-            <View style={styles.row}>
-             <TouchableOpacity
-  onPress={() => router.push("/DepositWithdraw?mode=deposit")}
-  style={[styles.button, { backgroundColor: "#4CAF50" }]}
->
-  <Text style={styles.buttonText}>Deposit</Text>
-</TouchableOpacity>
-
-<TouchableOpacity
-  onPress={() => router.push("/DepositWithdraw?mode=withdraw")}
-  style={[styles.button, { backgroundColor: "#9333ea" }]}
->
-  <Text style={styles.buttonText}>Withdraw</Text>
-</TouchableOpacity>
-            </View>
-          </View>
 
     
           {/* TOURNAMENTS */}
@@ -436,33 +435,34 @@ const InfoButton = ({
         </TouchableOpacity>
       </View>
 
-      {/* WALLET */}
-      {infoType === "wallet" && (
-        <View>
-          <Text style={styles.infoDescription}>
-            Your wallet holds your Real Money balance within FX ARENA.
-          </Text>
+    
+{/* COINS WALLET */}
+{infoType === "wallet" && (
+  <View>
+    <Text style={styles.infoDescription}>
+      Your Coins Wallet holds virtual Coins for use within FX ARENA.
+    </Text>
 
- <Text style={styles.infoItem}>
-            • Deposits are solely for funding tournament participation.
-          </Text>
+    <Text style={styles.infoItem}>
+      • Coins are virtual and are not real money.
+    </Text>
 
-          <Text style={styles.infoItem}>
-            • Tournament registrations and Rebuy fees are deducted from this Wallet.
-          </Text>
-       
-          
-          <Text style={styles.infoItem}>
-            • Withdrawals are used to withdraw your tournament winnings.
-          </Text>
+    <Text style={styles.infoItem}>
+      • Eligible tournament entry and rebuy fees may be deducted from your Coins balance.
+    </Text>
 
-          <View style={styles.infoWarning}>
-            <Text style={styles.infoWarningText}>
-              🔒 Real trading is not allowed on this Wallet Account and on this platform.
-            </Text>
-          </View>
-        </View>
-      )}
+    <Text style={styles.infoItem}>
+      • Approved tournament and referral rewards may be credited as virtual Coins.
+    </Text>
+
+    <View style={styles.infoWarning}>
+      <Text style={styles.infoWarningText}>
+        🔒 Coins cannot be deposited, withdrawn, or redeemed for cash.
+      </Text>
+    </View>
+  </View>
+)}
+
 
       {/* DEMO */}
       {infoType === "demo" && (

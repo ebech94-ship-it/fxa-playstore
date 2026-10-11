@@ -466,8 +466,8 @@ const activeBalance = useMemo(() => {
 }
 
   if (activeAccount.type === "real") {
-    return userDoc?.accounts?.real?.balance ?? 0;
-  }
+  return Number(userDoc?.coins ?? 0);
+}
 
 
   if (activeAccount.type === "tournament") {
@@ -494,7 +494,7 @@ const balancesState = useMemo(
    demo:
  userDoc?.accounts?.demo?.balance ??
  demoBalance,
-    real: userDoc?.accounts?.real?.balance ?? 0,
+   real: Number(userDoc?.coins ?? 0),
     tournament: activeTournament
       ? participantBalances[activeTournament.tournamentId] ??
         activeTournament.balance
@@ -502,7 +502,7 @@ const balancesState = useMemo(
   }),
   [
     demoBalance,
-    userDoc?.accounts?.real?.balance,
+   userDoc?.coins,
     activeTournament,
     participantBalances,
   ]

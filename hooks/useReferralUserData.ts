@@ -8,7 +8,7 @@ export type ReferralUser = {
   publicId: string;
 
   displayName: string;
-
+coins: number;
   referralCount: number;
   referralPoints: number;
   referralEarnings: number;
@@ -57,7 +57,7 @@ export default function useReferralUserData(uid?: string) {
         }
 
         const user = snap.data();
-
+const coins = Number(user.coins ?? 0);
         const referralCount = user.referralCount ?? 0;
         const referralPoints = user.referralPoints ?? 0;
         const referralEarnings = user.referralEarnings ?? 0;
@@ -81,6 +81,7 @@ export default function useReferralUserData(uid?: string) {
           referralPoints,
           referralEarnings,
 validReferrals,
+coins,
           tier,
           nextTierTarget,
         });

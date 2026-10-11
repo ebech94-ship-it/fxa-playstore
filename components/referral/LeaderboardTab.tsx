@@ -1,3 +1,4 @@
+
 import { ScrollView, StyleSheet, Text, View } from "react-native";
 
 type Leader = {
@@ -17,10 +18,22 @@ export default function LeaderboardTab({
   myRank,
   myReferralCount,
 }: Props) {
+  const getRankColor = (rank: number) => {
+    if (rank === 1) return "#facc15";
+    if (rank === 2) return "#cbd5e1";
+    if (rank === 3) return "#fb923c";
+    return "#38bdf8";
+  };
+
   return (
-    <ScrollView style={styles.container}>
-      <Text style={styles.header}>
-        🏆 Referral Leaders
+    <ScrollView
+      style={styles.container}
+      showsVerticalScrollIndicator={false}
+    >
+      <Text style={styles.header}>🏆 Referral Leaders</Text>
+
+      <Text style={styles.subtitle}>
+        Rankings are based on valid referrals.
       </Text>
 
       {leaders.length === 0 ? (
@@ -28,44 +41,64 @@ export default function LeaderboardTab({
           <Text style={styles.emptyTitle}>
             No leaderboard data yet
           </Text>
-
           <Text style={styles.emptyText}>
-            Invite friends to become one of the first referral leaders.
+            Invite friends and help grow the FX ARENA community.
           </Text>
         </View>
       ) : (
-        leaders.map((user, index) => (
-          <View key={user.uid} style={styles.card}>
-            <Text style={styles.rank}>
-              #{index + 1}
-            </Text>
+        leaders.map((user, index) => {
+          const rank = index + 1;
 
-            <Text
-              style={styles.name}
-              numberOfLines={1}
-            >
-              {user.displayName || "Anonymous"}
-            </Text>
+          return (
+            <View key={user.uid} style={styles.card}>
+              <View
+                style={[
+                  styles.rankBadge,
+                  { borderColor: getRankColor(rank) },
+                ]}
+              >
+                <Text
+                  style={[
+                    styles.rank,
+                    { color: getRankColor(rank) },
+                  ]}
+                >
+                  {rank <= 3
+                    ? ["🥇", "🥈", "🥉"][index]
+                    : `#${rank}`}
+                </Text>
+              </View>
 
-            <Text style={styles.value}>
-              {user.referralCount} invite
-              {user.referralCount === 1 ? "" : "s"}
-            </Text>
-          </View>
-        ))
+              <Text style={styles.name} numberOfLines={1}>
+                {user.displayName || "Anonymous"}
+              </Text>
+
+              <Text style={styles.value}>
+                {user.referralCount}{" "}
+                {user.referralCount === 1 ? "invite" : "invites"}
+              </Text>
+            </View>
+          );
+        })
       )}
 
       <View style={styles.myCard}>
-        <Text style={styles.myTitle}>
-          Your Position
-        </Text>
+        <Text style={styles.myTitle}>Your Position</Text>
 
         <Text style={styles.myValue}>
-          {myRank ? `#${myRank}` : "Not ranked yet"} •{" "}
-          {myReferralCount} referral
-          {myReferralCount === 1 ? "" : "s"}
+          {myRank ? `#${myRank}` : "Not ranked yet"}
+        </Text>
+
+        <Text style={styles.myCount}>
+          {myReferralCount} valid{" "}
+          {myReferralCount === 1 ? "referral" : "referrals"}
         </Text>
       </View>
+
+      <Text style={styles.disclaimer}>
+        Referral rewards are subject to eligibility and program rules.
+        Virtual Coins cannot be withdrawn as cash.
+      </Text>
     </ScrollView>
   );
 }
@@ -74,18 +107,20 @@ const styles = StyleSheet.create({
   container: {
     marginTop: 10,
   },
-
   header: {
     color: "#fff",
     fontSize: 18,
-    fontWeight: "700",
-    marginBottom: 12,
+    fontWeight: "800",
+    marginBottom: 4,
   },
-
+  subtitle: {
+    color: "#94a3b8",
+    fontSize: 12,
+    marginBottom: 14,
+  },
   card: {
     flexDirection: "row",
-    justifyContent: "space-between",
-    padding: 14,
+    padding: 12,
     borderRadius: 14,
     backgroundColor: "#0b1224",
     marginBottom: 10,
@@ -93,42 +128,52 @@ const styles = StyleSheet.create({
     borderColor: "#1e293b",
     alignItems: "center",
   },
-
-  rank: {
-    color: "#38bdf8",
-    fontWeight: "700",
-    width: 40,
+  rankBadge: {
+    width: 38,
+    height: 38,
+    borderRadius: 12,
+    borderWidth: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#111827",
   },
-
+  rank: {
+    fontSize: 12,
+    fontWeight: "800",
+  },
   name: {
     color: "#fff",
     flex: 1,
+    minWidth: 0,
     marginHorizontal: 10,
+    fontWeight: "600",
   },
-
   value: {
     color: "#94a3b8",
+    fontSize: 11,
   },
-
   myCard: {
-    marginTop: 16,
-    padding: 14,
+    marginTop: 12,
+    padding: 16,
     borderRadius: 14,
     backgroundColor: "#111c3a",
     borderWidth: 1,
     borderColor: "#2563eb",
   },
-
   myTitle: {
     color: "#94a3b8",
+    fontSize: 12,
   },
-
   myValue: {
     color: "#fff",
-    fontWeight: "700",
+    fontWeight: "800",
+    fontSize: 24,
     marginTop: 4,
   },
-
+  myCount: {
+    color: "#38bdf8",
+    marginTop: 4,
+  },
   emptyCard: {
     padding: 20,
     borderRadius: 14,
@@ -137,17 +182,22 @@ const styles = StyleSheet.create({
     borderColor: "#1e293b",
     alignItems: "center",
   },
-
   emptyTitle: {
     color: "#fff",
     fontWeight: "700",
     fontSize: 16,
     marginBottom: 8,
   },
-
   emptyText: {
     color: "#94a3b8",
     textAlign: "center",
     lineHeight: 20,
+  },
+  disclaimer: {
+    color: "#64748b",
+    fontSize: 11,
+    lineHeight: 16,
+    marginTop: 14,
+    marginBottom: 20,
   },
 });

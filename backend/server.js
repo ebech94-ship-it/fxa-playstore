@@ -381,7 +381,13 @@ app.post("/admin/add-funds", authenticate, requireAdmin, async (req, res) => {
   try {
     const { userId, amount, reason } = req.body;
 
-    if (!userId || !amount || Number(amount) <= 0) {
+    if (
+  !userId ||
+  amount === undefined ||
+  amount === null ||
+  !Number.isFinite(Number(amount)) ||
+  Number(amount) <= 0
+) {
       return res.status(400).json({ error: "Invalid request" });
     }
 
@@ -408,7 +414,13 @@ app.post("/admin/subtract-funds", authenticate, requireAdmin, async (req, res) =
   try {
     const { userId, amount, reason } = req.body;
 
-    if (!userId || !amount || Number(amount) <= 0) {
+ if (
+  !userId ||
+  amount === undefined ||
+  amount === null ||
+  !Number.isFinite(Number(amount)) ||
+  Number(amount) <= 0
+) {
       return res.status(400).json({ error: "Invalid request" });
     }
  
@@ -961,4 +973,4 @@ return {
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 Backend running on port ${PORT}`);
 });
-  console.log("Routes loaded: payin, payout, tournament, admin");
+ console.log("Routes loaded: Coins wallet, tournaments, admin, support");

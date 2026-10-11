@@ -1,10 +1,9 @@
 import { getAuth } from "firebase/auth";
-import { useState, useEffect  } from "react";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { claimReward } from "../../services/rewardService";
+import { useState } from "react";
+import { ScrollView, StyleSheet, Text, View } from "react-native";
+
 import RewardBagsStrip from "./RewardBagsStrip";
-import { doc, getDoc } from "firebase/firestore";
-import { db } from "../../firebaseConfig";
+
 
 type Props = {
   validReferrals: number;
@@ -23,6 +22,7 @@ export default function RewardsTab({
   const [loadingClaim, setLoadingClaim] = useState<number | null>(null);
   const [claimed, setClaimed] = useState<Record<string, boolean>>({});
 
+
 const rewards = [
   {
     title: "Invite 3 Friends",
@@ -31,7 +31,7 @@ const rewards = [
   },
   {
     title: "Invite 5 Friends",
-    reward: "💰 $5 Wallet Bonus",
+    reward: "🪙 5 Virtual Coins",
     target: 5,
   },
   {
@@ -51,7 +51,7 @@ const rewards = [
   },
   {
     title: "Invite 30 Friends",
-    reward: "💰 $10 Wallet Bonus",
+    reward: "🪙 10 Virtual Coins",
     target: 30,
   },
   {
@@ -71,7 +71,7 @@ const rewards = [
   },
   {
     title: "Invite 150 Friends",
-    reward: "💰 $15 Wallet Bonus",
+    reward: "🪙 15 Virtual Coins",
     target: 150,
   },
   {
@@ -95,61 +95,7 @@ const rewards = [
     target: 1000,
   },
 ];
-useEffect(() => {
 
- if(!uid) return;
-
- const loadClaims = async()=>{
-
-  const snap = await getDoc(doc(db,"users",uid));
-
-  if(snap.exists()){
-
-    const data=snap.data();
-
-    const map:any={};
-
-    (data.claimedRewards || []).forEach((item:string)=>{
-      map[item]=true;
-    });
-
-    setClaimed(map);
-  }
-
- };
-
- loadClaims();
-
-},[uid]);
-
-  const handleClaim = async (item: any) => {
-    if (!uid) return;
-
-    const key = `${item.target}_referrals`;
-
-    if (claimed[key]) return;
-
-    setLoadingClaim(item.target);
-
-    try {
-      await claimReward({
-        uid,
-        rewardKey: key,
-        target: item.target,
-        referralCount: validReferrals,
-        reward: item.reward,
-      });
-
-      setClaimed((prev) => ({
-        ...prev,
-        [key]: true,
-      }));
-    } catch (e) {
-      console.log("claim failed", e);
-    }
-
-    setLoadingClaim(null);
-  };
 
   return (
     <ScrollView style={styles.container}>
@@ -209,31 +155,18 @@ useEffect(() => {
             </Text>
 
             {/* CLAIM BUTTON */}
-            <View style={{ marginTop: 12 }}>
-              {isClaimed ? (
-                <View style={styles.claimedBtn}>
-                  <Text style={styles.claimedText}>Claimed ✔</Text>
-                </View>
-              ) : (
-                <Pressable
-                  onPress={() => handleClaim(item)}
-                  disabled={!completed || loadingClaim === item.target}
-                  style={[
-                    styles.claimBtn,
-                    (!completed || loadingClaim === item.target) &&
-                      styles.disabledBtn,
-                  ]}
-                >
-                  <Text style={styles.claimBtnText}>
-                    {loadingClaim === item.target
-                      ? "Claiming..."
-                      : completed
-                      ? "Claim Reward"
-                      : "Locked"}
-                  </Text>
-                </Pressable>
-              )}
-            </View>
+           <View style={{ marginTop: 12 }}>
+  <View
+    style={[
+      styles.claimedBtn,
+      !completed && styles.disabledBtn,
+    ]}
+  >
+    <Text style={styles.claimedText}>
+      {completed ? "Reward Awarded Automatically ✓" : "Locked"}
+    </Text>
+  </View>
+</View>
           </View>
         );
       })}
@@ -242,8 +175,7 @@ useEffect(() => {
         <View style={styles.emptyCard}>
           <Text style={styles.emptyTitle}>No referrals yet</Text>
           <Text style={styles.emptyText}>
-            Invite your friends using your referral link to begin earning
-            rewards.
+           Invite your friends using your referral link to unlock virtual Coins and other program rewards.
           </Text>
         </View>
       )}

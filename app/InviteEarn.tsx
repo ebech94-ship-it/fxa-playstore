@@ -72,8 +72,9 @@ textAlign:"center",
 marginTop:15,
 }}
 >
-Referral rewards are promotional benefits provided by Forex Tournaments Arena.
-Eligibility and rewards may vary based on program rules.
+Referral rewards are virtual Coins awarded according to
+the program rules. Coins cannot be withdrawn or redeemed
+for cash. Eligibility and rewards may vary.
 </Text>
     </ScrollView>
   );
@@ -128,22 +129,25 @@ Eligibility and rewards may vary based on program rules.
     );
   };
 
-  const shareLink = async () => {
-    if (!landingLink) return;
+const shareLink = async () => {
+  if (!landingLink) return;
 
-    try {
-      await Share.share({
-        message: `🏆 Join me on Forex Arena!
+  try {
+    await Share.share({
+      message: `🏆 Join me on Forex Arena!
 
-Compete in trading tournaments, climb the leaderboard and win rewards.
+Compete in virtual trading tournaments, climb the leaderboard, and qualify for virtual Coins rewards.
 
 Use my invite link:
-${landingLink}`,
-      });
-    } catch (err) {
-      console.error("Share failed", err);
-    }
-  };
+${landingLink}
+
+Referral rewards are subject to program rules. Virtual Coins cannot be withdrawn as cash.`,
+    });
+  } catch (err) {
+    console.error("Share failed", err);
+  }
+};
+
 
   return (
     <ScrollView

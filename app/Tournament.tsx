@@ -174,8 +174,19 @@ const [loadingActions, setLoadingActions] = useState<
 
 
 // If you already have a context like useApp() that provides tournamentAccounts:
-const { balances, joinedMap, leaderboardParticipants, tournaments,  profile, setOpenAccountSwitcher,
-  setSwitcherHintTournamentId, participantBalances,  } = useApp();                               // or replace with your actual context
+const {
+  balances,
+  joinedMap,
+  leaderboardParticipants,
+  tournaments,
+  profile,
+  setOpenAccountSwitcher,
+  setSwitcherHintTournamentId,
+  participantBalances,
+  userDoc,
+} = useApp();
+
+const coinsBalance = Number(userDoc?.coins ?? 0);                           // or replace with your actual context
 
   const setLoadingFor = (
   tournamentId: string,
@@ -694,100 +705,56 @@ const allowRebuy =
         />
       </View>
 
-      {/* PRIZE INFO */}
-     {/* PRIZE / FEES WITH DIVIDER CONVERSION */}
+{/* REWARDS AND VIRTUAL COIN FEES */}
 <View style={styles.cardPrizeRow}>
-
-  {/* PRIZE POOL */}
+  {/* REWARDS */}
   <View style={styles.moneyRow}>
     <Text style={styles.leftPrizePoolText}>
-
-{
- item.prizeModel === "dynamic"
-
- ? `🏆 Prize Pool: ${formatNum(
-      item.collectedFunds ?? 0
-    )} $`
-
- : `🏆 Prize Pool: ${formatNum(
-      item.prizePool ?? 0
-    )} $`
-}
-
-</Text>
-<View
-  style={[
-    styles.prizeTypeBadge,
-    item.prizeModel === "dynamic"
-      ? styles.dynamicBadge
-      : styles.guaranteedBadge,
-  ]}
->
-  <Text
-    numberOfLines={1}
-    style={styles.prizeTypeText}
-  >
-    {item.prizeModel === "dynamic"
-      ? "🔥 Growing Prize Pool"
-      : "🎁 Sponsored Prize Pool"}
-  </Text>
-</View>
-
-    <View style={styles.dividerLine} />
-
-    <Text style={styles.rightMoneyText}>
-    ≈ {
-  formatXAF(
-    toXAF(
-      item.prizeModel === "dynamic"
-        ? item.collectedFunds ?? 0
-        : item.prizePool ?? 0
-    )
-  )
-} XAF
+      🎁 Rewards: {formatNum(
+        item.prizeModel === "dynamic"
+          ? item.collectedFunds ?? 0
+          : item.prizePool ?? 0
+      )} Coins
     </Text>
+
+    <View
+      style={[
+        styles.prizeTypeBadge,
+        item.prizeModel === "dynamic"
+          ? styles.dynamicBadge
+          : styles.guaranteedBadge,
+      ]}
+    >
+      <Text numberOfLines={1} style={styles.prizeTypeText}>
+        {item.prizeModel === "dynamic"
+          ? "Growing Rewards"
+          : "Sponsored Rewards"}
+      </Text>
+    </View>
   </View>
 
   {/* ENTRY FEE */}
   <View style={styles.moneyRow}>
     <Text style={styles.leftMoneyText}>
-      🎟 Entry Fee: {item.entryFee ?? 0} $
-    </Text>
-
-    <View style={styles.dividerLine} />
-
-    <Text style={styles.rightMoneyText}>
-      ≈ {formatXAF(toXAF(item.entryFee))} XAF
+      🎟 Entry Fee: {formatNum(item.entryFee ?? 0)} Coins
     </Text>
   </View>
 
   {/* REBUY FEE */}
   <View style={styles.moneyRow}>
     <Text style={styles.leftMoneyText}>
-      ♻️ Rebuy Fee: {rebuyFee} $
-    </Text>
-
-    <View style={styles.dividerLine} />
-
-    <Text style={styles.rightMoneyText}>
-      ≈ {formatXAF(toXAF(rebuyFee))} XAF
+      ♻️ Rebuy Fee: {formatNum(rebuyFee)} Coins
     </Text>
   </View>
 
-  {/* STARTING BALANCE */}
+  {/* TOURNAMENT STARTING BALANCE — SEPARATE FROM WALLET */}
   <View style={styles.moneyRow}>
     <Text style={styles.leftMoneyText}>
-      💵 Start Balance: {item.startingBalance ?? 0} $
-    </Text>
-
-    <View style={styles.dividerLine} />
-
-    <Text style={styles.rightMoneyText}>
-      ≈ {formatXAF(toXAF(item.startingBalance))} XAF
+      📊 Starting Balance: {formatNum(item.startingBalance ?? 0)} T
     </Text>
   </View>
-
 </View>
+
 
     {/* LIVE STATS */}
 <View style={styles.cardStatsRow}>
@@ -857,7 +824,7 @@ const allowRebuy =
   ? "Processing..."
   : (item.entryFee ?? 0) === 0
   ? "Register (Free)"
-  : `Register • ${item.entryFee} $`}
+  : `Register • ${item.entryFee} Coins`}
 </Text>
         </TouchableOpacity>
 
@@ -885,7 +852,7 @@ disabled={
     ? "Closed"
     : loadingActions[item.id]?.rebuy
     ? "⏳ Processing..."
-    : `♻️ Rebuy • ${rebuyFee} $`}
+    : `♻️ Rebuy • ${rebuyFee} Coins`}
 </Text>
         </TouchableOpacity>
       </View>
@@ -1077,7 +1044,7 @@ const sortedTournaments = useMemo(() => {
             ]}
           >
             {performance >= 0 ? "+" : ""}
-            {formatNum(performance)}$
+            {formatNum(performance)}T
           </Text>
         </View>
 
@@ -1099,7 +1066,7 @@ const sortedTournaments = useMemo(() => {
 
         <View style={styles.yourPositionStatCell}>
           <Text style={styles.yourPositionStatLabel}>
-            Prize
+            Rewards
           </Text>
 
           <Text
@@ -1108,9 +1075,7 @@ const sortedTournaments = useMemo(() => {
               { color: "#22c55e" },
             ]}
           >
-            {prize !== null
-              ? `${formatNum(prize)} $`
-              : "-"}
+           {prize !== null ? `${formatNum(prize)} Coins` : "-"}
           </Text>
         </View>
 
@@ -1164,46 +1129,29 @@ const sortedTournaments = useMemo(() => {
     style={{ marginRight: 6 }}
   />
 
-  <Text
-    style={{
-      color: "#94a3b8",
-       fontSize: 11,
-    flexShrink: 1,
-      marginRight: 4,
-    }}
-  >
-    Wallet:
-  </Text>
+ <Text
+  style={{
+    color: "#94a3b8",
+    fontSize: 11,
+    marginRight: 4,
+  }}
+>
+  Wallet:
+</Text>
 
- <Text>
-  <Text
-    style={{
-      color: "#3b82f6",
-      fontWeight: "800",
-     fontSize: 11,
-flexShrink: 1,
-      letterSpacing: 1,
-    }}
-  >
-    USD{" "}
-  </Text>
-
-  <Text
-    numberOfLines={1}
+<Text
+  numberOfLines={1}
   adjustsFontSizeToFit
   style={{
-      color: "#fbbf24",
-      fontWeight: "900",
-      fontSize: 15,
-flexShrink: 1,
-      textShadowColor: "rgba(251,191,36,0.7)",
-      textShadowOffset: { width: 0, height: 0 },
-      textShadowRadius: 10,
-    }}
-  >
-    {formatNum(balances?.real)}
-  </Text>
+    color: "#fbbf24",
+    fontWeight: "900",
+    fontSize: 15,
+    letterSpacing: 0.5,
+  }}
+>
+  {coinsBalance.toLocaleString()} Coins
 </Text>
+
 </View>
     <FlatList
   data={sortedTournaments}
@@ -1293,13 +1241,11 @@ flexShrink: 1,
     </Text>
 
     <Text style={styles.modalPrize}>
-
-🏆 Prize Pool: {
- selectedTournament.prizeModel === "dynamic"
- ? formatNum(selectedTournament.collectedFunds ?? 0)
- : formatNum(selectedTournament.prizePool ?? 0)
-} $
-
+  🎁 Rewards:{" "}
+  {selectedTournament.prizeModel === "dynamic"
+    ? formatNum(selectedTournament.collectedFunds ?? 0)
+    : formatNum(selectedTournament.prizePool ?? 0)}{" "}
+  Coins
 </Text>
 
     <Text style={styles.modalInfo}>
@@ -1393,8 +1339,10 @@ flexShrink: 1,
 
         <View style={styles.infoBox}>
           <Text style={styles.infoText}>
-            {selectedTournament.description ||
-              "Each participant receives a starting balance. Grow it to finish at the top of the leaderboard and win the prize pool."}
+           
+{selectedTournament.description ||
+  "Join the tournament, trade using virtual T capital, and compete on the leaderboard. Eligible winners may receive virtual Coins rewards according to the tournament rules."}
+
           </Text>
         </View>
 
@@ -1404,8 +1352,10 @@ flexShrink: 1,
 
         <View style={styles.infoBox}>
           <Text style={styles.infoText}>
-            {selectedTournament.rules ||
-              "1. Fair play only.\n\n2. No bots.\n\n3. Highest balance wins.\n\n4. Admin decisions are final."}
+           
+{selectedTournament.rules ||
+  "1. Fair play only.\n\n2. No bots or cheating.\n\n3. Rankings are based on Trading Performance.\n\n4. Entry fees and rebuys use virtual Coins.\n\n5. Approved rewards are credited as virtual Coins.\n\n6. Coins cannot be withdrawn as cash.\n\n7. Admin decisions are final."}
+
           </Text>
           
         </View>
@@ -1432,15 +1382,17 @@ flexShrink: 1,
 
         <View style={styles.infoBox}>
           <Text style={styles.infoText}>
-            {selectedTournament.onRegisterInfo ||
-              `Receive ${selectedTournament.startingBalance ?? 0}$ virtual trading capital and join the live rankings.`}
+          
+{selectedTournament.onRegisterInfo ||
+  `Receive ${formatNum(selectedTournament.startingBalance ?? 0)}T in virtual trading capital and compete on the live leaderboard. Your trading capital is separate from your wallet Coins.`}
+
           </Text>
         </View>
 
         {!!selectedTournament.payoutStructure?.length && (
           <>
             <Text style={styles.sectionTitle}>
-              🏆 Prize Distribution
+              🏆 Rewards Distribution
             </Text>
 
             <View style={styles.rankHeaderRow}>
@@ -1471,7 +1423,7 @@ flexShrink: 1,
                   { flex: 1 },
                 ]}
               >
-                Prize
+                Rewards
               </Text>
             </View>
 
@@ -1511,13 +1463,13 @@ flexShrink: 1,
                       { flex: 1 },
                     ]}
                   >
-                   {selectedTournament.prizeModel === "dynamic"
+           {selectedTournament.prizeModel === "dynamic"
   ? `${formatNum(
       (selectedTournament.collectedFunds ?? 0) *
       ((p.percentage ?? 0) / 100)
-    )} $`
-  : `${formatNum(p.amount ?? 0)} $`
-}
+    )} Coins`
+  : `${formatNum(p.amount ?? 0)} Coins`}
+
                   </Text>
                 </View>
               )
@@ -1707,7 +1659,7 @@ flexShrink: 1,
                       : ""}
                     {formatNum(
                       performance
-                    )}$
+                    )}T
                   </Text>
                 </View>
 
@@ -1747,7 +1699,7 @@ flexShrink: 1,
                       styles.mobileStatLabel
                     }
                   >
-                    Prize
+                    Rewards
                   </Text>
 
                   <Text
@@ -1758,11 +1710,7 @@ flexShrink: 1,
                       },
                     ]}
                   >
-                    {prize !== null
-                      ? `${formatNum(
-                          prize
-                        )} $`
-                      : "-"}
+                   {prize !== null ? `${formatNum(prize)} Coins` : "-"}
                   </Text>
                 </View>
 
@@ -1942,16 +1890,16 @@ flexShrink: 1,
         <Pressable
           style={styles.faqQuestionRow}
           onPress={() =>
-            setOpenFAQ(openFAQ === 0 ? null : 0)
+             setOpenFAQ(openFAQ === 6 ? null : 6)
           }
         >
           <Text style={styles.faqQuestion}>
-            🏆 How do I receive my prize if I win?
+            🏆 How do I receive my rewards if I win?
           </Text>
 
           <Ionicons
             name={
-              openFAQ === 0
+              openFAQ === 6
                 ? "chevron-up"
                 : "chevron-down"
             }
@@ -1960,172 +1908,164 @@ flexShrink: 1,
           />
         </Pressable>
 
-        {openFAQ === 0 && (
+        {openFAQ === 6 && (
           <View style={styles.faqAnswerBox}>
             <Text style={styles.faqAnswer}>
-              Your prize will be credited to your FX ARENA
+              Your Rewards will be credited to your FX ARENA
               wallet within 24 hours after the tournament ends
               and the results are confirmed.
             </Text>
           </View>
         )}
 
-        {/* FAQ 2 */}
-        <Pressable
-          style={styles.faqQuestionRow}
-          onPress={() =>
-            setOpenFAQ(openFAQ === 1 ? null : 1)
-          }
-        >
-          <Text style={styles.faqQuestion}>
-            💰 Where can I find my prize?
-          </Text>
+{/* FAQ 2 */}
+<Pressable
+  style={styles.faqQuestionRow}
+  onPress={() => setOpenFAQ(openFAQ === 1 ? null : 1)}
+>
+  <Text style={styles.faqQuestion}>
+    💰 Where can I find my rewards?
+  </Text>
+  <Ionicons
+    name={openFAQ === 1 ? "chevron-up" : "chevron-down"}
+    size={18}
+    color="#94a3b8"
+  />
+</Pressable>
 
-          <Ionicons
-            name={
-              openFAQ === 1
-                ? "chevron-up"
-                : "chevron-down"
-            }
-            size={18}
-            color="#94a3b8"
-          />
-        </Pressable>
+{openFAQ === 1 && (
+  <View style={styles.faqAnswerBox}>
+    <Text style={styles.faqAnswer}>
+      Approved tournament rewards are credited to your FX ARENA
+      wallet as virtual Coins after the results have been verified.
+      Coins are for use within the app and cannot be withdrawn as cash.
+    </Text>
+  </View>
+)}
 
-        {openFAQ === 1 && (
-          <View style={styles.faqAnswerBox}>
-            <Text style={styles.faqAnswer}>
-              Your winnings will automatically appear in your
-              FX ARENA wallet.
-            </Text>
-          </View>
-        )}
+{/* FAQ 3 */}
+<Pressable
+  style={styles.faqQuestionRow}
+  onPress={() => setOpenFAQ(openFAQ === 2 ? null : 2)}
+>
+  <Text style={styles.faqQuestion}>
+    ⏱️ When are results finalized?
+  </Text>
+  <Ionicons
+    name={openFAQ === 2 ? "chevron-up" : "chevron-down"}
+    size={18}
+    color="#94a3b8"
+  />
+</Pressable>
 
-        {/* FAQ 3 */}
-        <Pressable
-          style={styles.faqQuestionRow}
-          onPress={() =>
-            setOpenFAQ(openFAQ === 2 ? null : 2)
-          }
-        >
-          <Text style={styles.faqQuestion}>
-            ⏱️ When are results finalized?
-          </Text>
+{openFAQ === 2 && (
+  <View style={styles.faqAnswerBox}>
+    <Text style={styles.faqAnswer}>
+      Results are finalized after the tournament officially ends
+      and the leaderboard has been verified.
+    </Text>
+  </View>
+)}
 
-          <Ionicons
-            name={
-              openFAQ === 2
-                ? "chevron-up"
-                : "chevron-down"
-            }
-            size={18}
-            color="#94a3b8"
-          />
-        </Pressable>
+{/* FAQ 4 */}
+<Pressable
+  style={styles.faqQuestionRow}
+  onPress={() => setOpenFAQ(openFAQ === 3 ? null : 3)}
+>
+  <Text style={styles.faqQuestion}>
+    🏆 How is the winner determined?
+  </Text>
+  <Ionicons
+    name={openFAQ === 3 ? "chevron-up" : "chevron-down"}
+    size={18}
+    color="#94a3b8"
+  />
+</Pressable>
 
-        {openFAQ === 2 && (
-          <View style={styles.faqAnswerBox}>
-            <Text style={styles.faqAnswer}>
-              Results are finalized after the tournament
-              officially ends and the leaderboard is verified.
-            </Text>
-          </View>
-        )}
+{openFAQ === 3 && (
+  <View style={styles.faqAnswerBox}>
+    <Text style={styles.faqAnswer}>
+      Winners are ranked according to their final trading
+      performance and the tournament's ranking rules.
+    </Text>
+  </View>
+)}
 
-        {/* FAQ 4 */}
-        <Pressable
-          style={styles.faqQuestionRow}
-          onPress={() =>
-            setOpenFAQ(openFAQ === 3 ? null : 3)
-          }
-        >
-          <Text style={styles.faqQuestion}>
-            🏆 How is the winner determined?
-          </Text>
+{/* FAQ 5 */}
+<Pressable
+  style={styles.faqQuestionRow}
+  onPress={() => setOpenFAQ(openFAQ === 4 ? null : 4)}
+>
+  <Text style={styles.faqQuestion}>
+    📊 Can I see my position during the tournament?
+  </Text>
+  <Ionicons
+    name={openFAQ === 4 ? "chevron-up" : "chevron-down"}
+    size={18}
+    color="#94a3b8"
+  />
+</Pressable>
 
-          <Ionicons
-            name={
-              openFAQ === 3
-                ? "chevron-up"
-                : "chevron-down"
-            }
-            size={18}
-            color="#94a3b8"
-          />
-        </Pressable>
+{openFAQ === 4 && (
+  <View style={styles.faqAnswerBox}>
+    <Text style={styles.faqAnswer}>
+      Yes. Your current position and trading performance are
+      displayed on the live leaderboard.
+    </Text>
+  </View>
+)}
 
-        {openFAQ === 3 && (
-          <View style={styles.faqAnswerBox}>
-            <Text style={styles.faqAnswer}>
-              Winners are ranked according to their final
-              Trading Performance.
-            </Text>
-          </View>
-        )}
+{/* FAQ 6 */}
+<Pressable
+  style={styles.faqQuestionRow}
+  onPress={() => setOpenFAQ(openFAQ === 5 ? null : 5)}
+>
+  <Text style={styles.faqQuestion}>
+    ♻️ What is a Rebuy?
+  </Text>
+  <Ionicons
+    name={openFAQ === 5 ? "chevron-up" : "chevron-down"}
+    size={18}
+    color="#94a3b8"
+  />
+</Pressable>
 
-        {/* FAQ 5 */}
-        <Pressable
-          style={styles.faqQuestionRow}
-          onPress={() =>
-            setOpenFAQ(openFAQ === 4 ? null : 4)
-          }
-        >
-          <Text style={styles.faqQuestion}>
-            📊 Can I see my position during the tournament?
-          </Text>
+{openFAQ === 5 && (
+  <View style={styles.faqAnswerBox}>
+    <Text style={styles.faqAnswer}>
+      A rebuy allows you to continue trading when your tournament
+      balance falls below the permitted level. It deducts the
+      applicable virtual Coins fee from your wallet, subject to
+      the tournament's rules and available balance.
+    </Text>
+  </View>
+)}
 
-          <Ionicons
-            name={
-              openFAQ === 4
-                ? "chevron-up"
-                : "chevron-down"
-            }
-            size={18}
-            color="#94a3b8"
-          />
-        </Pressable>
+{/* FAQ 7 */}
+<Pressable
+  style={styles.faqQuestionRow}
+  onPress={() => setOpenFAQ(openFAQ === 6 ? null : 6)}
+>
+  <Text style={styles.faqQuestion}>
+    🎁 How do I receive my prize if I win?
+  </Text>
+  <Ionicons
+    name={openFAQ === 6 ? "chevron-up" : "chevron-down"}
+    size={18}
+    color="#94a3b8"
+  />
+</Pressable>
 
-        {openFAQ === 4 && (
-          <View style={styles.faqAnswerBox}>
-            <Text style={styles.faqAnswer}>
-              Yes. Your current position and performance are
-              displayed on the live leaderboard in the leaderboard tab section.
-            </Text>
-          </View>
-        )}
+{openFAQ === 6 && (
+  <View style={styles.faqAnswerBox}>
+    <Text style={styles.faqAnswer}>
+      Once the results are verified and your reward is approved,
+      the virtual Coins reward is credited to your FX ARENA wallet.
+      Coins have no cash withdrawal or redemption feature.
+    </Text>
+  </View>
+)}
 
-        {/* FAQ 6 */}
-        <Pressable
-          style={styles.faqQuestionRow}
-          onPress={() =>
-            setOpenFAQ(openFAQ === 5 ? null : 5)
-          }
-        >
-          <Text style={styles.faqQuestion}>
-            ♻️ What is a Rebuy?
-          </Text>
-
-          <Ionicons
-            name={
-              openFAQ === 5
-                ? "chevron-up"
-                : "chevron-down"
-            }
-            size={18}
-            color="#94a3b8"
-          />
-        </Pressable>
-
-        {openFAQ === 5 && (
-          <View style={styles.faqAnswerBox}>
-            <Text style={styles.faqAnswer}>
-              A Rebuy allows you to continue trading after your
-              tournament balance falls below the permitted level.
-              The rebuy follows the tournament's applicable
-              rebuy fee and rules.
-            </Text>
-          </View>
-        )}
 
       </ScrollView>
     </View>

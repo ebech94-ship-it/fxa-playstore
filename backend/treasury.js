@@ -38,9 +38,9 @@ const prizeModel = tournament.prizeModel || "sponsored";
     throw new Error("Tournament join in progress");
   }
 
-  if (entryFee > 0 && (user.accounts?.real?.balance || 0) < entryFee) {
-    throw new Error("Insufficient wallet balance");
-  }
+ if (entryFee > 0 && Number(user.coins ?? 0) < entryFee) {
+  throw new Error("Insufficient Coins balance");
+}
 
   // lock user
   t.update(userRef, {
@@ -50,7 +50,7 @@ const prizeModel = tournament.prizeModel || "sponsored";
   // wallet deduction + treasury
   if (entryFee > 0) {
     t.update(userRef, {
-      "accounts.real.balance": admin.firestore.FieldValue.increment(-entryFee),
+     coins: admin.firestore.FieldValue.increment(-entryFee),
     });
     
 
@@ -185,10 +185,12 @@ async processRebuy(t, userId, tournamentId) {
   const tournament = tournamentSnap.data();
   const participant = participantSnap.data();
 
-  const rebuyFee = Number(tournament.rebuyFee || 0);
-  const wallet = user.accounts?.real?.balance || 0;
+ const rebuyFee = Number(tournament.rebuyFee ?? 0);
 
-  if (rebuyFee < 0) throw new Error("Invalid rebuy fee");
+if (!Number.isFinite(rebuyFee) || rebuyFee < 0) {
+  throw new Error("Invalid rebuy fee");
+}
+  const wallet = Number(user.coins ?? 0);
 
   const currentBalance = Number(participant.balance || 0);
   const startingBalance = Number(participant.startingBalance || tournament.startingBalance || 0);
@@ -201,8 +203,7 @@ async processRebuy(t, userId, tournamentId) {
   if (now - lastRebuy < 3000) throw new Error("Too many requests");
 
   if (now > tournament.endTime) throw new Error("TOURNAMENT_ENDED");
-  if (wallet < rebuyFee) throw new Error("Insufficient balance");
-
+ if (wallet < rebuyFee) throw new Error("Insufficient Coins balance");
   const newBalance = currentBalance + startingBalance;
 
 const newRebuyCount = (participant.rebuyCount || 0) + 1;
@@ -223,8 +224,7 @@ const newRebuys = [
 if (rebuyFee > 0) {
 
   t.update(userRef, {
-    "accounts.real.balance":
-      admin.firestore.FieldValue.increment(-rebuyFee),
+   coins: admin.firestore.FieldValue.increment(-rebuyFee),
   });
 
   t.set(treasuryRef, {
@@ -290,8 +290,10 @@ async adminAdjustBalance(t, userId, amount, mode, reason = "", adminId = null) {
   const userSnap = await t.get(userRef);
   const user = userSnap.data();
   if (!userSnap.exists) throw new Error("User not found");
-
-  const userBalance = userSnap.data().accounts.real.balance || 0;
+if (!Number.isFinite(amount) || amount <= 0) {
+  throw new Error("Invalid amount");
+}
+  const userBalance = Number(user.coins ?? 0);
 
   if (mode === "subtract" && userBalance < amount) {
     throw new Error("Insufficient user balance");
@@ -301,7 +303,7 @@ async adminAdjustBalance(t, userId, amount, mode, reason = "", adminId = null) {
   const treasuryDelta = mode === "add" ? -amount : amount;
 
   t.update(userRef, {
-    "accounts.real.balance": admin.firestore.FieldValue.increment(userDelta),
+   coins: admin.firestore.FieldValue.increment(userDelta),
     lastBalanceUpdate: admin.firestore.FieldValue.serverTimestamp(),
   });
 
@@ -534,8 +536,7 @@ if (partSnap.data().paidOut) {
 }
 
         t.update(userRef, {
-          "accounts.real.balance":
-            admin.firestore.FieldValue.increment(w.amount),
+         coins: admin.firestore.FieldValue.increment(w.amount),
         });
 
         t.update(partRef, {
@@ -618,14 +619,7 @@ return {
 
   const tournament = tournamentSnap.data();
 
-  if (
-  tournament.paidOut &&
-  participantSnap.exists &&
-  participantSnap.data().paidOut
-) {
-  throw new Error("Participant already paid");
-}
-  
+   
   if (!Array.isArray(tournament.payoutStructure)) {
     throw new Error("Invalid payout structure");
   }
@@ -733,7 +727,7 @@ if ((treasurySnap.data().balance || 0) < amount) {
 
     // credit user wallet
     t.update(userRef, {
-      "accounts.real.balance": admin.firestore.FieldValue.increment(amount),
+     coins: admin.firestore.FieldValue.increment(amount),
     });
 
     // mark participant paid

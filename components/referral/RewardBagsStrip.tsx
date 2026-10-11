@@ -2,7 +2,7 @@ import { ScrollView, StyleSheet, Text, View } from "react-native";
 
 type RewardItem = {
   target: number;
-  points: number;
+ 
   title: string;
 };
 
@@ -13,22 +13,21 @@ type Props = {
 
 export default function RewardBagsStrip({ validReferrals }: Props) {
   const rewards: RewardItem[] = [
-  { target: 3, points: 100, title: "Starter Bag" },
-  { target: 5, points: 250, title: "Bonus Bag" },
-  { target: 10, points: 400, title: "Bronze Bag" },
-  { target: 15, points: 600, title: "Ticket Vault" },
-  { target: 20, points: 900, title: "Silver Vault" },
-  { target: 30, points: 1500, title: "Bonus Chest" },
-  { target: 50, points: 2000, title: "VIP Chest" },
-  { target: 75, points: 3500, title: "Premium Vault" },
-  { target: 100, points: 5000, title: "Diamond Vault" },
-  { target: 150, points: 10000, title: "Gold Vault" },
-  { target: 250, points: 15000, title: "Elite Vault" },
-  { target: 500, points: 50000, title: "GodSpeed Vault" },
-  { target: 750, points: 75000, title: "Leader Vault" },
-  { target: 1000, points: 100000, title: "Tech Partner Vault" },
+  { target: 3, title: "Starter Bag" },
+  { target: 5, title: "Bonus Bag" },
+  { target: 10, title: "Bronze Bag" },
+  { target: 15, title: "Ticket Vault" },
+  { target: 20, title: "Silver Vault" },
+  { target: 30, title: "Bonus Chest" },
+  { target: 50, title: "VIP Chest" },
+  { target: 75, title: "Premium Vault" },
+  { target: 100, title: "Diamond Vault" },
+  { target: 150, title: "Gold Vault" },
+  { target: 250, title: "Elite Vault" },
+  { target: 500, title: "GodSpeed Vault" },
+  { target: 750, title: "Leader Vault" },
+  { target: 1000, title: "Tech Partner Vault" },
 ];
-
   return (
     <View style={styles.wrapper}>
       <Text style={styles.header}>🔥 Reward Vault</Text>
@@ -73,8 +72,29 @@ const progress = Math.min(validReferrals / item.target, 1);
 
               <Text style={styles.meta}>{item.target} referrals</Text>
 
-              <Text style={styles.points}>+{item.points} pts</Text>
-
+             <Text style={styles.points}>
+  {item.target === 3
+    ? "1 Free Ticket"
+    : item.target === 5
+    ? "5 Virtual Coins"
+    : item.target === 10
+    ? "Bronze Badge"
+    : item.target === 15
+    ? "2 Free Tickets"
+    : item.target === 20
+    ? "Silver Badge"
+    : item.target === 30
+    ? "10 Virtual Coins"
+    : item.target === 50
+    ? "VIP Access"
+    : item.target === 75
+    ? "Profile Frame"
+    : item.target === 100
+    ? "Gold Badge"
+    : item.target === 150
+    ? "15 Virtual Coins"
+    : "Special Reward"}
+</Text>
               {/* progress bar */}
               <View style={styles.bar}>
                 <View

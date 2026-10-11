@@ -96,7 +96,7 @@ const updateAccountBalance = async (
     const userRef = doc(db, "users", userId);
 
    await updateDoc(userRef, {
-  "accounts.real.balance": increment(delta),
+ coins: increment(delta),
 });
   } catch (e) {
     console.error("❌ Failed to update account balance:", e);
@@ -867,7 +867,7 @@ const [tradeToast, setTradeToast] = useState<{
   // Menu
   const menuItems: { icon: string; label: string; color: string }[] = [
     { icon: "person-outline", label: "Profile", color: "#00FF00" },
-    { icon: "cash-outline", label: "DepositWithdraw", color: "green" },
+    { icon: "wallet-outline", label: "Coins Wallet", color: "#FACC15" },
     { icon: "trophy-outline", label: "Tournaments", color: "#FFD700" },
     { icon :"gift-outline", label: "Invite&Earn", color: "#00BFFF" },
     { icon: "notifications-outline", label: "Alerts", color: "#FF4500" },
@@ -893,9 +893,9 @@ const [tradeToast, setTradeToast] = useState<{
       case "Alerts":
         Component = AlertScreen;
         break;
-      case "DepositWithdraw":
-        Component = DepositWithdrawScreen;
-        break;
+      case "Coins Wallet":
+  Component = DepositWithdrawScreen;
+  break;
        case "About":
   Component = AboutScreen;
   break;
@@ -960,8 +960,7 @@ const [tradeToast, setTradeToast] = useState<{
       setActiveAccount(account);
       setTimeout(() => chartRef.current?.resize?.(), 50);
     }}
-    onDeposit={() => setActivePage("DepositWithdraw")}
-    onWithdraw={() => setActivePage("DepositWithdraw")}
+   
   />
 
   {/* ♻️ ATTACHED REBUY BUTTON */}
@@ -990,7 +989,7 @@ const [tradeToast, setTradeToast] = useState<{
 }}
     >
       <Text style={styles.attachedRebuyText}>
-        ♻️ REBUY • ${rebuyFee}
+          ♻️ REBUY • {rebuyFee.toLocaleString()} Coins
       </Text>
     </TouchableOpacity>
   )}
@@ -1119,7 +1118,8 @@ demoBalance={demoBalance}
   <View style={styles.payoutBox}>
     <Text style={styles.payoutLabel}>Payout</Text>
     <Text style={styles.payoutValue}>
-      ${livePayout.toFixed(2)}
+     {activeAccount.type === "tournament" ? "T" : "$"}
+  {livePayout.toFixed(2)}
     </Text>
   </View>
 </View>
@@ -1301,7 +1301,9 @@ demoBalance={demoBalance}
     <Text style={{ color: "#fff", fontWeight: "bold" }}>Trade Placed</Text>
     <Text style={{ color: "#fff" }}>{tradeToast.symbol}</Text>
     <Text style={{ color: "#fff" }}>
-      {tradeToast.type.toUpperCase()} ${tradeToast.amount}
+     {tradeToast.type.toUpperCase()}{" "}
+{activeAccount.type === "tournament" ? "T" : "$"}
+{tradeToast.amount}
     </Text>
     <Text style={{ color: "#fff" }}>{tradeToast.expiration}</Text>
   </Animated.View>
@@ -1421,7 +1423,7 @@ demoBalance={demoBalance}
           </Text>
 
           <Text style={styles.rebuyConfirmFee}>
-            Rebuy Fee: ${rebuyFee}
+           Rebuy Fee: {rebuyFee.toLocaleString()} Coins
           </Text>
 
           <Text style={styles.rebuyConfirmQuestion}>
