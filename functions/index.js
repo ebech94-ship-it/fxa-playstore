@@ -148,7 +148,11 @@ async function processReferralRewards(uid, db) {
   const validReferrals = user.validReferrals || 0;
  const claimed = [...(user.claimedRewards || [])];
 
-  const updates = {};
+ const updates = {
+  coinsBonus: 0,
+  pointsBonus: 0,
+  ticketsBonus: 0,
+};
 
   for (const item of REFERRAL_REWARDS) {
 
@@ -159,19 +163,17 @@ async function processReferralRewards(uid, db) {
 
       claimed.push(item.key);
 
-      if (item.reward.freeTournamentTickets) {
-        updates.freeTournamentTickets =
-          admin.firestore.FieldValue.increment(
-            item.reward.freeTournamentTickets
-          );
-      }
+   if (item.reward.freeTournamentTickets) {
+  updates.ticketsBonus += item.reward.freeTournamentTickets;
+}
 
-      if (item.reward.referralPoints) {
-        updates.referralPoints =
-          admin.firestore.FieldValue.increment(
-            item.reward.referralPoints
-          );
-      }
+if (item.reward.referralPoints) {
+  updates.pointsBonus += item.reward.referralPoints;
+}
+
+if (item.reward.walletBonus) {
+  updates.coinsBonus += item.reward.walletBonus;
+}
 
   
 
@@ -203,9 +205,28 @@ if (item.reward.partnerEligibility) {
 
   if (claimed.length !== (user.claimedRewards || []).length) {
 
-    updates.claimedRewards = claimed;
+  delete updates.coinsBonus;
+delete updates.pointsBonus;
+delete updates.ticketsBonus;
 
-    await userRef.update(updates);
+if (claimed.length !== (user.claimedRewards || []).length) {
+  const totalCoins = REFERRAL_REWARDS
+    .filter(item => claimed.includes(item.key))
+    .reduce((sum, item) => sum + (item.reward.walletBonus || 0), 0);
+
+  const previousCoins = REFERRAL_REWARDS
+    .filter(item => (user.claimedRewards || []).includes(item.key))
+    .reduce((sum, item) => sum + (item.reward.walletBonus || 0), 0);
+
+  updates.coins = admin.firestore.FieldValue.increment(
+    totalCoins - previousCoins
+  );
+
+  await userRef.update({
+    ...updates,
+    claimedRewards: claimed,
+  });
+}
   }
 }
 /* =========================================================
@@ -263,11 +284,11 @@ referralBadge: null,
 
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
 
-        accounts: {
-          demo: { balance: 1000, type: "practice" },
-          real: { balance: 0, type: "real" },
-          tournaments: {},
-        },
+      accounts: {
+  demo: { balance: 1000, type: "practice" },
+  real: { balance: 0, type: "coins" },
+  tournaments: {},
+},
       },
       { merge: true }
     );
@@ -473,6 +494,14 @@ const participantRef = db.doc(
     const trade = tradeSnap.data();
 
    const participantSnap = await tx.get(participantRef);
+
+if (!participantSnap.exists) {
+  throw new functions.https.HttpsError(
+    "failed-precondition",
+    "Tournament participant not found"
+  );
+}
+
 const participant = participantSnap.data();
 
 let balance = participant.balance || 0;

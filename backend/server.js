@@ -1,4 +1,4 @@
-
+﻿
 require("dotenv").config();
 
 const express = require("express");
@@ -416,7 +416,7 @@ async function getAdminLogs(res, mode) {
       return {
         id: doc.id,
         admin: data.adminId || "Unknown",
-        message: `${data.adminId || "Unknown"} → ${data.action || data.reason || "Performed action"}`,
+        message: `${data.adminId || "Unknown"} â†’ ${data.action || data.reason || "Performed action"}`,
         action: data.action || data.reason || "Performed action",
         createdAt: data.createdAt?.toDate?.().toISOString() || null,
       };
@@ -578,11 +578,15 @@ app.get("/api/currency", (req, res) => {
 // --------------------------------------------------
 // START
 // --------------------------------------------------
+app.use("/api/coin-functions", require("./coinFunctions"));
+app.use("/tournament", require("./tournamentFunctions"));
+
 app.use((err, req, res, next) => {
   console.error("Server error:", err);
   res.status(500).json({ error: "Internal server error" });
 });
-
 app.listen(PORT, "0.0.0.0", () => {
   console.log(`FX ARENA Coins backend running on port ${PORT}`);
 });
+
+

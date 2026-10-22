@@ -43,18 +43,52 @@ import { auth, db, } from "../firebaseConfig";
 
 import { makeRedirectUri } from "expo-auth-session";
 
-
-
-
 WebBrowser.maybeCompleteAuthSession();
-
-
 
 // ✅ Validate 5-digit numeric password
 // ✅ Firebase requires minimum 6 characters
 const isValidPassword = (pwd: string) => pwd.length >= 6;
 // ✅ Production flag
 const ENABLE_PHONE_FALLBACK = true;
+
+const COINS_API_URL = process.env.EXPO_PUBLIC_API_BASE_URL;
+
+async function callCoinsBackend(
+  endpoint: string,
+  payload: {
+    referredBy?: string | null;
+    displayName?: string;
+    phone?: string | null;
+  } = {}
+) {
+  const user = auth.currentUser;
+
+  if (!user) throw new Error("User is not signed in.");
+  if (!COINS_API_URL) throw new Error("Coins backend URL is missing.");
+
+  const token = await user.getIdToken(true);
+
+  const response = await fetch(
+    `${COINS_API_URL}/api/coin-functions/${endpoint}`,
+    {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(payload),
+    }
+  );
+
+  const result = await response.json();
+
+  if (!response.ok) {
+    throw new Error(result.error || `Backend error: ${response.status}`);
+  }
+
+  return result;
+}
+
 
 export default function Welcome() {
   const router = useRouter();
@@ -208,58 +242,51 @@ const loadUserProfile = useCallback(async () => {
 
 
 const sendOTP = async () => {
-
   if (!name.trim()) {
     alert("Please enter your full name");
     return;
   }
-  if (!phone.trim()) {
-  alert("Enter phone number");
-  return;
-}
-if (!isValidPassword(password)) {
-  alert("Password must be at least 6 characters");
-  return;
-}
 
-if (password !== confirmPassword) {
-  alert("Passwords do not match");
-  return;
-}
+  if (!phone.trim()) {
+    alert("Enter phone number");
+    return;
+  }
+
+  if (!isValidPassword(password)) {
+    alert("Password must be at least 6 characters");
+    return;
+  }
+
+  if (password !== confirmPassword) {
+    alert("Passwords do not match");
+    return;
+  }
 
   const cleanedPhone = phone.replace(/\s+/g, "");
 
   try {
     setOtpLoading(true);
 
-    // ✅ Only create Recaptcha for web
-   
-
-    // 🔑 signInWithPhoneNumber
-const result = await signInWithPhoneNumber(
-  auth,
-  `+${callingCode}${cleanedPhone}`,
-  undefined
-);
+    const result = await signInWithPhoneNumber(
+      auth,
+      `+${callingCode}${cleanedPhone}`,
+      undefined
+    );
 
     setConfirmationResult(result);
-  
-
+    setOtpFailed(false);
     alert("OTP sent to your phone");
-
   } catch (e) {
-  console.error(e);
+    console.error("OTP sending failed:", e);
 
-  setOtpFailed(true);
-  setConfirmationResult(null);
+    setOtpFailed(true);
+    setConfirmationResult(null);
 
-  // optional: don't block user
-  alert("OTP failed, you can continue without verification");
-} finally {
+    alert("OTP failed, you can continue without verification");
+  } finally {
     setOtpLoading(false);
   }
 };
-
 
 const verifyOTP = async () => {
   if (!confirmationResult || otp.length < 6) {
@@ -272,49 +299,31 @@ const verifyOTP = async () => {
 
     await confirmationResult.confirm(otp);
 
-    // OPTIONAL: save referral for phone users (IMPORTANT FIX)
     const user = auth.currentUser;
 
-if (user) {
-const normalizedPhone = user.phoneNumber || normalizePhone(phone);
+    if (!user) {
+      throw new Error("Phone verification succeeded, but no user is signed in.");
+    }
 
-  await setDoc(
-    doc(db, "users", user.uid),
-    {
-      phone: normalizedPhone,
-      displayName: name,
-      verified: true,
-      verifiedAt: serverTimestamp(),
-      createdAt: serverTimestamp(),
-    },
-    { merge: true }
-  );
+    await callCoinsBackend("onAuthUserCreate", {
+      displayName: name.trim(),
+      referredBy: inviteRef,
+      phone: user.phoneNumber || normalizePhone(phone),
+    });
 
-  // Save referral if exists
-  if (inviteRef) {
-    await setDoc(
-      doc(db, "users", user.uid),
-      {
-        referredBy: inviteRef,
-      },
-      { merge: true }
-    );
+    await loadUserProfile();
+
+    await AsyncStorage.setItem("isLoggedIn", "true");
+    router.replace("/tradinglayout");
+  } catch (e: any) {
+    console.log("OTP ERROR:", e.code);
+    console.log("MESSAGE:", e.message);
+    alert(`${e.code || "Error"}\n\n${e.message}`);
+  } finally {
+    setVerifyLoading(false);
   }
-}
-
-await AsyncStorage.setItem("isLoggedIn", "true");
-
-router.replace("/tradinglayout");
-
-  } catch (e:any) {
-  console.log("OTP ERROR:", e.code);
-  console.log("MESSAGE:", e.message);
-
-  alert(
-    `${e.code}\n\n${e.message}`
-  );
-}
 };
+
 
 useEffect(() => {
   if (inviteRef) {
@@ -471,48 +480,43 @@ const ref = inviteRef;// ✅ FIX HERE
   };
 
 // 📧 Email Signup
+
 const handleSignupEmail = async () => {
   if (!name.trim()) return alert("Enter your full name");
-  if (!isValidPassword(password)) return alert("Password must be at least 6 characters");
-  if (password !== confirmPassword) return alert("Passwords do not match");
+  if (!email.trim()) return alert("Enter your email");
+  if (!isValidPassword(password)) {
+    return alert("Password must be at least 6 characters");
+  }
+  if (password !== confirmPassword) {
+    return alert("Passwords do not match");
+  }
 
   setLoading(true);
 
   try {
+    await createUserWithEmailAndPassword(
+      auth,
+      email.trim().toLowerCase(),
+      password
+    );
 
-await createUserWithEmailAndPassword(
-  auth,
-  email.trim().toLowerCase(),
-  password
-);
-
-const user = auth.currentUser;
-const uid = user?.uid;
-
-if (uid && inviteRef) {
-  await setDoc(
-    doc(db, "users", uid),
-    {
+    await callCoinsBackend("onAuthUserCreate", {
+      displayName: name.trim(),
       referredBy: inviteRef,
-    },
-    { merge: true }
-  );
-}
-await auth.currentUser?.getIdToken(true);
+    });
 
-await AsyncStorage.setItem("isLoggedIn", "true");
+    await loadUserProfile();
 
-router.replace("/tradinglayout");
-
+    await AsyncStorage.setItem("isLoggedIn", "true");
+    router.replace("/tradinglayout");
   } catch (e) {
-    console.error(e);
+    console.error("Email signup failed:", e);
     alert((e as Error).message);
   } finally {
     setLoading(false);
   }
 };
 
-  // 🔑 Email Login
   // 🔑 Email Login (RETURNING USERS ONLY)
 const handleLogin = async () => {
 
@@ -1087,20 +1091,15 @@ onPress={async () => {
       user = result.user;
     }
 
-   const fakeEmail = `${callingCode}${phone}@fxarena.phone`;
+   
+await callCoinsBackend("onAuthUserCreate", {
+  displayName: name.trim(),
+  referredBy: inviteRef,
+  phone: normalizePhone(phone),
+});
 
-await setDoc(
- doc(db, "users", user.uid),
- {
-   phone: normalizePhone(phone),
-   email: fakeEmail,
-   displayName: name,
-   verified:false,
-    referredBy: inviteRef || null,
-   createdAt: serverTimestamp(),
- },
- {merge:true}
-);
+await loadUserProfile();
+
 // Reset OTP UI
 setOtpFailed(false);
 setConfirmationResult(null);

@@ -221,13 +221,61 @@ const panResponder = useRef(
   })
 ).current;
 
-const functions = getFunctions();
-const placeTournamentTrade = httpsCallable(
-functions,
- "placeTournamentTrade");
- const settleTournamentTrade =
-httpsCallable(functions, "settleTournamentTrade");
+const tournamentRequest = async (
+  endpoint: string,
+  payload: Record<string, any>
+) => {
+  const user = auth.currentUser;
 
+  if (!user) {
+    throw new Error("You must be logged in.");
+  }
+
+  const token = await user.getIdToken(true);
+
+  const response = await fetch(
+    `https://fxa-playstore-backend.onrender.com/tournament/${endpoint}`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify(payload),
+    }
+  );
+
+  const text = await response.text();
+  let result: any = {};
+
+  try {
+    result = JSON.parse(text);
+  } catch {}
+
+  if (!response.ok) {
+    throw new Error(result.error || `${endpoint} failed`);
+  }
+
+  return result;
+};
+
+const placeTournamentTrade = (payload: {
+  tournamentId: string;
+  tradeId: string;
+  amount: number;
+  entryPrice: number;
+  direction: "buy" | "sell";
+}) =>
+  tournamentRequest("placeTournamentTrade", {
+    ...payload,
+    direction: payload.direction.toUpperCase(),
+  });
+
+const settleTournamentTrade = (payload: {
+  tournamentId: string;
+  tradeId: string;
+  result: "GAIN" | "LOSS";
+}) => tournamentRequest("settleTournamentTrade", payload);
 
 useEffect(() => {
   chartRef.current?.setWickCompression(compressWicks ? 0.3 : 1);

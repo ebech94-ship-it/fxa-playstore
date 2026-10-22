@@ -1071,17 +1071,24 @@ useEffect(() => {
     const acc: Accounts = data.accounts ?? {};
     setAccounts(acc);
 
+         // -------------------------
+    // Admin: Firebase custom claim + Firestore
     // -------------------------
-    // Admin
-    // -------------------------
 
-    setIsAdmin(
-      data.roles?.admin === true ||
-      data.isAdmin === true
-    );
+    try {
+      const tokenResult = await authUser.getIdTokenResult(true);
 
-    setAdminLoaded(true);
-
+      setIsAdmin(
+        tokenResult.claims["admin"] === true ||
+        data.roles?.admin === true ||
+        data.isAdmin === true
+      );
+    } catch (error) {
+      console.error("Admin verification failed:", error);
+      setIsAdmin(false);
+    } finally {
+      setAdminLoaded(true);
+    }
     // -------------------------
     // Demo balance
     // -------------------------
