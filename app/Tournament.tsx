@@ -299,7 +299,7 @@ const handleRegister = async (tournamentId: string) => {
     const token = await user.getIdToken();
 
     const response = await fetch(
-      "https://forexapp2-backend.onrender.com/tournament/register",
+      "https://fxa-playstore-backend.onrender.com/tournament/register",
       {
         method: "POST",
         headers: {
@@ -383,7 +383,7 @@ if (tour.endTime == null) {
     const token = await user.getIdToken(true);
 
     const response = await fetch(
-      "https://forexapp2-backend.onrender.com/tournament/rebuy",
+      "https://fxa-playstore-backend.onrender.com/tournament/rebuy",
       {
         method: "POST",
         headers: {

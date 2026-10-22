@@ -509,7 +509,7 @@ const handleDeleteAccount = async () => {
 
            const token = await user.getIdToken();
 
-await fetch("https://forexapp2-backend.onrender.com/user/delete-account", {
+await fetch("https://fxa-playstore-backend.onrender.com/user/delete-account", {
   method: "POST",
   headers: {
     Authorization: `Bearer ${token}`,
@@ -718,7 +718,7 @@ const handleSupportSend = async () => {
 } as any;
 
     const res = await fetch(
-      "https://forexapp2-backend.onrender.com/support/send",
+      "https://fxa-playstore-backend.onrender.com/support/send",
       {
         method: "POST",
         headers: {
