@@ -294,7 +294,7 @@ const InfoButton = ({
     </Text>
 
     <Text style={{ color: "#94a3b8", fontSize: 10, marginTop: 3 }}>
-      Virtual tournament entry and rewards
+      Virtual coins for in-app gameplay and rewards
     </Text>
   </TouchableOpacity>
 
@@ -524,8 +524,9 @@ const InfoButton = ({
             card section and pressing the Rebuy button to process.
           </Text>
           <Text style={styles.infoItem}>
-            • Your final ranking determines your eligibility for prizes.
-          </Text>
+  • Your final ranking determines your position on the leaderboard.
+    Rewards, if available, are virtual coins only and have no cash value.
+</Text>
         </View>
       )}
 

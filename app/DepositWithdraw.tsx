@@ -99,9 +99,9 @@ export default function DepositWithdraw() {
           <View style={{ flex: 1 }}>
             <Text style={styles.noticeTitle}>Earn coins, don't buy them</Text>
             <Text style={styles.noticeText}>
-              Your wallet starts at 0 Coins. Earn coins through
-              eligible referrals and approved tournament rewards.
-              Coin rewards appear when credited to your account.
+             Your wallet starts at 0 Coins. Earn virtual coins through
+eligible referrals and tournament participation.
+Coins appear when credited to your account.
             </Text>
           </View>
         </View>

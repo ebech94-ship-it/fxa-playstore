@@ -10,9 +10,7 @@ import { useRouter } from "expo-router";
 import { getAuth } from "firebase/auth";
 import {
   collection,
-  collectionGroup,
-
-  doc,
+  collectionGroup,  doc,
   getDocs,
   onSnapshot,
   orderBy,
@@ -101,9 +99,6 @@ const [userThread, setUserThread] = useState<any | null>(null);
 const [messages, setMessages] = useState<any[]>([]);
 
 
-const [deposits, setDeposits] = useState<any[]>([]);
-const [withdrawals, setWithdrawals] = useState<any[]>([]);
-
 const [profileLocked, setProfileLocked] = useState(false);
 
 
@@ -128,7 +123,14 @@ const [updateProgress, setUpdateProgress] = useState(0);
 
 const formHydratedRef = useRef(false);
 
-const { profile: appProfile,  setProfile,  setProfileSubmitted, profile, profileLoaded, balances } = useApp();
+const {
+  profile: appProfile,
+  setProfile,
+  setProfileSubmitted,
+  profile,
+  profileLoaded,
+  referrals,
+} = useApp();
 
 const safeProfile = useMemo(() => ({
   publicId: appProfile?.publicId ?? "Not assigned",
@@ -167,45 +169,7 @@ useEffect(() => {
   formHydratedRef.current = true;
 }, [user, useHeikinAshi, compressWicks, safeProfile]);
 
-useEffect(() => {
-  if (!user) return;
 
-  const q = query(
-    collection(db, "transactions"),
-    where("uid", "==", user.uid),
-    orderBy("createdAt", "desc")
-  );
-
-  const unsub = onSnapshot(q, (snap) => {
-    const depositsList: any[] = [];
-    const withdrawalsList: any[] = [];
-
-    snap.forEach((d) => {
-      const data = {
-  id: d.id,
-  ...(d.data() as any),
-};
-
-      // Adjust these values if your database uses different names
-      if (
-        data.type === "deposit" ||
-        data.transactionType === "deposit"
-      ) {
-        depositsList.push(data);
-      } else if (
-        data.type === "withdrawal" ||
-        data.transactionType === "withdrawal"
-      ) {
-        withdrawalsList.push(data);
-      }
-    });
-
-    setDeposits(depositsList);
-    setWithdrawals(withdrawalsList);
-  });
-
-  return () => unsub();
-}, [user]);
 
 useEffect(() => {
   if (!user) return;
@@ -1078,120 +1042,58 @@ if (!profileLoaded) {
           </ScrollView>
         )}
 
-        {/* Balance Section */}
-        {activeSection === "balance" && (
+       {/* Coins Wallet */}
+{activeSection === "balance" && (
   <ScrollView style={styles.section}>
- <View
-  style={{
-    marginTop: 10,
-    backgroundColor: "#151515",
-    borderRadius: 24,
-    padding: 20,
-    borderWidth: 1.5,
-    borderColor: "rgba(255,193,7,0.25)",
-    flexDirection: "row",
-    alignItems: "center",
-    shadowColor: "#FFC107",
-    shadowOpacity: 0.15,
-    shadowRadius: 15,
-    elevation: 8,
-  }}
->
-  {/* Wallet Icon */}
-  <View
-    style={{
-      width: 60,
-      height: 60,
-      borderRadius: 18,
-      backgroundColor: "rgba(255,193,7,0.15)",
-      justifyContent: "center",
-      alignItems: "center",
-      marginRight: 16,
-    }}
-  >
-    <Ionicons
-      name="wallet"
-      size={50}
-      color="#FFC107"
-    />
-  </View>
+    <Text style={styles.sectionTitle}>Coins Wallet</Text>
 
-  {/* Balance Info */}
-  <View style={{ flex: 1, minWidth: 0 }}>
-   <Text
-  numberOfLines={1}
-  adjustsFontSizeToFit
-  style={{
-    color: "#FFC107",
-    fontSize: 22,
-    fontWeight: "900",
-    letterSpacing: 0.8,
-    marginBottom: 4,
-  }}
->
-      ACCOUNT BALANCE
-    </Text>
+    <View
+      style={{
+        marginTop: 10,
+        backgroundColor: "#0f3460",
+        borderRadius: 20,
+        padding: 24,
+        alignItems: "center",
+        borderWidth: 1,
+        borderColor: "rgba(33,230,193,0.4)",
+      }}
+    >
+      <Ionicons name="trophy" size={46} color="#21e6c1" />
 
-    <Text
-  numberOfLines={1}
-  adjustsFontSizeToFit
-  style={{
-    color: "#9fec03ff",
-    fontSize: 28,
-    fontWeight: "900",
-    flexShrink: 1,
-  }}
->
       <Text
         style={{
-          color: "#530c94ff",
-          fontSize: 18,
-          fontWeight: "700",
+          color: "#aaa",
+          fontSize: 14,
+          marginTop: 14,
+          letterSpacing: 2,
         }}
       >
-        USD{" "}
+        YOUR COINS
       </Text>
 
-      {(balances?.real ?? 0).toLocaleString()}
-    </Text>
-  </View>
-  </View>
-    {/* -------- DEPOSITS -------- */}
-    <Text style={styles.subTitle}>Deposit History</Text>
+      <Text
+        style={{
+          color: "#21e6c1",
+          fontSize: 36,
+          fontWeight: "900",
+          marginTop: 8,
+        }}
+      >
+        {referrals.coins.toLocaleString()} COINS
+      </Text>
 
-    {deposits.length === 0 && (
-      <Text style={styles.muted}>No deposits yet</Text>
-    )}
-
-    {deposits.map((d) => (
-      <View key={d.id} style={styles.historyRow}>
-        <Text style={styles.historyText}>
-          +${d.amount} • {d.method}
-        </Text>
-       <Text style={getStatusStyle(d.status)}>
-
-          {d.status}
-        </Text>
-      </View>
-    ))}
-
-    {/* -------- WITHDRAWALS -------- */}
-    <Text style={styles.subTitle}>Withdrawal History</Text>
-
-    {withdrawals.length === 0 && (
-      <Text style={styles.muted}>No withdrawals yet</Text>
-    )}
-
-    {withdrawals.map((w) => (
-      <View key={w.id} style={styles.historyRow}>
-        <Text style={styles.historyText}>
-          -${w.amount} • {w.method}
-        </Text>
-        <Text style={getStatusStyle(w.status)}>
-          {w.status}
-        </Text>
-      </View>
-    ))}
+      <Text
+        style={{
+          color: "#aaa",
+          fontSize: 12,
+          textAlign: "center",
+          marginTop: 12,
+        }}
+      >
+        Use your coins to participate in tournaments
+        and receive virtual rewards.
+      </Text>
+    </View>
 
     <TouchableOpacity
       style={styles.backButton}
