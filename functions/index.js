@@ -173,12 +173,7 @@ async function processReferralRewards(uid, db) {
           );
       }
 
-    if (item.reward.walletBonus) {
-  updates.coins =
-    admin.firestore.FieldValue.increment(
-      item.reward.walletBonus
-    );
-}
+  
 
       if (item.reward.badge) {
         updates.referralBadge = item.reward.badge;

@@ -1,3 +1,4 @@
+
 {
   "cli": {
     "version": ">=16.26.0",
@@ -16,13 +17,13 @@
         "buildType": "apk"
       }
     },
-   "production": {
-  "autoIncrement": true,
-  "channel": "production",
-  "android": {
-    "buildType": "app-bundle"
-  }
-}
+    "production": {
+      "autoIncrement": true,
+      "channel": "production",
+      "android": {
+        "buildType": "app-bundle"
+      }
+    }
   },
   "submit": {
     "production": {}
