@@ -1,7 +1,7 @@
+
 require("dotenv").config();
 const admin = require("firebase-admin");
 
-// Rebuild Firebase credentials from environment variables
 const firebaseConfig = {
   type: process.env.FB_TYPE,
   project_id: process.env.FB_PROJECT_ID,
@@ -13,13 +13,18 @@ const firebaseConfig = {
   token_uri: process.env.FB_TOKEN_URI,
   auth_provider_x509_cert_url: process.env.FB_AUTH_PROVIDER_CERT_URL,
   client_x509_cert_url: process.env.FB_CLIENT_CERT_URL,
-  universe_domain: process.env.FB_UNIVERSE_DOMAIN
+  universe_domain: process.env.FB_UNIVERSE_DOMAIN,
 };
 
-// Initialize Firebase Admin
-admin.initializeApp({
-  credential: admin.credential.cert(firebaseConfig)
-});
+if (firebaseConfig.project_id !== "fxa-playstore") {
+  throw new Error("Firebase project must be fxa-playstore");
+}
+
+if (!admin.apps.length) {
+  admin.initializeApp({
+    credential: admin.credential.cert(firebaseConfig),
+  });
+}
 
 const db = admin.firestore();
 const FieldValue = admin.firestore.FieldValue;

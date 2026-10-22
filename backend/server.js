@@ -1,611 +1,349 @@
-console.log("🔥🔥🔥 ACTIVE SERVER.JS LOADED 🔥🔥🔥");
 
 require("dotenv").config();
 
-
-// 🔒 CHECK WEBHOOK SECRET
-if (!process.env.SWYCHR_WEBHOOK_SECRET) {
-  console.warn("⚠️ SWYCHR_WEBHOOK_SECRET is NOT set");
-} else {
-  console.log(
-    "SWYCHR_WEBHOOK_SECRET loaded:",
-    !!process.env.SWYCHR_WEBHOOK_SECRET
-  );
-}
-console.log("🔥 ACTIVE SERVER.JS LOADED 🔥");
-
 const express = require("express");
 const cors = require("cors");
-// ---------------------------------------------------------------------
- // FIREBASE + TREASURY
-// ---------------------------------------------------------------------
-const { db } = require("./firebaseAdmin");
+const { admin, db } = require("./firebaseAdmin");
 const treasury = require("./treasury");
 
-const admin = require("firebase-admin");
-
-
-// If your Node version < 18, uncomment next two lines
- const fetch = require("node-fetch");
- global.fetch = fetch;
-
-// routes
-const {
-  router: payinRoutes,
-  payinWebhookHandler,
-} = require("./routes/payin");
-const settingsRoutes = require("./routes/settings");
-const {
-  router: payoutRoutes,
-  payoutWebhookHandler,
-} = require("./routes/payout");
-
+if (process.env.FB_PROJECT_ID !== "fxa-playstore") {
+  throw new Error("Refusing to start: Firebase must be fxa-playstore");
+}
 
 const app = express();
+const PORT = process.env.PORT || 4000;
+
+app.use(cors({ origin: true, credentials: true }));
+app.use(express.json());
 
 app.use((req, res, next) => {
   if (process.env.NODE_ENV !== "production") {
-    console.log("📩", req.method, req.url);
+    console.log(req.method, req.url);
   }
   next();
 });
 
-// ---------------------------------------------------------------------
-// CORS + JSON
-// ---------------------------------------------------------------------
-app.use(cors({
-  origin: true,
-  credentials: true
-}));
+// --------------------------------------------------
+// AUTHENTICATION
+// --------------------------------------------------
+async function authenticate(req, res, next) {
+  const header = req.headers.authorization;
 
-app.use(express.json({
-  verify: (req, res, buf) => {
-    req.rawBody = buf.toString();
-  }
-}));
-app.use("/api/settings", settingsRoutes);
-
-// Middleware to verify Firebase ID token
-const authenticate = async (req, res, next) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+  if (!header?.startsWith("Bearer ")) {
     return res.status(401).json({ error: "No Firebase token provided" });
   }
 
-  const idToken = authHeader.split(" ")[1];
-
   try {
-    const decodedToken = await admin.auth().verifyIdToken(idToken);
-    req.user = decodedToken; // attach decoded user info to request
+    const decoded = await admin.auth().verifyIdToken(header.split(" ")[1]);
+    const userSnap = await db.collection("users").doc(decoded.uid).get();
 
-    // 🔒 FREEZE CHECK (ADD HERE)
-   const userSnap = await db.collection("users").doc(decodedToken.uid).get();
-   
-// ----------------------
-// CORE MIDDLEWARE
-// ----------------------
-
-
-if (!userSnap.exists) {
-  return res.status(403).json({ error: "User record not found" });
-}
-
-if (userSnap.data()?.frozen) {
-  return res.status(403).json({ error: "Account frozen" });
-}
-
-if (userSnap.data()?.deleted) {
-  return res.status(403).json({ error: "Account deleted" });
-}
-req.userDoc = userSnap.data();
-    next(); // 👈 must be LAST
-  } catch (err) {
-    console.error("Firebase auth error:", err.message);
-    return res.status(401).json({ error: "Invalid Firebase token" });
-  }
-};
-const requireAdmin = (req, res, next) => {
-console.log("USER CLAIMS:", req.user);
-  try {
-
-    // ✅ Check custom claim from Firebase token
-    if (!req.user.admin) {
-      return res.status(403).json({ error: "Admin access denied" });
+    if (!userSnap.exists) {
+      return res.status(403).json({ error: "User record not found" });
     }
 
-    next();
-  } catch  {
-    return res.status(500).json({ error: "Admin verification failed" });
-  }
-};
+    const user = userSnap.data();
 
-
-// ---------------------------------------------------------------------
-// HEALTH CHECK ROUTE (backend reachability depends on server being up)
-// ---------------------------------------------------------------------
-// ----------------------
-// HEALTH CHECK
-// ----------------------
-app.get("/health", (req, res) => {
-  res.send("Backend running");
-});
-
-
-// ---------------------------------------------------------------------
-// INVITE ROUTE
-// ---------------------------------------------------------------------
-app.get("/invite", (req, res) => {
-  const ref = req.query.ref;
-
-  if (!ref) {
-    return res.status(400).send("Missing referral code");
-  }
-
-  // Deep link (opens the app if installed)
-  const deepLink = `forextournamentsarena://welcome?ref=${ref}`;
-
-  // Fallback URL (Vercel download page)
- const fallbackUrl = `https://www.republic.beauty/download?ref=${ref}`;
-  // Serve a simple HTML page that tries deep link first
-  res.send(`
-    <html>
-    <head>
-    <meta http-equiv="refresh" content="2;url=${fallbackUrl}" />
-  </head>
-      <body>
-        <script>
-          // Try opening the app
-          window.location = "${deepLink}";
-
-          // If the app is not installed, redirect to Vercel after 1.5 seconds
-          setTimeout(() => {
-            window.location = "${fallbackUrl}";
-          }, 2000);
-        </script>
-        <p>If you are not redirected, <a href="${fallbackUrl}">click here to download the app</a></p>
-      </body>
-    </html>
-  `);
-});
-
-
-
-// ---------------------------------------------------------------------
-// TREASURY TEST ROUTE
-// ---------------------------------------------------------------------
-app.get("/api/treasury/balances", authenticate, requireAdmin, async (req, res) => {
-
-  try {
-    const doc = await db.collection("treasury").doc("main").get();
-
-    const data = doc.data();
-
-res.json({
-  success: true,
-  balance: data?.balance || 0,
-  lastUpdated: data?.lastUpdated
-    ? data.lastUpdated.toDate().toISOString()
-    : null,
-});
-  } catch (err) {
-    console.error("Treasury check error:", err.message);
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-/* ---------------------------------------------------
-   🎟 TOURNAMENT REGISTER ROUTE
---------------------------------------------------- */
-app.post("/tournament/register", authenticate, async (req, res) => {
-  try {
-    const userId = req.user.uid;
-    const { tournamentId } = req.body;
-
-    if (!tournamentId) {
-      return res.status(400).json({ error: "Missing tournamentId" });
-    }
-
-    await db.runTransaction(async (t) => {
-      const tourRef = db.collection("tournaments").doc(tournamentId);
-      const tourSnap = await t.get(tourRef);
-
-      if (!tourSnap.exists) {
-        throw new Error("TOURNAMENT_NOT_FOUND");
-      }
-
-      await treasury.registerTournament(t, userId, tournamentId);
-    });
-
-    return res.json({
-      success: true,
-      message: "Tournament registered successfully",
-    });
-
-  } catch (err) {
-    console.error("Tournament register error:", err.message);
-
-    return res.status(400).json({
-      success: false,
-      error: err.message,
-    });
-  }
-});
-
-
-/* ---------------------------------------------------
-   🔄 TOURNAMENT REBUY ROUTE
---------------------------------------------------- */
-app.post("/tournament/rebuy", authenticate, async (req, res) => {
-  try {
-    const userId = req.user.uid;
-    const { tournamentId } = req.body;
-
-    if (!tournamentId) {
-      return res.status(400).json({ error: "Missing tournamentId" });
-    }
-
-    await db.runTransaction(async (t) => {
-      const tourRef = db.collection("tournaments").doc(tournamentId);
-      const tourSnap = await t.get(tourRef);
-
-      if (!tourSnap.exists) {
-        throw new Error("TOURNAMENT_NOT_FOUND");
-      }
-
-      await treasury.processRebuy(t, userId, tournamentId);
-    });
-
-    return res.json({
-      success: true,
-      message: "Rebuy successful",
-    });
-
-  } catch (err) {
-    console.error("Rebuy error:", err.message);
-
-    return res.status(400).json({
-      success: false,
-      error: err.message,
-    });
-  }
-});
-
-/* ---------------------------------------------------
-    TOURNAMENT PAYOUT (RACE-CONDITION SAFE)
---------------------------------------------------- */
-app.post("/admin/process-tournament-payout", authenticate, requireAdmin, async (req, res) => {
-  try {
-    const { tournamentId } = req.body;
-
-    if (!tournamentId) {
-      return res.status(400).json({ error: "Missing tournamentId" });
-    }
-
-    await treasury.processTournamentPayout(tournamentId);
-
-    res.json({
-      success: true,
-      message: "Tournament payout completed successfully",
-    });
-
-  } catch (err) {
-    console.error("Payout error:", err.message);
-    res.status(400).json({
-      success: false,
-      error: err.message,
-    });
-  }
-});
-app.post("/admin/pay-participant", authenticate, requireAdmin, async (req, res) => {
-  try {
-    const { tournamentId, participantId } = req.body;
-
-    if (!tournamentId || !participantId) {
-      return res.status(400).json({
-        error: "Missing tournamentId or participantId",
+    if (user.frozen || user.deleted) {
+      return res.status(403).json({
+        error: user.frozen ? "Account frozen" : "Account deleted",
       });
     }
 
-    await treasury.payParticipant(tournamentId, participantId);
+    req.user = decoded;
+    req.userDoc = user;
+    next();
+  } catch (err) {
+    console.error("Authentication error:", err.message);
+    return res.status(401).json({ error: "Invalid Firebase token" });
+  }
+}
+
+function requireAdmin(req, res, next) {
+  if (req.user?.admin !== true) {
+    return res.status(403).json({ error: "Admin access denied" });
+  }
+  next();
+}
+
+// --------------------------------------------------
+// HEALTH
+// --------------------------------------------------
+app.get("/health", (req, res) => {
+  res.json({ success: true, service: "FX ARENA Coins", project: "fxa-playstore" });
+});
+
+// --------------------------------------------------
+// INVITE
+// Uses the Coins app deep link. Configure scheme in app.config.ts.
+// --------------------------------------------------
+app.get("/invite", (req, res) => {
+  const ref = String(req.query.ref || "").trim();
+
+  if (!ref || !/^[a-zA-Z0-9_-]{1,128}$/.test(ref)) {
+    return res.status(400).send("Invalid referral code");
+  }
+
+  const deepLink = `fxarenacoins://welcome?ref=${encodeURIComponent(ref)}`;
+
+  res.send(`<!doctype html>
+<html><head><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body>
+<p>Opening FX ARENA Coins...</p>
+<p><a href="${deepLink}">Open FX ARENA Coins</a></p>
+<script>window.location.href = ${JSON.stringify(deepLink)};</script>
+</body></html>`);
+});
+
+// --------------------------------------------------
+// VIRTUAL COINS TREASURY
+// --------------------------------------------------
+app.get("/api/treasury/balances", authenticate, requireAdmin, async (req, res) => {
+  try {
+    const snap = await db.collection("treasury").doc("main").get();
+    const data = snap.exists ? snap.data() : {};
 
     res.json({
       success: true,
-      message: "Participant paid successfully",
+      balance: data.balance || 0,
+      lastUpdated: data.lastUpdated?.toDate?.().toISOString() || null,
     });
-
   } catch (err) {
-    console.error("Participant payout error:", err);
-
-    res.status(400).json({
-      success: false,
-      error: err.message,
-    });
+    console.error("Treasury error:", err.message);
+    res.status(500).json({ error: "Failed to fetch Coins treasury" });
   }
 });
 
-// ----------------------
-// ADMIN — ALL TOURNAMENT COFFERS (TABLE VIEW)
-// ----------------------
+// --------------------------------------------------
+// TOURNAMENT REGISTRATION AND REBUYS
+// --------------------------------------------------
+app.post("/tournament/register", authenticate, async (req, res) => {
+  try {
+    const { tournamentId } = req.body;
+    if (!tournamentId) {
+      return res.status(400).json({ error: "Missing tournamentId" });
+    }
+
+    await db.runTransaction(async (t) => {
+      await treasury.registerTournament(t, req.user.uid, tournamentId);
+    });
+
+    res.json({ success: true, message: "Tournament registered" });
+  } catch (err) {
+    console.error("Registration error:", err.message);
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+app.post("/tournament/rebuy", authenticate, async (req, res) => {
+  try {
+    const { tournamentId } = req.body;
+    if (!tournamentId) {
+      return res.status(400).json({ error: "Missing tournamentId" });
+    }
+
+    await db.runTransaction(async (t) => {
+      await treasury.processRebuy(t, req.user.uid, tournamentId);
+    });
+
+    res.json({ success: true, message: "Coins rebuy successful" });
+  } catch (err) {
+    console.error("Rebuy error:", err.message);
+    res.status(400).json({ success: false, error: err.message });
+  }
+});
+
+// These award virtual Coins only; no external money transfers.
+app.post("/admin/process-tournament-payout", authenticate, requireAdmin, async (req, res) => {
+  try {
+    if (!req.body.tournamentId) {
+      return res.status(400).json({ error: "Missing tournamentId" });
+    }
+
+    const result = await treasury.processTournamentPayout(req.body.tournamentId);
+    res.json(result);
+  } catch (err) {
+    console.error("Tournament reward error:", err.message);
+    res.status(400).json({ error: err.message });
+  }
+});
+
+app.post("/admin/pay-participant", authenticate, requireAdmin, async (req, res) => {
+  try {
+    const { tournamentId, participantId } = req.body;
+    if (!tournamentId || !participantId) {
+      return res.status(400).json({ error: "Missing tournamentId or participantId" });
+    }
+
+    await treasury.payParticipant(tournamentId, participantId);
+    res.json({ success: true, message: "Virtual Coins reward credited" });
+  } catch (err) {
+    console.error("Participant reward error:", err.message);
+    res.status(400).json({ error: err.message });
+  }
+});
+
+// --------------------------------------------------
+// ADMIN TOURNAMENT COFFERS
+// --------------------------------------------------
 app.get("/admin/tournament/coffers", authenticate, requireAdmin, async (req, res) => {
   try {
     const tournamentsSnap = await db.collection("tournaments").get();
-
     const results = [];
 
     for (const doc of tournamentsSnap.docs) {
       const tournament = doc.data();
-      const tournamentId = doc.id;
-
-      const cofferSnap = await db
-        .collection("tournamentCoffers")
-        .doc(tournamentId)
-        .get();
-
+      const cofferSnap = await db.collection("tournamentCoffers").doc(doc.id).get();
       const coffer = cofferSnap.exists ? cofferSnap.data() : {};
 
       const regCount = coffer.registration?.count || 0;
       const regTotal = coffer.registration?.totalAmount || 0;
-
       const rebuyCount = coffer.rebuys?.count || 0;
       const rebuyTotal = coffer.rebuys?.totalAmount || 0;
 
       results.push({
-        id: tournamentId,
+        id: doc.id,
         name: tournament.name || "Unnamed",
         entryFee: tournament.entryFee || 0,
         rebuyFee: tournament.rebuyFee || 0,
-
         registrationCount: regCount,
         registrationTotal: regTotal,
-
-        rebuyCount: rebuyCount,
-        rebuyTotal: rebuyTotal,
-
+        rebuyCount,
+        rebuyTotal,
         totalGenerated: regTotal + rebuyTotal,
       });
     }
 
-    res.json({
-      success: true,
-      tournaments: results,
-    });
-
+    res.json({ success: true, tournaments: results });
   } catch (err) {
-    console.error("COFFERS TABLE ERROR:", err.message);
-    res.status(500).json({ error: "Failed to fetch coffer table" });
+    console.error("Coffers error:", err.message);
+    res.status(500).json({ error: "Failed to fetch tournament coffers" });
   }
 });
 
-
-app.post("/admin/add-funds", authenticate, requireAdmin, async (req, res) => {
+// --------------------------------------------------
+// ADMIN VIRTUAL COINS ADJUSTMENTS
+// --------------------------------------------------
+async function adjustCoins(req, res, mode) {
   try {
     const { userId, amount, reason } = req.body;
+    const value = Number(amount);
 
-    if (
-  !userId ||
-  amount === undefined ||
-  amount === null ||
-  !Number.isFinite(Number(amount)) ||
-  Number(amount) <= 0
-) {
+    if (!userId || !Number.isFinite(value) || value <= 0) {
       return res.status(400).json({ error: "Invalid request" });
     }
 
-    await db.runTransaction(async (t) => {
-      await treasury.adminAdjustBalance(
-        t,
-        userId,
-        Number(amount),
-        "add",
-        reason || "Admin credit",
-         req.user.uid
-      );
-    });
+    await db.runTransaction((t) =>
+      treasury.adminAdjustBalance(
+        t, userId, value, mode, reason || `Admin ${mode}`, req.user.uid
+      )
+    );
 
-    res.json({ success: true, message: "Funds added successfully" });
-
+    res.json({ success: true, message: `Coins ${mode}ed successfully` });
   } catch (err) {
-    console.error("ADD FUNDS ERROR:", err.message);
-    res.status(500).json({ error: err.message });
+    console.error("Coins adjustment error:", err.message);
+    res.status(400).json({ error: err.message });
   }
-});
+}
 
-app.post("/admin/subtract-funds", authenticate, requireAdmin, async (req, res) => {
-  try {
-    const { userId, amount, reason } = req.body;
+app.post("/admin/add-funds", authenticate, requireAdmin,
+  (req, res) => adjustCoins(req, res, "add"));
+app.post("/admin/subtract-funds", authenticate, requireAdmin,
+  (req, res) => adjustCoins(req, res, "subtract"));
 
- if (
-  !userId ||
-  amount === undefined ||
-  amount === null ||
-  !Number.isFinite(Number(amount)) ||
-  Number(amount) <= 0
-) {
-      return res.status(400).json({ error: "Invalid request" });
-    }
- 
-    await db.runTransaction(async (t) => {
-      await treasury.adminAdjustBalance(
-        t,
-        userId,
-        Number(amount),
-        "subtract",
-        reason || "Admin debit",
-          req.user.uid
-      );
-    });
-
-    res.json({ success: true, message: "Funds subtracted successfully" });
-
-  } catch (err) {
-    console.error("SUBTRACT FUNDS ERROR:", err.message);
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ---------------------------------------------------------------------
-// SUPPORT-SENDING
-// ---------------------------------------------------------------------
+// --------------------------------------------------
+// SUPPORT
+// --------------------------------------------------
 app.post("/support/send", authenticate, async (req, res) => {
   try {
-    const userId = req.user.uid;
     const { threadId, message } = req.body;
-
-    if (!message || !message.trim()) {
+    if (typeof message !== "string" || !message.trim()) {
       return res.status(400).json({ error: "Message required" });
     }
 
-    // 🔍 Fetch user profile
-    const profileSnap = await db.collection("users").doc(userId).get();
-    const profile = profileSnap.exists ? profileSnap.data() : {};
-
-    // ✅ GUARANTEED identity resolution (never empty)
-    const resolvedEmail =
-      profile?.email ||
-      req.user.email ||
-      "No Email";
-
-    const resolvedUsername =
-      profile?.username ||
-      profile?.displayName ||
-      req.user.name ||
-      "Unknown User";
+    const userId = req.user.uid;
+    const profile = req.userDoc;
 
     let threadRef;
 
-    // 🧵 CREATE NEW THREAD
     if (!threadId) {
       threadRef = await db.collection("supportThreads").add({
         userId,
-        userEmail: resolvedEmail,
-        username: resolvedUsername,
-
+        userEmail: profile.email || req.user.email || "No Email",
+        username: profile.username || profile.displayName || req.user.name || "Player",
         status: "open",
-createdAt: admin.firestore.FieldValue.serverTimestamp(),
-
-
-        lastMessage: message,
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        lastMessage: message.trim(),
         lastMessageAt: admin.firestore.FieldValue.serverTimestamp(),
       });
     } else {
       threadRef = db.collection("supportThreads").doc(threadId);
+      const existing = await threadRef.get();
+
+      if (!existing.exists || existing.data().userId !== userId) {
+        return res.status(404).json({ error: "Support thread not found" });
+      }
     }
 
-    // 💬 ADD MESSAGE (clean — no need to repeat email every time)
     await threadRef.collection("messages").add({
       sender: "user",
-      text: message,
+      text: message.trim(),
       read: false,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
     });
 
-    // 🔄 Update thread metadata
     await threadRef.update({
-      lastMessage: message,
+      lastMessage: message.trim(),
       lastMessageAt: admin.firestore.FieldValue.serverTimestamp(),
       status: "open",
     });
 
     res.json({ success: true, threadId: threadRef.id });
-
   } catch (err) {
-    console.error("USER SUPPORT ERROR:", err.message);
-    res.status(500).json({ error: "Failed to send message" });
+    console.error("Support error:", err.message);
+    res.status(500).json({ error: "Failed to send support message" });
   }
 });
-
-// ---------------------------------------------------------------------
-// ADMIN — SEND NOTIFICATION
-// ---------------------------------------------------------------------
-app.post("/admin/send-notification", authenticate, requireAdmin, async (req, res) => {
-  try {
-    const { message } = req.body;
-
-    if (!message || !message.trim()) {
-      return res.status(400).json({ error: "Message required" });
-    }
-
-    const alertRef = db.collection("alerts").doc(); // explicit doc
-    await alertRef.set({
-      title: "📢 Admin Message",
-      message,
-      type: "admin",
-      read: false,
-      createdAt: admin.firestore.FieldValue.serverTimestamp(),
-    });
-
-    res.json({ success: true, alertId: alertRef.id });
-  } catch (err) {
-    console.error("SEND NOTIFICATION ERROR:", err);
-    res.status(500).json({ error: "Failed to send notification" });
-  }
-});
-
-
 
 app.post("/admin/reply-support", authenticate, requireAdmin, async (req, res) => {
   try {
     const { threadId, message } = req.body;
-
-    if (!threadId || !message || !message.trim()) {
+    if (!threadId || typeof message !== "string" || !message.trim()) {
       return res.status(400).json({ error: "Invalid request" });
     }
 
     const threadRef = db.collection("supportThreads").doc(threadId);
     const threadSnap = await threadRef.get();
-
     if (!threadSnap.exists) {
       return res.status(404).json({ error: "Support thread not found" });
     }
 
-    const threadData = threadSnap.data();
-
-    // ✅ Add admin reply
     await threadRef.collection("messages").add({
       sender: "admin",
       text: message.trim(),
       read: false,
       createdAt: admin.firestore.FieldValue.serverTimestamp(),
-      adminId: req.user.uid, // 🔥 track which admin replied
+      adminId: req.user.uid,
     });
 
-    // ✅ Update thread metadata
     await threadRef.update({
       lastMessage: message.trim(),
-      lastMessageAt:admin.firestore.FieldValue.serverTimestamp(),
+      lastMessageAt: admin.firestore.FieldValue.serverTimestamp(),
       status: "answered",
-      answeredBy: req.user.uid, // 🔥 track responder
+      answeredBy: req.user.uid,
     });
 
-    res.json({
-      success: true,
-      repliedTo: threadData.username || "Unknown User",
-    });
-
+    res.json({ success: true });
   } catch (err) {
-    console.error("REPLY SUPPORT ERROR:", err.message);
-    res.status(500).json({ error: "Failed to send reply" });
+    console.error("Support reply error:", err.message);
+    res.status(500).json({ error: "Failed to reply to support" });
   }
 });
 
-
-
-app.post("/admin/reset-password", authenticate, requireAdmin, async (req, res) => {
-  const { email } = req.body;
-
-  await admin.auth().generatePasswordResetLink(email);
-  res.json({ success: true });
-});
-
-app.post("/admin/delete-user", authenticate, requireAdmin, async (req, res) => {
-  const { userId } = req.body;
-
-  await db.collection("users").doc(userId).update({
-    deleted: true,
-    deletedAt: admin.firestore.FieldValue.serverTimestamp(),
-  });
-
-  res.json({ success: true });
+// --------------------------------------------------
+// USER PROFILE AND ACCOUNT
+// --------------------------------------------------
+app.get("/user/profile", authenticate, async (req, res) => {
+  res.json({ success: true, user: { id: req.user.uid, ...req.userDoc } });
 });
 
 app.post("/user/delete-account", authenticate, async (req, res) => {
@@ -614,363 +352,237 @@ app.post("/user/delete-account", authenticate, async (req, res) => {
       deleted: true,
       deletedAt: admin.firestore.FieldValue.serverTimestamp(),
     });
-
     res.json({ success: true });
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: "Failed to delete account" });
   }
 });
 
-// ---------------------------------------------------------------------
-// ADMIN — SYSTEM LOGS & ACTIVITY HISTORY
-// ---------------------------------------------------------------------
-
-// Example system logs endpoint
-app.get("/admin/system-logs", authenticate, requireAdmin, async (req, res) => {
+app.post("/admin/reset-password", authenticate, requireAdmin, async (req, res) => {
   try {
-    const snapshot = await db.collection("adminLogs").orderBy("createdAt", "desc").limit(100).get();
-    console.log("LOG COUNT:", snapshot.size);
-    const logs = snapshot.docs.map(doc => {
-      const data = doc.data();
-      return {
-        id: doc.id,
-        message: `${data.adminId || "Unknown"} → ${data.action || data.reason || "Performed action"}`,
-        createdAt: data.createdAt?.toDate?.().toISOString() || null,
-      };
-    });
-    res.json(logs);
+    if (!req.body.email) return res.status(400).json({ error: "Email required" });
+    await admin.auth().generatePasswordResetLink(req.body.email);
+    res.json({ success: true });
   } catch (err) {
-    console.error("Fetch system logs error:", err.message);
-    res.status(500).json({ error: err.message });
+    res.status(400).json({ error: "Could not create reset link" });
   }
 });
 
-// Example admin activity history endpoint
-app.get("/admin/activity-history", authenticate, requireAdmin, async (req, res) => {
+app.post("/admin/delete-user", authenticate, requireAdmin, async (req, res) => {
   try {
-    const snapshot = await db.collection("adminLogs").orderBy("createdAt", "desc").limit(100).get();
-    console.log("LOG COUNT:", snapshot.size);
-    const activities = snapshot.docs.map(doc => {
+    if (!req.body.userId) return res.status(400).json({ error: "Missing userId" });
+    await db.collection("users").doc(req.body.userId).update({
+      deleted: true,
+      deletedAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(400).json({ error: "Could not delete user" });
+  }
+});
+
+// --------------------------------------------------
+// ADMIN NOTIFICATIONS AND LOGS
+// --------------------------------------------------
+app.post("/admin/send-notification", authenticate, requireAdmin, async (req, res) => {
+  try {
+    const { message } = req.body;
+    if (typeof message !== "string" || !message.trim()) {
+      return res.status(400).json({ error: "Message required" });
+    }
+
+    const ref = db.collection("alerts").doc();
+    await ref.set({
+      title: "Admin Message",
+      message: message.trim(),
+      type: "admin",
+      read: false,
+      createdAt: admin.firestore.FieldValue.serverTimestamp(),
+    });
+
+    res.json({ success: true, alertId: ref.id });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to send notification" });
+  }
+});
+
+async function getAdminLogs(res, mode) {
+  try {
+    const snap = await db.collection("adminLogs")
+      .orderBy("createdAt", "desc").limit(100).get();
+
+    const rows = snap.docs.map((doc) => {
       const data = doc.data();
       return {
         id: doc.id,
         admin: data.adminId || "Unknown",
+        message: `${data.adminId || "Unknown"} → ${data.action || data.reason || "Performed action"}`,
         action: data.action || data.reason || "Performed action",
-          createdAt: data.createdAt?.toDate?.().toISOString() || null,
+        createdAt: data.createdAt?.toDate?.().toISOString() || null,
       };
     });
-    res.json(activities);
+
+    res.json(mode === "activity" ? rows.map(({ id, admin, action, createdAt }) =>
+      ({ id, admin, action, createdAt })) : rows);
   } catch (err) {
-    console.error("Fetch admin activity error:", err.message);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: "Failed to fetch admin logs" });
   }
-});
+}
 
+app.get("/admin/system-logs", authenticate, requireAdmin,
+  (req, res) => getAdminLogs(res, "logs"));
+app.get("/admin/activity-history", authenticate, requireAdmin,
+  (req, res) => getAdminLogs(res, "activity"));
 
-
-// ----------------------
-// ROUTES
-// ----------------------
-app.post("/api/webhook", async (req, res) => {
-
-  const transactionId =
-    req.body?.data?.data?.attributes?.transaction_id;
-
-  console.log("🔥 Unified webhook:", transactionId);
-
-
-  if (transactionId?.startsWith("PAYOUT_")) {
-    return payoutWebhookHandler(req, res);
-  }
-
-
-  return payinWebhookHandler(req, res);
-
-});
-
-app.use("/api/payin", payinRoutes);
-app.use("/api/payout", payoutRoutes);     // withdrawals
-// ---------------------------------------------------------------------
-// CURRENCY CONVERTER
-// ---------------------------------------------------------------------
-const { rates, BASE_CURRENCY } = require("./config/currency");
-
-
-app.get("/api/currency", (req, res) => {
-  res.json({
-    base: BASE_CURRENCY,
-    rates,
-  });
-  });
-  // ----------------------
-// ROUTES USER
-// ----------------------
-  app.get("/user/profile", authenticate, async (req, res) => {
-  try {
-    const userId = req.user.uid;
-
-    const userSnap = await db.collection("users").doc(userId).get();
-
-    if (!userSnap.exists) {
-      return res.status(404).json({ error: "User not found" });
-    }
-
-    res.json({
-      success: true,
-      user: {
-        id: userSnap.id,
-        ...userSnap.data(),
-      },
-    });
-
-  } catch (err) {
-    console.error("PROFILE ERROR:", err.message);
-    res.status(500).json({ error: "Failed to load profile" });
-  }
-});
-// ----------------------
-// TOURNAMENT LIST (FRONTEND)
-// ----------------------
+// --------------------------------------------------
+// TOURNAMENTS
+// --------------------------------------------------
 app.get("/tournaments", authenticate, async (req, res) => {
   try {
-    const snapshot = await db
-      .collection("tournaments")
-      .orderBy("createdAt", "desc")
-      .get();
-
-    const tournaments = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
+    const snap = await db.collection("tournaments")
+      .orderBy("createdAt", "desc").get();
 
     res.json({
       success: true,
-      tournaments,
+      tournaments: snap.docs.map((doc) => ({ id: doc.id, ...doc.data() })),
     });
-
   } catch (err) {
-    console.error("TOURNAMENT LIST ERROR:", err.message);
     res.status(500).json({ error: "Failed to fetch tournaments" });
   }
 });
-// ----------------------
-// TOURNAMENT DETAILS
-// ----------------------
+
 app.get("/tournament/:tournamentId", authenticate, async (req, res) => {
   try {
-    const { tournamentId } = req.params;
+    const snap = await db.collection("tournaments").doc(req.params.tournamentId).get();
+    if (!snap.exists) return res.status(404).json({ error: "Tournament not found" });
 
-    const snap = await db.collection("tournaments").doc(tournamentId).get();
-
-    if (!snap.exists) {
-      return res.status(404).json({ error: "Tournament not found" });
-    }
-
-    res.json({
-      success: true,
-      tournament: {
-        id: snap.id,
-        ...snap.data(),
-      },
-    });
-
+    res.json({ success: true, tournament: { id: snap.id, ...snap.data() } });
   } catch (err) {
-    console.error("TOURNAMENT DETAIL ERROR:", err.message);
     res.status(500).json({ error: "Failed to fetch tournament" });
   }
 });
 
-// ----------------------
-// USER TOURNAMENT STATE
-// ----------------------
 app.get("/tournament/:tournamentId/me", authenticate, async (req, res) => {
   try {
-    const userId = req.user.uid;
-    const { tournamentId } = req.params;
-
-    const doc = await db
-      .collection("tournaments")
-      .doc(tournamentId)
-      .collection("participants")
-      .doc(userId)
-      .get();
-
-    if (!doc.exists) {
-      return res.json({
-        success: true,
-        joined: false,
-        data: null,
-      });
-    }
+    const ref = db.collection("tournaments").doc(req.params.tournamentId)
+      .collection("participants").doc(req.user.uid);
+    const snap = await ref.get();
 
     res.json({
       success: true,
-      joined: true,
-      data: doc.data(),
+      joined: snap.exists,
+      data: snap.exists ? snap.data() : null,
     });
-
   } catch (err) {
-    console.error("USER TOURNAMENT STATE ERROR:", err.message);
-    res.status(500).json({ error: "Failed to fetch user tournament state" });
+    res.status(500).json({ error: "Failed to fetch tournament state" });
   }
 });
 
-// ----------------------
-// USER TRANSACTIONS
-// ----------------------
+// --------------------------------------------------
+// COINS TRANSACTIONS AND ALERTS
+// --------------------------------------------------
 app.get("/transactions", authenticate, async (req, res) => {
   try {
-    const userId = req.user.uid;
-
-    const snapshot = await db
-      .collection("transactions")
-      .where("userId", "==", userId)
-      .orderBy("createdAt", "desc")
-      .limit(50)
-      .get();
-
-    const transactions = snapshot.docs.map(doc => {
-  const data = doc.data();
-
-  return {
-    id: doc.id,
-    ...data,
-    createdAt: data.createdAt?.toDate?.().toISOString() || null,
-  };
-});
+    const snap = await db.collection("transactions")
+      .where("userId", "==", req.user.uid)
+      .orderBy("createdAt", "desc").limit(50).get();
 
     res.json({
       success: true,
-      transactions,
+      transactions: snap.docs.map((doc) => ({
+        id: doc.id,
+        ...doc.data(),
+        createdAt: doc.data().createdAt?.toDate?.().toISOString() || null,
+      })),
     });
-
   } catch (err) {
-    console.error("TRANSACTIONS ERROR:", err.message);
     res.status(500).json({ error: "Failed to fetch transactions" });
   }
 });
-// ----------------------
-// USER ALERTS
-// ----------------------
+
 app.get("/alerts", authenticate, async (req, res) => {
   try {
-    const snapshot = await db
-      .collection("alerts")
-      .orderBy("createdAt", "desc")
-      .limit(30)
-      .get();
+    const snap = await db.collection("alerts")
+      .orderBy("createdAt", "desc").limit(30).get();
 
-    const alerts = snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
-
-    res.json({
-      success: true,
-      alerts,
-    });
-
+    res.json({ success: true, alerts: snap.docs.map((doc) => ({ id: doc.id, ...doc.data() })) });
   } catch (err) {
-    console.error("ALERTS ERROR:", err.message);
     res.status(500).json({ error: "Failed to fetch alerts" });
   }
 });
-// ----------------------
-// ERROR HANDLER
-// ----------------------
-app.use((err, req, res, next) => {
-  console.error("🔥 SERVER ERROR:", err);
-  res.status(500).json({ error: "Internal server error" });
-});
-// ---------------------------------------------------------------------
-
-// ----------------------
-// START SERVER
-// ---------------------------------------------------------------------
-// ----------------------
-const PORT = process.env.PORT || 4000;
-
-
 
 app.get("/admin/transactions", authenticate, requireAdmin, async (req, res) => {
   try {
-    const { type } = req.query;
-
     let query = db.collection("transactions");
+    if (req.query.type) query = query.where("type", "==", req.query.type);
 
-    if (type) {
-      query = query.where("type", "==", type);
-    }
-
-    // ALWAYS ensure createdAt exists
-    query = query.orderBy("createdAt", "desc").limit(200);
-
-    const snap = await query.get();
-
-   const transactions = snap.docs.map(doc => {
-
-  const data = doc.data();
-
-  return {
-    id: doc.id,
-    ...data,
-    createdAt: data.createdAt?.toDate?.().toISOString() || null,
-  };
-});
-
-    res.json(transactions);
+    const snap = await query.orderBy("createdAt", "desc").limit(200).get();
+    res.json(snap.docs.map((doc) => ({
+      id: doc.id,
+      ...doc.data(),
+      createdAt: doc.data().createdAt?.toDate?.().toISOString() || null,
+    })));
   } catch (err) {
-    console.error("ADMIN TRANSACTIONS ERROR:", err.code, err.message);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: "Failed to fetch transactions" });
   }
-});
-
-app.post("/admin/toggle-freeze", authenticate, requireAdmin, async (req, res) => {
- const { freeze } = req.body;
-
-await db.collection("system").doc("settings").set(
-  {
-    frozen: !!freeze,
-  },
-  { merge: true }
-);
-
-  res.json({ success: true });
 });
 
 app.get("/admin/pending-transactions", authenticate, requireAdmin, async (req, res) => {
   try {
-    const query = db
-      .collection("transactions")
+    const snap = await db.collection("transactions")
       .where("status", "==", "pending")
-      .orderBy("createdAt", "desc")
-      .limit(100);
+      .orderBy("createdAt", "desc").limit(100).get();
 
-    const snap = await query.get();
-
-   const transactions = snap.docs.map(doc => {
-  const data = doc.data();
-
-return {
-  id: doc.id,
-  userId: data.userId || null,
-  username: data.username || null,
-  publicId: data.publicId || null,
-  user: data.username || data.publicId || data.userId || "Unknown",
-  amount: data.amount || 0,
-  status: data.status || "pending",
-  createdAt: data.createdAt?.toDate?.().toISOString() || null,
-};
-});
-
-    res.json(transactions);
+    res.json(snap.docs.map((doc) => {
+      const data = doc.data();
+      return {
+        id: doc.id,
+        userId: data.userId || null,
+        username: data.username || null,
+        publicId: data.publicId || null,
+        user: data.username || data.publicId || data.userId || "Unknown",
+        amount: data.amount || 0,
+        status: data.status || "pending",
+        createdAt: data.createdAt?.toDate?.().toISOString() || null,
+      };
+    }));
   } catch (err) {
-   console.error("FULL ERROR:", err);
-    res.status(500).json({ error: err.message });
+    res.status(500).json({ error: "Failed to fetch pending transactions" });
   }
 });
 
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`🚀 Backend running on port ${PORT}`);
+app.post("/admin/toggle-freeze", authenticate, requireAdmin, async (req, res) => {
+  try {
+    await db.collection("system").doc("settings").set(
+      { frozen: !!req.body.freeze },
+      { merge: true }
+    );
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to update settings" });
+  }
 });
- console.log("Routes loaded: Coins wallet, tournaments, admin, support");
+
+// --------------------------------------------------
+// CURRENCY CONFIG (OPTIONAL LEGACY FRONTEND SUPPORT)
+// --------------------------------------------------
+app.get("/api/currency", (req, res) => {
+  try {
+    const { rates, BASE_CURRENCY } = require("./config/currency");
+    res.json({ base: BASE_CURRENCY, rates });
+  } catch {
+    res.status(503).json({ error: "Currency configuration unavailable" });
+  }
+});
+
+// --------------------------------------------------
+// START
+// --------------------------------------------------
+app.use((err, req, res, next) => {
+  console.error("Server error:", err);
+  res.status(500).json({ error: "Internal server error" });
+});
+
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`FX ARENA Coins backend running on port ${PORT}`);
+});
