@@ -579,7 +579,7 @@ app.get("/api/currency", (req, res) => {
 // START
 // --------------------------------------------------
 app.use("/api/coin-functions", require("./coinFunctions"));
-
+app.use("/tournament", require("./coinFunctions"));
 
 app.use((err, req, res, next) => {
   console.error("Server error:", err);

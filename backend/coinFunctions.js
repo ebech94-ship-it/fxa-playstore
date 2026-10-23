@@ -534,10 +534,80 @@ router.post("/onTournamentJoin", async (req, res) => {
   }
 });
 // UPDATE DEMO BALANCE
+// UPDATE DEMO BALANCE
 router.post("/updateDemoBalance", async (req, res) => {
   try {
-    const { balance } = req.body;
+    const { balance, tradeId, result, payout } = req.body || {};
 
+    const userRef = db.doc(`users/${req.uid}`);
+
+    // Trade settlement: process each trade only once.
+    if (typeof tradeId === "string" && tradeId.trim()) {
+      if (
+        !["GAIN", "LOSS"].includes(result) ||
+        !Number.isFinite(payout) ||
+        payout < 0 ||
+        payout > 100000000
+      ) {
+        return res.status(400).json({
+          error: "Invalid demo settlement data",
+        });
+      }
+
+      const settlementRef = db.doc(
+        `users/${req.uid}/demoSettlements/${tradeId}`
+      );
+
+      let finalBalance;
+
+      await db.runTransaction(async (tx) => {
+        const settlementSnap = await tx.get(settlementRef);
+        const userSnap = await tx.get(userRef);
+
+        if (settlementSnap.exists) {
+          throw new Error("TRADE_ALREADY_SETTLED");
+        }
+
+        if (!userSnap.exists) {
+          throw new Error("USER_NOT_FOUND");
+        }
+
+        const userData = userSnap.data();
+        const currentBalance = Number(
+          userData.accounts?.demo?.balance ?? 1000
+        );
+
+        const credit = result === "GAIN" ? payout : 0;
+        finalBalance = currentBalance + credit;
+
+        if (
+          !Number.isFinite(finalBalance) ||
+          finalBalance < 0 ||
+          finalBalance > 100000000
+        ) {
+          throw new Error("INVALID_FINAL_BALANCE");
+        }
+
+        tx.update(userRef, {
+          "accounts.demo.balance": finalBalance,
+          "accounts.demo.updatedAt": FieldValue.serverTimestamp(),
+        });
+
+        tx.create(settlementRef, {
+          tradeId,
+          result,
+          payout: credit,
+          createdAt: FieldValue.serverTimestamp(),
+        });
+      });
+
+      return res.json({
+        success: true,
+        balance: finalBalance,
+      });
+    }
+
+    // Existing balance update, retained for trade opening.
     if (
       typeof balance !== "number" ||
       !Number.isFinite(balance) ||
@@ -547,8 +617,6 @@ router.post("/updateDemoBalance", async (req, res) => {
       return res.status(400).json({ error: "Invalid demo balance" });
     }
 
-    const userRef = db.doc(`users/${req.uid}`);
-
     await userRef.update({
       "accounts.demo.balance": balance,
       "accounts.demo.updatedAt": FieldValue.serverTimestamp(),
@@ -556,6 +624,14 @@ router.post("/updateDemoBalance", async (req, res) => {
 
     return res.json({ success: true, balance });
   } catch (error) {
+    if (error.message === "TRADE_ALREADY_SETTLED") {
+      return res.status(409).json({ error: "Trade already settled" });
+    }
+
+    if (error.message === "USER_NOT_FOUND") {
+      return res.status(404).json({ error: "User not found" });
+    }
+
     console.error("updateDemoBalance:", error);
     return res.status(500).json({
       error: "Could not update demo balance",

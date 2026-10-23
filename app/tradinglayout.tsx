@@ -16,7 +16,6 @@ import {
   setDoc,
   updateDoc
 } from "firebase/firestore";
-import { getFunctions, httpsCallable } from "firebase/functions";
 import { useEffect, useRef, useState } from "react";
 
 import {
@@ -107,26 +106,37 @@ type TournamentMeta = {
   name: string;
   symbol: string; // "$" | "T"
 };
-
 // FIRESTORE DEMO HELPERS
 const updateDemoBalance = async (
   uid: string,
   newBalance: number
 ) => {
-  if (!uid) return;
+  const user = auth.currentUser;
+
+  if (!user || user.uid !== uid) return;
 
   try {
-    const userRef = doc(db, "users", uid);
+    const token = await user.getIdToken();
 
-await updateDoc(userRef, {
-  "accounts.demo.balance": newBalance,
-  "accounts.demo.updatedAt": Date.now(),
-  "accounts.demo.type": "practice",
-});
+    const response = await fetch(
+      "https://fxa-playstore-backend.onrender.com/api/coin-functions/updateDemoBalance",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ balance: newBalance }),
+      }
+    );
 
-    console.log("✅ Demo synced:", uid, newBalance);
-  } catch (e) {
-    console.error("❌ Demo sync failed:", uid, e);
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+
+    console.log("✅ Demo balance saved:", newBalance);
+  } catch (error) {
+    console.error("❌ Demo balance save failed:", error);
   }
 };
 // ------------------------ MAIN COMPONENT ------------------------
@@ -597,17 +607,42 @@ useEffect(() => {
 }
 
 // 💰 DEMO balance sync
+// 💰 DEMO trade settlement
 if (t.account.type === "demo") {
-  const uid = auth.currentUser?.uid;
+  const user = auth.currentUser;
 
-  if (uid) {
-   setDemoBalance(prev => {
-  const updated = prev + (isWin ? payout : 0);
+  if (user) {
+    try {
+      const token = await user.getIdToken();
 
-  void updateDemoBalance(uid, updated);
+      const response = await fetch(
+        "https://fxa-playstore-backend.onrender.com/api/coin-functions/updateDemoBalance",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            tradeId: t.id,
+            result: isWin ? "GAIN" : "LOSS",
+            stake: t.amount,
+          }),
+        }
+      );
 
-  return updated;
-});
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || "Settlement failed");
+      }
+
+      setDemoBalance(data.balance);
+
+      console.log("✅ Demo trade settled:", data.balance);
+    } catch (error) {
+      console.error("❌ Demo settlement failed:", error);
+    }
   }
 }
         // 💰 REAL account update
