@@ -41,7 +41,7 @@ export default function DepositWithdraw() {
       doc(db, "users", uid),
       snapshot => {
         const data = snapshot.data();
-       setCoins(Math.max(0, Number(data?.coins ?? 0)));
+      setCoins(Math.max(0, Number(data?.accounts?.real?.balance ?? 0)));
         setLoading(false);
       },
       error => {

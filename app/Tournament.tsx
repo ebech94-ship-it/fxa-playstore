@@ -186,7 +186,10 @@ const {
   userDoc,
 } = useApp();
 
-const coinsBalance = Number(userDoc?.coins ?? 0);                           // or replace with your actual context
+const coinsBalance = Number(
+  userDoc?.accounts?.real?.balance ?? userDoc?.coins ?? 0
+);                  
+        // or replace with your actual context
 
   const setLoadingFor = (
   tournamentId: string,

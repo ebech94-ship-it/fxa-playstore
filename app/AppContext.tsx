@@ -502,7 +502,8 @@ const balancesState = useMemo(
   }),
   [
     demoBalance,
-   userDoc?.coins,
+  userDoc?.accounts?.real?.balance,
+userDoc?.coins,
     activeTournament,
     participantBalances,
   ]

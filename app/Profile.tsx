@@ -10,7 +10,7 @@ import { useRouter } from "expo-router";
 import { getAuth } from "firebase/auth";
 import {
   collection,
-  collectionGroup,  doc,
+  collectionGroup, doc,
   getDocs,
   onSnapshot,
   orderBy,
@@ -129,7 +129,7 @@ const {
   setProfileSubmitted,
   profile,
   profileLoaded,
-  referrals,
+  referrals,userDoc
 } = useApp();
 
 const safeProfile = useMemo(() => ({
@@ -1079,7 +1079,7 @@ if (!profileLoaded) {
           marginTop: 8,
         }}
       >
-        {referrals.coins.toLocaleString()} COINS
+       {Number(userDoc?.accounts?.real?.balance ?? 0).toLocaleString()} COINS
       </Text>
 
       <Text

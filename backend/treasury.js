@@ -38,7 +38,10 @@ const prizeModel = tournament.prizeModel || "sponsored";
     throw new Error("Tournament join in progress");
   }
 
- if (entryFee > 0 && Number(user.coins ?? 0) < entryFee) {
+ if (
+  entryFee > 0 &&
+  Number(user.accounts?.real?.balance ?? 0) < entryFee
+) {
   throw new Error("Insufficient Coins balance");
 }
 
@@ -49,9 +52,11 @@ const prizeModel = tournament.prizeModel || "sponsored";
 
   // wallet deduction + treasury
   if (entryFee > 0) {
-    t.update(userRef, {
-     coins: admin.firestore.FieldValue.increment(-entryFee),
-    });
+   t.update(userRef, {
+  "accounts.real.balance":
+    admin.firestore.FieldValue.increment(-entryFee),
+  coins: admin.firestore.FieldValue.increment(-entryFee),
+});
     
 
     t.set(treasuryRef, {
@@ -190,7 +195,7 @@ async processRebuy(t, userId, tournamentId) {
 if (!Number.isFinite(rebuyFee) || rebuyFee < 0) {
   throw new Error("Invalid rebuy fee");
 }
-  const wallet = Number(user.coins ?? 0);
+ const wallet = Number(user.accounts?.real?.balance ?? 0);
 
   const currentBalance = Number(participant.balance || 0);
   const startingBalance = Number(participant.startingBalance || tournament.startingBalance || 0);
@@ -224,8 +229,10 @@ const newRebuys = [
 if (rebuyFee > 0) {
 
   t.update(userRef, {
-   coins: admin.firestore.FieldValue.increment(-rebuyFee),
-  });
+  "accounts.real.balance":
+    admin.firestore.FieldValue.increment(-rebuyFee),
+  coins: admin.firestore.FieldValue.increment(-rebuyFee),
+});
 
   t.set(treasuryRef, {
     balance:
@@ -496,8 +503,8 @@ async processTournamentPayout(tournamentId) {
 
     for (const winner of payable) {
       t.update(winner.userRef, {
-        coins: admin.firestore.FieldValue.increment(winner.amount),
-      });
+  "accounts.real.balance": admin.firestore.FieldValue.increment(winner.amount),
+});
 
       t.update(winner.participantRef, {
         paidOut: true,
@@ -647,8 +654,8 @@ async payParticipant(tournamentId, participantId) {
     }
 
     t.update(userRef, {
-      coins: admin.firestore.FieldValue.increment(amount),
-    });
+  "accounts.real.balance": admin.firestore.FieldValue.increment(amount),
+});
 
     t.update(participantRef, {
       paidOut: true,

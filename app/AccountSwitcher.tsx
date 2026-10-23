@@ -82,9 +82,9 @@ const {
   tournamentAccounts,
   userDoc,
 } = useApp();
-
-const coinsBalance = Number(userDoc?.coins ?? 0);
-
+const coinsBalance = Number(
+  userDoc?.accounts?.real?.balance ?? userDoc?.coins ?? 0
+);
   // convert context tournaments to UI-friendly shape
 const switcherTournaments = tournamentAccounts
   .filter(t => t.status !== "finished")

@@ -502,7 +502,8 @@ router.post("/onTournamentJoin", async (req, res) => {
         validReferrals: newValid,
         activeReferrals: Number(refData.activeReferrals || 0) + 1,
         referralPoints: Number(refData.referralPoints || 0) + bonusPoints,
-        coins: Number(refData.coins || 0) + bonusCoins,
+       "accounts.real.balance": FieldValue.increment(bonusCoins),
+coins: Number(refData.coins || 0) + bonusCoins,
         freeTournamentTickets:
           Number(refData.freeTournamentTickets || 0) + bonusTickets,
         claimedRewards: claimed,
