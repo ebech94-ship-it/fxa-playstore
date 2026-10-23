@@ -1082,7 +1082,7 @@ const [tradeToast, setTradeToast] = useState<{
     {/* Left vertical menu */}
     <ScrollView
       style={styles.leftMenu}
-      contentContainerStyle={{ paddingTop: 10, paddingBottom: 30, alignItems: "center" }}
+      contentContainerStyle={{ paddingTop: 10, paddingBottom: 40, alignItems: "center" }}
     showsVerticalScrollIndicator={false}
     >
    
