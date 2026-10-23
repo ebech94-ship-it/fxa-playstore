@@ -1,40 +1,50 @@
-// SplashScreen.js
 
 import * as ExpoSplashScreen from "expo-splash-screen";
 import { useEffect, useRef, useState } from "react";
 import { Animated, Image, StyleSheet, Text, View } from "react-native";
 import { useApp } from "./AppContext";
 
-// Prevent splash screen from auto-hiding
-ExpoSplashScreen.preventAutoHideAsync();
-
 export default function SplashScreen() {
   const [progress] = useState(new Animated.Value(0));
   const glowAnim = useRef(new Animated.Value(0)).current;
-  const { setAppReady } = useApp();
   const fadeAnim = useRef(new Animated.Value(0)).current;
-const slideAnim = useRef(new Animated.Value(10)).current;
+  const slideAnim = useRef(new Animated.Value(10)).current;
+  const { setAppReady } = useApp();
 
-  // Animate the progress bar
-useEffect(() => {
-  const startSplash = async () => {
-    await ExpoSplashScreen.hideAsync();
-
-    Animated.timing(progress, {
-      toValue: 1,
-      duration: 10000,
-      useNativeDriver: false,
-    }).start(() => {
-      setAppReady(true);
-    });
-  };
-
-  startSplash();
-}, []);
-
-  // Glow animation for GodSpeed
   useEffect(() => {
-    Animated.loop(
+    let mounted = true;
+
+    const startSplash = async () => {
+      try {
+        await ExpoSplashScreen.hideAsync();
+      } catch (error) {
+        console.warn("Splash hide error:", error);
+      }
+
+      Animated.timing(progress, {
+        toValue: 1,
+        duration: 3000,
+        useNativeDriver: false,
+      }).start(() => {
+        if (mounted) setAppReady(true);
+      });
+    };
+
+    startSplash();
+
+    const safetyTimer = setTimeout(() => {
+      if (mounted) setAppReady(true);
+    }, 5000);
+
+    return () => {
+      mounted = false;
+      clearTimeout(safetyTimer);
+      progress.stopAnimation();
+    };
+  }, [progress, setAppReady]);
+
+  useEffect(() => {
+    const animation = Animated.loop(
       Animated.sequence([
         Animated.timing(glowAnim, {
           toValue: 1,
@@ -47,23 +57,26 @@ useEffect(() => {
           useNativeDriver: false,
         }),
       ])
-    ).start();
+    );
+
+    animation.start();
+    return () => animation.stop();
   }, [glowAnim]);
 
   useEffect(() => {
-  Animated.parallel([
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 1500,
-      useNativeDriver: true,
-    }),
-    Animated.timing(slideAnim, {
-      toValue: 0,
-      duration: 1500,
-      useNativeDriver: true,
-    }),
-  ]).start();
-}, [fadeAnim, slideAnim]);
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 1500,
+        useNativeDriver: true,
+      }),
+      Animated.timing(slideAnim, {
+        toValue: 0,
+        duration: 1500,
+        useNativeDriver: true,
+      }),
+    ]).start();
+  }, [fadeAnim, slideAnim]);
 
   const progressWidth = progress.interpolate({
     inputRange: [0, 1],
@@ -72,25 +85,25 @@ useEffect(() => {
 
   const glowColor = glowAnim.interpolate({
     inputRange: [0, 1],
-    outputRange: ["#00f0ff", "#ffffff"], // pulse from blue to white
+    outputRange: ["#00f0ff", "#ffffff"],
   });
 
   return (
     <View style={styles.container}>
-      {/* Top content */}
       <View style={styles.topContent}>
         <Text style={styles.title}>FX ARENA</Text>
-    <Animated.Text
-  style={[
-    styles.subtitle,
-    {
-      opacity: fadeAnim,
-      transform: [{ translateY: slideAnim }],
-    },
-  ]}
->
-  MASTERING MARKET{"\n"}PSYCHOLOGY
-</Animated.Text>
+
+        <Animated.Text
+          style={[
+            styles.subtitle,
+            {
+              opacity: fadeAnim,
+              transform: [{ translateY: slideAnim }],
+            },
+          ]}
+        >
+          MASTERING MARKET{"\n"}PSYCHOLOGY
+        </Animated.Text>
 
         <Image
           source={require("../assets/images/splashscreen.png")}
@@ -101,11 +114,12 @@ useEffect(() => {
         <Text style={styles.connecting}>Connecting...</Text>
 
         <View style={styles.progressBarContainer}>
-          <Animated.View style={[styles.progressBar, { width: progressWidth }]} />
+          <Animated.View
+            style={[styles.progressBar, { width: progressWidth }]}
+          />
         </View>
       </View>
 
-      {/* Bottom content */}
       <View style={styles.bottomContent}>
         <Text style={styles.powered}>Powered by</Text>
         <Animated.Text style={[styles.glow, { color: glowColor }]}>
@@ -124,45 +138,38 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingVertical: 20,
   },
-
   topContent: {
     alignItems: "center",
     paddingTop: 60,
   },
-
   bottomContent: {
     alignItems: "center",
     marginBottom: 20,
   },
-
   title: {
     fontSize: 36,
     color: "white",
     fontWeight: "bold",
     marginBottom: 4,
   },
-
   subtitle: {
-  fontSize: 20,
-  color: "#E2C13E",
-  fontWeight: "bold",
-  marginBottom: 20,
-  textAlign: "center",   // ✅ center text
-  width: "80%",          // ✅ controls wrapping nicely
-},
-
+    fontSize: 20,
+    color: "#E2C13E",
+    fontWeight: "bold",
+    marginBottom: 20,
+    textAlign: "center",
+    width: "80%",
+  },
   arenaImage: {
     width: 250,
     height: 250,
     marginBottom: 20,
   },
-
   connecting: {
     fontSize: 18,
     color: "white",
     marginBottom: 10,
   },
-
   progressBarContainer: {
     height: 6,
     width: 250,
@@ -171,18 +178,15 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     marginBottom: 20,
   },
-
   progressBar: {
     height: "100%",
     backgroundColor: "#4CAF50",
   },
-
   powered: {
     fontSize: 16,
     color: "gray",
     marginBottom: 5,
   },
-
   glow: {
     fontSize: 16,
     fontWeight: "bold",
