@@ -8,7 +8,12 @@ export default {
     owner: "ebeh",
 
     version: "1.0.0",
-    orientation: "default",
+
+updates: {
+  url: "https://u.expo.dev/6bd56cae-f60a-4977-96b7-189364eae541",
+},
+
+orientation: "default",
     scheme: "fxarenacoins",
     jsEngine: "hermes",
     icon: "./assets/images/icon.png",

@@ -23,7 +23,7 @@ export default function SplashScreen() {
 
       Animated.timing(progress, {
         toValue: 1,
-        duration: 3000,
+        duration: 8000,
         useNativeDriver: false,
       }).start(() => {
         if (mounted) setAppReady(true);
@@ -34,7 +34,7 @@ export default function SplashScreen() {
 
     const safetyTimer = setTimeout(() => {
       if (mounted) setAppReady(true);
-    }, 5000);
+    }, 10000);
 
     return () => {
       mounted = false;
