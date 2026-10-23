@@ -46,7 +46,7 @@ startingBalance: number;
 
   rebuyCount?: number;
   rebuys?: any[];
-
+rebuyFee?: number;
   rankingScore?: number;
 rebuyInjectedTotal?: number;
 lastRebuyAt?: number;
@@ -587,8 +587,9 @@ prizeModel: t.prizeModel,
         balance: participantBalances[t.tournamentId] ?? p?.balance ?? 0,
         startingBalance: p?.startingBalance ?? t.startingBalance ?? 0,
 
-        currency: t.currency ?? t.symbol ?? "$",
-        status: t.status ?? "upcoming",
+currency: t.currency ?? t.symbol ?? "Coins",
+rebuyFee: Number(t.rebuyFee ?? 0),
+status: t.status ?? "upcoming",
 
         joined: true,
 

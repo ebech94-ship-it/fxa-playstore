@@ -94,6 +94,7 @@ const switcherTournaments = tournamentAccounts
     status: formatTournamentStatus(t.status),
     balance: Number(t.balance ?? 0),
     currency: t.currency ?? t.symbol ?? "$",
+    rebuyFee: Number(t.rebuyFee ?? 0),
   }));
 
 

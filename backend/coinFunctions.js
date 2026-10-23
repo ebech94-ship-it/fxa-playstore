@@ -537,17 +537,23 @@ router.post("/onTournamentJoin", async (req, res) => {
 // UPDATE DEMO BALANCE
 router.post("/updateDemoBalance", async (req, res) => {
   try {
-    const { balance, tradeId, result, payout } = req.body || {};
-
+    const { balance, tradeId, result, payout, stake } = req.body || {};
+const finalPayout = payout ?? (
+  result === "GAIN" && Number.isFinite(stake)
+    ? stake * 1.95
+    : result === "LOSS" && Number.isFinite(stake)
+    ? 0
+    : undefined
+);
     const userRef = db.doc(`users/${req.uid}`);
 
     // Trade settlement: process each trade only once.
     if (typeof tradeId === "string" && tradeId.trim()) {
       if (
         !["GAIN", "LOSS"].includes(result) ||
-        !Number.isFinite(payout) ||
-        payout < 0 ||
-        payout > 100000000
+        !Number.isFinite(finalPayout) ||
+finalPayout < 0 ||
+finalPayout > 100000000
       ) {
         return res.status(400).json({
           error: "Invalid demo settlement data",
@@ -577,7 +583,7 @@ router.post("/updateDemoBalance", async (req, res) => {
           userData.accounts?.demo?.balance ?? 1000
         );
 
-        const credit = result === "GAIN" ? payout : 0;
+        const credit = result === "GAIN" ? finalPayout : 0;
         finalBalance = currentBalance + credit;
 
         if (
