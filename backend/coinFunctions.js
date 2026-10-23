@@ -533,5 +533,33 @@ router.post("/onTournamentJoin", async (req, res) => {
     return res.status(500).json({ error: "Could not process tournament referral" });
   }
 });
+// UPDATE DEMO BALANCE
+router.post("/updateDemoBalance", async (req, res) => {
+  try {
+    const { balance } = req.body;
 
+    if (
+      typeof balance !== "number" ||
+      !Number.isFinite(balance) ||
+      balance < 0 ||
+      balance > 100000000
+    ) {
+      return res.status(400).json({ error: "Invalid demo balance" });
+    }
+
+    const userRef = db.doc(`users/${req.uid}`);
+
+    await userRef.update({
+      "accounts.demo.balance": balance,
+      "accounts.demo.updatedAt": FieldValue.serverTimestamp(),
+    });
+
+    return res.json({ success: true, balance });
+  } catch (error) {
+    console.error("updateDemoBalance:", error);
+    return res.status(500).json({
+      error: "Could not update demo balance",
+    });
+  }
+});
 module.exports = router;
