@@ -845,6 +845,9 @@ const activeTournamentInfo =
 
 const rebuyFee = Number(activeTournamentInfo?.rebuyFee ?? 0);
 
+const walletBalance = Number(ctxBalances?.real ?? 0);
+const walletAfterRebuy = walletBalance - rebuyFee;
+const hasEnoughWallet = walletBalance >= rebuyFee;
 // ----------- REBUY ACTION (FINAL CLEAN VERSION) -----------
 const handleRebuy = async (tournamentId: string) => {
   console.log("🔥 REBUY BUTTON PRESSED", tournamentId);
@@ -1505,9 +1508,47 @@ demoBalance={demoBalance}
             Your tournament balance has reached the REBUY level.
           </Text>
 
-          <Text style={styles.rebuyConfirmFee}>
-           Rebuy Fee: {rebuyFee.toLocaleString()} Coins
-          </Text>
+        <Text style={styles.rebuyConfirmFee}>
+  Rebuy Fee: {rebuyFee.toLocaleString()} Coins
+</Text>
+
+<View style={styles.rebuyWalletBox}>
+  <View style={styles.rebuyWalletRow}>
+    <Text style={styles.rebuyWalletLabel}>Current Wallet Balance</Text>
+    <Text style={styles.rebuyWalletValue}>
+      {walletBalance.toLocaleString()} Coins
+    </Text>
+  </View>
+
+  <View style={styles.rebuyWalletRow}>
+    <Text style={styles.rebuyWalletLabel}>Rebuy Cost</Text>
+    <Text style={styles.rebuyWalletCost}>
+      -{rebuyFee.toLocaleString()} Coins
+    </Text>
+  </View>
+
+  <View style={styles.rebuyWalletDivider} />
+
+  <View style={styles.rebuyWalletRow}>
+    <Text style={styles.rebuyWalletRemainingLabel}>
+      Balance After Rebuy
+    </Text>
+    <Text
+      style={[
+        styles.rebuyWalletRemaining,
+        { color: hasEnoughWallet ? "#4ade80" : "#ff4d4f" },
+      ]}
+    >
+      {walletAfterRebuy.toLocaleString()} Coins
+    </Text>
+  </View>
+</View>
+
+{!hasEnoughWallet && (
+  <Text style={styles.rebuyInsufficientWarning}>
+    Insufficient wallet balance. Please top up first.
+  </Text>
+)}
 
           <Text style={styles.rebuyConfirmQuestion}>
             Do you really want to continue?
@@ -1616,11 +1657,12 @@ const styles = StyleSheet.create({
   position: "relative", zIndex: 10, width: "20%", backgroundColor: "#2c2c2c",
    padding: 10, top:25,
    justifyContent: "space-around", },
- panelSection: { marginVertical: 1 }, label: { color: "#ccc", marginBottom: 2, fontSize: 14, bottom: 2 },
+ panelSection: { marginVertical: 1 }, 
+ label: { color: "#ccc", marginBottom: 2, fontSize: 14, bottom: 2 },
   input: {  backgroundColor: "rgba(255,255,255,0.1)", borderColor: "#666",  borderWidth: 1,  borderRadius: 6, 
    padding: 5, color: "#fff", fontSize: 14, },
   inputRow: { marginVertical: 3 },
-  expiryButton: { paddingVertical: 4, paddingHorizontal: 5, backgroundColor: "rgba(255,255,255,0.1)", borderRadius: 1.5,
+  expiryButton: { paddingVertical: 2, paddingHorizontal: 5, backgroundColor: "rgba(255,255,255,0.1)", borderRadius: 1.5,
    marginRight: 3, },
   expButtonActive: { backgroundColor: "blue" },
   expButtonText: { color: "#fff", fontSize: 10, fontWeight: "bold" },
@@ -1645,7 +1687,7 @@ profitGlowRed: { shadowColor: "#ff2222",  shadowOffset: { width: 0, height: 0 },
   // New switcher container: fixed height so AccountSwitcher doesn't jump.
   switcherContainer: { width: "100%", minHeight: 120,
     maxHeight: 160,  marginBottom: 12,
-    justifyContent: "center", flexDirection: "row",right: 0 },
+    justifyContent: "center", flexDirection: "row", right: 0 },
 
 controlPanelSpacing:{
   paddingTop:35,
@@ -1878,5 +1920,63 @@ rebuyConfirmButtonText: {
   color: "#fff",
   fontWeight: "900",
   fontSize: 12,
+},
+rebuyWalletBox: {
+  width: "100%",
+  backgroundColor: "#1f2937",
+  borderRadius: 10,
+  padding: 12,
+  marginVertical: 10,
+  borderWidth: 1,
+  borderColor: "#374151",
+},
+
+rebuyWalletRow: {
+  flexDirection: "row",
+  justifyContent: "space-between",
+  alignItems: "center",
+  marginVertical: 5,
+},
+
+rebuyWalletLabel: {
+  color: "#cbd5e1",
+  fontSize: 12,
+},
+
+rebuyWalletValue: {
+  color: "#ffffff",
+  fontSize: 13,
+  fontWeight: "700",
+},
+
+rebuyWalletCost: {
+  color: "#fb923c",
+  fontSize: 13,
+  fontWeight: "700",
+},
+
+rebuyWalletDivider: {
+  height: 1,
+  backgroundColor: "#4b5563",
+  marginVertical: 6,
+},
+
+rebuyWalletRemainingLabel: {
+  color: "#ffffff",
+  fontSize: 12,
+  fontWeight: "800",
+},
+
+rebuyWalletRemaining: {
+  fontSize: 15,
+  fontWeight: "900",
+},
+
+rebuyInsufficientWarning: {
+  color: "#f87171",
+  fontSize: 12,
+  fontWeight: "700",
+  textAlign: "center",
+  marginBottom: 10,
 },
 });

@@ -416,7 +416,11 @@ const InfoButton = ({
   onRequestClose={() => setInfoType(null)}
 >
   <View style={styles.infoOverlay}>
-    <View style={styles.infoModal}>
+  <ScrollView
+  style={styles.infoModal}
+  contentContainerStyle={styles.infoModalContent}
+  showsVerticalScrollIndicator={true}
+>
 
       {/* HEADER */}
       <View style={styles.infoHeader}>
@@ -538,7 +542,7 @@ const InfoButton = ({
         <Text style={styles.gotItText}>Got it</Text>
       </TouchableOpacity>
 
-    </View>
+    </ScrollView>
   </View>
 </Modal>
    </View>
@@ -660,6 +664,7 @@ infoOverlay: {
 infoModal: {
   width: "100%",
   maxWidth: 380,
+  maxHeight: "85%",
   backgroundColor: "#111827",
   borderRadius: 18,
   borderWidth: 1,
@@ -746,5 +751,9 @@ gotItText: {
   color: "#fff",
   fontSize: 13,
   fontWeight: "800",
+},
+infoModalContent: {
+  flexGrow: 1,
+  paddingBottom: 18,
 },
 });
