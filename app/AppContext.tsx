@@ -1231,6 +1231,7 @@ useEffect(() => {
 
   return () => unsubs.forEach((u) => u());
 }, [tournaments]);
+
 useEffect(() => {
   if (!authUser?.uid) {
     setUnreadCount(0);
