@@ -683,7 +683,7 @@ const handleLinkPassword = async () => {
           <Text style={styles.desc}>
           Learn and compete using virtual forex trading accounts.
            Users may optionally register for competitive tournaments using
-            virtual trading balances. 
+            coins balances. 
           FX Arena does not provide real forex trading, brokerage,
            or investment services.
           </Text>
@@ -1267,9 +1267,9 @@ router.replace("/tradinglayout");
       marginBottom: 8,
     }}
   >
-    Tournament registration is optional. Payments are optional and are used only for eligible
-    platform services such as tournament participation and  reward payouts where applicable.
-    Payments are securely processed by by trusted third-party payment provider. FX Arena does not hold customer funds.
+   Tournament registration is optional and uses virtual coins. Coins are used
+for eligible tournament participation, and rewards are distributed according
+to the applicable tournament rules and platform terms.
   </Text>
 
   <Text

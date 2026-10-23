@@ -579,7 +579,7 @@ textShadowRadius: 8, },
  width:240,
  maxHeight:350,
  backgroundColor: "#111827",
-    borderRadius: 12,  padding: 10, },
+    borderRadius: 12,  padding: 10, right:5 },
 
   card: {
   borderWidth: 1,

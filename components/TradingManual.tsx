@@ -1,11 +1,13 @@
-import { useState } from "react";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { useEffect, useState } from "react";
+
 import {
-    Modal,
-    ScrollView,
-    StyleSheet,
-    Text,
-    TouchableOpacity,
-    View,
+  Modal,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TouchableOpacity,
+  View,
 } from "react-native";
 
 interface Props {
@@ -15,11 +17,27 @@ interface Props {
 export default function TradingManual({ onClose }: Props) {
  
  const [language, setLanguage] = useState<"en" | "fr">("en");
+const [confirmed, setConfirmed] = useState<boolean | null>(null);
+
+useEffect(() => {
+  AsyncStorage.getItem("fxArenaTradingManualConfirmed").then((value) => {
+    setConfirmed(value === "true");
+  }).catch(() => setConfirmed(false));
+}, []);
+
+const handleConfirm = async () => {
+  try {
+    await AsyncStorage.setItem("fxArenaTradingManualConfirmed", "true");
+  } finally {
+    setConfirmed(true);
+    onClose();
+  }
+};
 
     return (
     
     <Modal
-      visible={true}
+     visible={confirmed === false}
       transparent
       animationType="fade"
     >
@@ -301,7 +319,7 @@ Restez discipliné. Continuez à apprendre. Profitez de la compétition !
 
             <TouchableOpacity
   style={styles.button}
-  onPress={onClose}
+  onPress={handleConfirm}
 >
   <Text style={styles.buttonText}>
     {language === "en"
