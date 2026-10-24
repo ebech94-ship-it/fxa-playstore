@@ -77,11 +77,8 @@ export default function AccountSwitcher({
 }: AccountSwitcherProps) {
 
 const {
-  openAccountSwitcher,
-  setOpenAccountSwitcher,
-  tournamentAccounts,
-  userDoc,
-} = useApp();
+  openAccountSwitcher,  setOpenAccountSwitcher,  tournamentAccounts,
+  walletAlert,  dismissWalletAlert,  userDoc,} = useApp();
 const coinsBalance = Number(
   userDoc?.accounts?.real?.balance ?? userDoc?.coins ?? 0
 );
@@ -408,6 +405,48 @@ const InfoButton = ({
           </Text>
         </View>
       )}
+      {/* COINS WALLET CHANGE ALERT */}
+<Modal
+  visible={walletAlert !== null}
+  transparent
+  animationType="fade"
+  onRequestClose={dismissWalletAlert}
+>
+  <View style={styles.infoOverlay}>
+    <View style={styles.walletAlertModal}>
+      <MaterialCommunityIcons
+        name={
+          walletAlert?.direction === "increased"
+            ? "arrow-up-circle"
+            : "arrow-down-circle"
+        }
+        size={48}
+        color={
+          walletAlert?.direction === "increased"
+            ? "#22c55e"
+            : "#f87171"
+        }
+      />
+
+      <Text style={styles.walletAlertTitle}>
+        Wallet Balance {walletAlert?.direction === "increased" ? "Increased" : "Decreased"}
+      </Text>
+
+      <Text style={styles.walletAlertMessage}>
+        Your wallet balance has {walletAlert?.direction} by{" "}
+        {walletAlert?.amount.toLocaleString()}{" "}
+        {walletAlert?.amount === 1 ? "coin" : "coins"}.
+      </Text>
+
+      <TouchableOpacity
+        onPress={dismissWalletAlert}
+        style={styles.gotItButton}
+      >
+        <Text style={styles.gotItText}>OK</Text>
+      </TouchableOpacity>
+    </View>
+  </View>
+</Modal>
       {/* COMPONENT INFORMATION MODAL */}
 <Modal
   visible={infoType !== null}
@@ -755,5 +794,31 @@ gotItText: {
 infoModalContent: {
   flexGrow: 1,
   paddingBottom: 18,
+},
+walletAlertModal: {
+  width: "100%",
+  maxWidth: 340,
+  backgroundColor: "#111827",
+  borderRadius: 18,
+  borderWidth: 1,
+  borderColor: "#334155",
+  padding: 24,
+  alignItems: "center",
+},
+
+walletAlertTitle: {
+  color: "#fff",
+  fontSize: 18,
+  fontWeight: "800",
+  textAlign: "center",
+  marginTop: 12,
+},
+
+walletAlertMessage: {
+  color: "#cbd5e1",
+  fontSize: 14,
+  textAlign: "center",
+  lineHeight: 22,
+  marginTop: 10,
 },
 });

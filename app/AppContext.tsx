@@ -264,6 +264,12 @@ setParticipantBalances: React.Dispatch<
   React.SetStateAction<Record<string, number>>
 >;
 
+walletAlert: {
+  amount: number;
+  direction: "increased" | "decreased";
+} | null;
+
+dismissWalletAlert: () => void;
 };
 export type Participant = {
   id: string;
@@ -378,6 +384,9 @@ setSwitcherHintTournamentId: () => {},
   setUnreadCount: () => {},   // ✅ noop default
   participantBalances: {},
   setParticipantBalances: () => {},
+
+  walletAlert: null,
+dismissWalletAlert: () => {},
 });
 
  
@@ -435,7 +444,19 @@ const addLeaderboardUser = (user: Participant) => {
     )
   }));
 };
+const [walletAlert, setWalletAlert] = useState<{
+  amount: number;
+  direction: "increased" | "decreased";
+} | null>(null);
 
+const previousWalletRef = useRef<{
+  uid: string;
+  balance: number;
+} | null>(null);
+
+const dismissWalletAlert = useCallback(() => {
+  setWalletAlert(null);
+}, []);
 const [demoBalance, setDemoBalance] = useState<number>(1000);
 
 const referrals = useMemo(() => ({
@@ -1058,7 +1079,29 @@ useEffect(() => {
     }
 
     const data = snap.data() as FirestoreUserDoc;
+const currentBalance = Number(data.coins ?? 0);
+const previousWallet = previousWalletRef.current;
 
+if (previousWallet?.uid !== authUser.uid) {
+  // First balance received for this login: establish baseline only.
+  previousWalletRef.current = {
+    uid: authUser.uid,
+    balance: currentBalance,
+  };
+} else if (previousWallet.balance !== currentBalance) {
+  setWalletAlert({
+    amount: Math.abs(currentBalance - previousWallet.balance),
+    direction:
+      currentBalance > previousWallet.balance
+        ? "increased"
+        : "decreased",
+  });
+
+  previousWalletRef.current = {
+    uid: authUser.uid,
+    balance: currentBalance,
+  };
+}
     if (data.deleted === true) {
       auth.signOut();
       return;
@@ -1317,6 +1360,8 @@ referrals,
 
   participantBalances,
   setParticipantBalances,
+  walletAlert,
+dismissWalletAlert,
 }), [
   appReady,
   unreadCount,
@@ -1359,6 +1404,8 @@ setOpenAccountSwitcher,
 referrals,
   participantBalances,
   setParticipantBalances,
+walletAlert,
+dismissWalletAlert,
 ]);
   return (
     <AppContext.Provider value={contextValue}>
