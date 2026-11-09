@@ -833,7 +833,9 @@ useEffect(() => {
         username: data.username ?? data.displayName ?? "Trader",
         avatar: data.avatarUrl ?? "",
         countryCode: data.countryCode ?? data.country ?? "CM",
-        balance: Number(data.coins ?? 0),
+       balance: Number(
+  data.accounts?.real?.balance ?? data.coins ?? 0
+),
         publicId: data.publicId,
         email: data.email,
       };
@@ -857,7 +859,9 @@ useEffect(() => {
 
       realList.push({
         ...currentUser,
-        balance: Number(userDoc?.coins ?? 0),
+       balance: Number(
+  userDoc?.accounts?.real?.balance ?? userDoc?.coins ?? 0
+),
       });
     }
 

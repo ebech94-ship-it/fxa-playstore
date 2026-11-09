@@ -267,6 +267,10 @@ const displayParticipants = useMemo(() => {
 ]);
 
 const sortedParticipants = [...displayParticipants].sort((a, b) => {
+  if (mode === "real") {
+    return Number(b.balance ?? 0) - Number(a.balance ?? 0);
+  }
+
   const startBalance = Number(
     activeTourney?.startingBalance ?? 0
   );
@@ -283,7 +287,6 @@ const sortedParticipants = [...displayParticipants].sort((a, b) => {
 
   return bPerformance - aPerformance;
 });
-
 const rankIndex = sortedParticipants.findIndex(
   (p) => p.id === currentUser?.uid
 );
