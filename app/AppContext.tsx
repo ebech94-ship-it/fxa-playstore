@@ -804,68 +804,72 @@ collectedFunds: Number(data.collectedFunds ?? 0),
 useEffect(() => {
   const q = query(collection(db, "users"));
 
-const unsub = onSnapshot(q, (snap) => {
-   console.log("USERS SNAPSHOT:", snap.size);
-   
-    const list = snap.docs
-  .filter((d) => {
-  const data: any = d.data();
-  return !data.deleted;
-})
-  .map((d) => {
-      const data: any = d.data();
+  const unsub = onSnapshot(q, (snap) => {
+    const activeDocs = snap.docs.filter(
+      (d) => !d.data().deleted
+    );
 
-     return {
-  id: d.id,
-  username: data.username ?? data.displayName ?? "Player",
-  avatar: data.avatarUrl ?? "",
-  countryCode: data.countryCode ?? data.country ?? "CM",
-  balance: Number(data.accounts?.demo?.balance ?? 1000),
- // ADD THESE
-  publicId: data.publicId,
-  email: data.email,
-};
+    // Demo leaderboard: demo account balances
+    const demoList: Participant[] = activeDocs.map((d) => {
+      const data = d.data();
+
+      return {
+        id: d.id,
+        username: data.username ?? data.displayName ?? "Trader",
+        avatar: data.avatarUrl ?? "",
+        countryCode: data.countryCode ?? data.country ?? "CM",
+        balance: Number(data.accounts?.demo?.balance ?? 1000),
+        publicId: data.publicId,
+        email: data.email,
+      };
     });
 
-// 👇 ADD THIS
-if (
-  authUser &&
-  !list.some((p) => p.id === authUser.uid)
-) {
-  list.push({
-    id: authUser.uid,
-    username: profile?.username ?? userDoc?.username ?? "Player",
-    avatar: profile?.avatarUrl ?? userDoc?.avatarUrl ?? "",
-    countryCode: profile?.country ?? userDoc?.country ?? "CM",
-    balance: demoBalance,
-    publicId: userDoc?.publicId,
-    email: userDoc?.email,
-  });
-}
+    // Real leaderboard: actual coin wallet holdings
+    const realList: Participant[] = activeDocs.map((d) => {
+      const data = d.data();
 
-    list.sort((a, b) => (b.balance ?? 0) - (a.balance ?? 0));
+      return {
+        id: d.id,
+        username: data.username ?? data.displayName ?? "Trader",
+        avatar: data.avatarUrl ?? "",
+        countryCode: data.countryCode ?? data.country ?? "CM",
+        balance: Number(data.coins ?? 0),
+        publicId: data.publicId,
+        email: data.email,
+      };
+    });
 
-console.log("DEMO USERS:", list.length);
-   setLeaderboardParticipants(prev => {
-  const old = prev.demo ?? [];
+    // Include the current user if missing from the users collection
+    if (authUser && !activeDocs.some((d) => d.id === authUser.uid)) {
+      const currentUser = {
+        id: authUser.uid,
+        username: profile?.username ?? userDoc?.username ?? "Trader",
+        avatar: profile?.avatarUrl ?? userDoc?.avatarUrl ?? "",
+        countryCode: profile?.country ?? userDoc?.country ?? "CM",
+        publicId: userDoc?.publicId,
+        email: authUser.email ?? "",
+      };
 
-  if (
-    old.length === list.length &&
-    old.every((p, i) =>
-      p.id === list[i].id &&
-      p.balance === list[i].balance &&
-      p.username === list[i].username &&
-      p.avatar === list[i].avatar
-    )
-  ) {
-    return prev;
-  }
+      demoList.push({
+        ...currentUser,
+        balance: Number(demoBalance ?? 1000),
+      });
 
-  return {
-    ...prev,
-    demo: list,
-  };
-});
+      realList.push({
+        ...currentUser,
+        balance: Number(userDoc?.coins ?? 0),
+      });
+    }
+
+    // Highest balance first
+    demoList.sort((a, b) => (b.balance ?? 0) - (a.balance ?? 0));
+    realList.sort((a, b) => (b.balance ?? 0) - (a.balance ?? 0));
+
+    setLeaderboardParticipants((prev) => ({
+      ...prev,
+      demo: demoList,
+      real: realList,
+    }));
   });
 
   return unsub;
@@ -878,8 +882,8 @@ console.log("DEMO USERS:", list.length);
   userDoc?.username,
   userDoc?.avatarUrl,
   userDoc?.country,
+  userDoc?.coins,
 ]);
-
 
 
 useEffect(() => {
@@ -895,7 +899,9 @@ useEffect(() => {
       "participants"
     );
 
-    const unsub = onSnapshot(ref, (snap) => {
+   const unsub = onSnapshot(
+  ref,
+  (snap) => {
       const list: Participant[] = snap.docs.map((d) => {
         const data = d.data();
 
@@ -969,7 +975,15 @@ useEffect(() => {
     ),
   };
 });
-    });
+       },
+    (error) => {
+      console.error(
+        `TOURNAMENT LEADERBOARD ERROR (${t.tournamentId}):`,
+        error.code,
+        error.message
+      );
+    }
+  );
 
     unsubscribes.push(unsub);
   });

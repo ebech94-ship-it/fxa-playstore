@@ -990,7 +990,7 @@ const sortedTournaments = useMemo(() => {
             username={
               user.username ||
               user.email ||
-              "Player"
+              "Trader"
             }
             countryCode={user.countryCode}
           />
@@ -1611,7 +1611,7 @@ const sortedTournaments = useMemo(() => {
                     username={
                       item.username ||
                       item.email ||
-                      "Player"
+                      "Trader"
                     }
                     countryCode={
                       item.countryCode

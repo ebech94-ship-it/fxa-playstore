@@ -269,7 +269,7 @@ app.post("/support/send", authenticate, async (req, res) => {
       threadRef = await db.collection("supportThreads").add({
         userId,
         userEmail: profile.email || req.user.email || "No Email",
-        username: profile.username || profile.displayName || req.user.name || "Player",
+        username: profile.username || profile.displayName || req.user.name || "",
         status: "open",
         createdAt: admin.firestore.FieldValue.serverTimestamp(),
         lastMessage: message.trim(),

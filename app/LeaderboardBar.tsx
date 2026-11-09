@@ -229,9 +229,8 @@ const copyInviteLink = async () => {
 };
 
 const participants = useMemo(() => {
-  if (mode === "real") return PREVIEW_PARTICIPANTS;
   return liveParticipants;
-}, [mode, liveParticipants]);
+}, [liveParticipants]);
 
 // ✅ Override current user's balance with AppContext first
 const displayParticipants = useMemo(() => {
@@ -345,31 +344,28 @@ useEffect(() => {
   return () => backHandler.remove();
 
 }, [showFull]);
-
 useEffect(() => {
- if (mode === "demo") {
-  setLiveParticipants(leaderboardParticipants.demo ?? []);
-  setLoadingLive(false);
-  return;
-}
+  if (mode === "demo") {
+    setLiveParticipants(leaderboardParticipants.demo ?? []);
+    setLoadingLive(false);
+    return;
+  }
+
+  if (mode === "real") {
+    setLiveParticipants(leaderboardParticipants.real ?? []);
+    setLoadingLive(false);
+    return;
+  }
 
   if (mode === "tournament" && tournamentId) {
-    setLiveParticipants(
-      leaderboardParticipants[tournamentId] ?? []
-    );
+    setLiveParticipants(leaderboardParticipants[tournamentId] ?? []);
     setLoadingLive(false);
     return;
   }
 
   setLiveParticipants([]);
   setLoadingLive(false);
-
-}, [
-  mode,
-  tournamentId,
- 
-  leaderboardParticipants,
-]);
+}, [mode, tournamentId, leaderboardParticipants]);
 
 
 
@@ -455,7 +451,7 @@ return (
               username={
                 isCurrent
                   ? profile?.username || p.username || "You"
-                  : p.username || "Player"
+                  : p.username || "Trader"
               }
               countryCode={
   isCurrent
@@ -464,7 +460,7 @@ return (
 }
             />
            <Text style={[styles.balance, isCurrent && {color:"#00ff88"}]}>
- {`$${(
+{`${mode === "real" ? "C" : "$"}${(
   mode === "demo" && isCurrent
     ? (demoBalance ?? 0)
     : activeAccount.type === "tournament" && isCurrent
@@ -631,11 +627,11 @@ return (
 </TouchableOpacity>
       <View style={styles.info}>
         <ParticipantRow
-          username={item.username || "Player"}
+          username={item.username || "Trader"}
            countryCode={toISO2(item.countryCode)}
         />
        <Text style={styles.balance}>
-  {`$${((item.balance ?? 0).toFixed(1))}`}
+  {`${mode === "real" ? "C" : "$"}${(item.balance ?? 0).toFixed(1)}`}
 </Text>
       </View>
       <Text style={styles.rank}>#{index + 1}</Text>

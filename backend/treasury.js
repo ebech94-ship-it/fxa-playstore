@@ -90,7 +90,7 @@ if (prizeModel === "dynamic") {
   // 🟡 LEADERBOARD CACHE (FAST UI ONLY)
   t.set(participantRef, {
     uid: userId,
-    username: user.username || "Player",
+    username: user.username || "Trader",
     publicId: user.publicId || null,
     countryCode: user.countryCode || null,
 referrerId: user.referredBy || null,
