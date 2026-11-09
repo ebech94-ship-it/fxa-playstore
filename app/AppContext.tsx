@@ -886,8 +886,9 @@ useEffect(() => {
 ]);
 
 
-useEffect(() => {
-  if (tournaments.length === 0) return;
+
+  useEffect(() => {
+  if (!authUser?.uid || tournaments.length === 0) return;
 
   const unsubscribes: (() => void)[] = [];
 
@@ -989,7 +990,7 @@ useEffect(() => {
   });
 
   return () => unsubscribes.forEach((u) => u());
-}, [tournaments]);
+}, [tournaments, authUser?.uid]);
 
 useEffect(() => {
   if (!authUser) return;

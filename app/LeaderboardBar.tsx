@@ -162,11 +162,17 @@ const LeaderboardBar = ({
 const {
   authUser,
   profile,
+  userDoc,
   activeAccount,
   tournaments,
   tournamentAccounts,
-  leaderboardParticipants, activeLeaderboardParticipants,
+  leaderboardParticipants,
+  activeLeaderboardParticipants,
 } = useApp();
+
+const coinsBalance = Number(
+  userDoc?.accounts?.real?.balance ?? userDoc?.coins ?? 0
+);
 
 const activeTourney =
   activeAccount.type === "tournament"
@@ -246,6 +252,8 @@ const displayParticipants = useMemo(() => {
     ? (demoBalance ?? p.balance ?? 0)
     : activeAccount.type === "tournament" && isCurrent
     ? liveTournamentBalance
+   : mode === "real" && isCurrent
+    ? coinsBalance
     : (p.balance ?? 0), // still Firestore source of truth
     };
   });
@@ -255,7 +263,7 @@ const displayParticipants = useMemo(() => {
   mode,
   demoBalance,
   liveTournamentBalance,
-  activeAccount.type,
+  activeAccount.type, coinsBalance,
 ]);
 
 const sortedParticipants = [...displayParticipants].sort((a, b) => {
@@ -281,6 +289,7 @@ const rankIndex = sortedParticipants.findIndex(
 );
 
 const rank = rankIndex >= 0 ? rankIndex + 1 : 1;
+const myRank = rankIndex >= 0 ? rankIndex + 1 : null;
 const startingTournamentBalance = activeTourney?.startingBalance ?? 0;
 
 
@@ -399,6 +408,24 @@ return (
     Loading leaderboard...
   </Text>
 )}
+{myRank !== null && (
+  <View
+    style={{
+      position: "absolute",
+      right: 45,
+      top: 40,
+      zIndex: 70,
+      backgroundColor: "#facc15",
+      paddingHorizontal: 7,
+      paddingVertical: 3,
+      borderRadius: 8,
+    }}
+  >
+    <Text style={{ color: "#111827", fontSize: 11, fontWeight: "900" }}>
+      #{myRank}
+    </Text>
+  </View>
+)}
       <Animated.ScrollView
         horizontal
         showsHorizontalScrollIndicator={false}
@@ -465,6 +492,8 @@ return (
     ? (demoBalance ?? 0)
     : activeAccount.type === "tournament" && isCurrent
     ? liveTournamentBalance
+    : mode === "real" && isCurrent
+    ? coinsBalance
     : (p.balance ?? 0)
 ).toFixed(1)}`}
 </Text>
