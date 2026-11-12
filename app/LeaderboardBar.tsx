@@ -416,7 +416,7 @@ return (
     style={{
       position: "absolute",
       right: 45,
-      top: 60,
+      top: 55,
       zIndex: 70,
       backgroundColor: "#facc15",
       paddingHorizontal: 7,
